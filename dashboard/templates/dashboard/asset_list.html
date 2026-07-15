@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>자산 대시보드</title>
+<style>
+  body { font-family: sans-serif; margin: 2rem; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { border: 1px solid #ccc; padding: 6px 10px; text-align: left; }
+  th a { text-decoration: none; color: inherit; }
+  th.active { background: #eef2ff; }
+  .pagination { margin-top: 1rem; }
+  form.search { margin-bottom: 1rem; }
+</style>
+</head>
+<body>
+<h1>자산 대시보드</h1>
+
+<form class="search" method="get">
+  <input type="text" name="q" value="{{ current_q }}" placeholder="hostname/IP 검색">
+  <button type="submit">검색</button>
+</form>
+
+<table>
+  <thead>
+    <tr>
+      {% for column in columns %}
+      <th class="{% if column.is_active %}active{% endif %}">
+        <a href="{% querystring sort=column.next_sort page=None %}">{{ column.label }}</a>
+      </th>
+      {% endfor %}
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in rows %}
+    <tr>
+      <td>{{ row.asset.hostname }}</td>
+      <td>{{ row.asset.primary_ip|default:"" }}</td>
+      <td>{{ row.hostfact.os_family|default:"" }}</td>
+      <td>{{ row.hostfact.cluster_name|default:"" }}</td>
+      <td>{{ row.hostfact.power_state|default:"" }}</td>
+      <td>{{ row.hostfact.last_seen_at|default:"" }}</td>
+      {% for value in row.dynamic_values %}
+      <td>{{ value|default:"" }}</td>
+      {% endfor %}
+    </tr>
+    {% empty %}
+    <tr><td colspan="100">데이터가 없습니다.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<div class="pagination">
+  {% if page_obj.has_previous %}
+    <a href="{% querystring page=page_obj.previous_page_number %}">이전</a>
+  {% endif %}
+  <span>{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
+  {% if page_obj.has_next %}
+    <a href="{% querystring page=page_obj.next_page_number %}">다음</a>
+  {% endif %}
+</div>
+</body>
+</html>

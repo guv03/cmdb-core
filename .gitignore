@@ -1,0 +1,9 @@
+.claude/settings.local.json
+
+__pycache__/
+*.pyc
+*.sqlite3
+.env
+staticfiles/
+media/
+.venv/
