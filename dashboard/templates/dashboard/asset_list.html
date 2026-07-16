@@ -1,76 +1,74 @@
-<!DOCTYPE html>
-<html lang="ko">
-<head>
-<meta charset="UTF-8">
-<title>자산 대시보드</title>
-<style>
-  body { font-family: sans-serif; margin: 2rem; }
-  table { border-collapse: collapse; width: 100%; }
-  th, td { border: 1px solid #ccc; padding: 6px 10px; text-align: left; }
-  th a { text-decoration: none; color: inherit; }
-  th.active { background: #eef2ff; }
-  .pagination { margin-top: 1rem; }
-  form.search { margin-bottom: 1rem; }
-  .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
-  .topbar form { display: inline; }
-  .topbar button { background: none; border: none; color: #2563eb; cursor: pointer; padding: 0; font: inherit; text-decoration: underline; }
-</style>
-</head>
-<body>
-<div class="topbar">
-  <span>{{ user.username }}님으로 로그인됨</span>
-  <form method="post" action="{% url 'dashboard-logout' %}">
-    {% csrf_token %}
-    <button type="submit">로그아웃</button>
-  </form>
-</div>
-<h1>자산 대시보드</h1>
-<p><a href="{% url 'dashboard-change-history' %}">변경 이력 조회</a></p>
+{% extends "dashboard/base.html" %}
 
-<form class="search" method="get">
-  <input type="text" name="q" value="{{ current_q }}" placeholder="hostname/IP 검색">
-  <button type="submit">검색</button>
+{% block title %}자산 대시보드 - CMDB{% endblock %}
+
+{% block content %}
+<h1 class="title is-4">자산 대시보드</h1>
+
+<form class="field has-addons" method="get">
+  <div class="control is-expanded">
+    <input class="input" type="text" name="q" value="{{ current_q }}" placeholder="hostname/IP 검색">
+  </div>
+  <div class="control">
+    <button class="button is-link" type="submit">검색</button>
+  </div>
 </form>
 
-<table>
-  <thead>
-    <tr>
-      {% for column in columns %}
-      <th class="{% if column.is_active %}active{% endif %}">
-        <a href="{% querystring sort=column.next_sort page=None %}">{{ column.label }}</a>
-      </th>
+<div class="table-container">
+  <table class="table is-fullwidth is-hoverable is-striped">
+    <thead>
+      <tr>
+        {% for column in columns %}
+        <th>
+          <a class="{% if column.is_active %}has-text-link has-text-weight-bold{% endif %}"
+             href="{% querystring sort=column.next_sort page=None %}">{{ column.label }}</a>
+        </th>
+        {% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+      <tr>
+        <td>{{ row.asset.hostname }}</td>
+        <td>{{ row.asset.primary_ip|default:"" }}</td>
+        <td>{{ row.hostfact.os_family|default:"" }}</td>
+        <td>{{ row.hostfact.cluster_name|default:"" }}</td>
+        <td>
+          {% if row.hostfact.power_state == "poweredOn" %}
+          <span class="tag is-success is-light">{{ row.hostfact.power_state }}</span>
+          {% elif row.hostfact.power_state == "poweredOff" %}
+          <span class="tag is-danger is-light">{{ row.hostfact.power_state }}</span>
+          {% elif row.hostfact.power_state %}
+          <span class="tag is-light">{{ row.hostfact.power_state }}</span>
+          {% endif %}
+        </td>
+        <td>{{ row.hostfact.last_seen_at|default:"" }}</td>
+        <td>{{ row.asset.created_at|default:"" }}</td>
+        <td>{{ row.asset.last_changed_at|default:"" }}</td>
+        {% for value in row.dynamic_values %}
+        <td>{{ value|default:"" }}</td>
+        {% endfor %}
+      </tr>
+      {% empty %}
+      <tr><td colspan="100" class="has-text-grey">데이터가 없습니다.</td></tr>
       {% endfor %}
-    </tr>
-  </thead>
-  <tbody>
-    {% for row in rows %}
-    <tr>
-      <td>{{ row.asset.hostname }}</td>
-      <td>{{ row.asset.primary_ip|default:"" }}</td>
-      <td>{{ row.hostfact.os_family|default:"" }}</td>
-      <td>{{ row.hostfact.cluster_name|default:"" }}</td>
-      <td>{{ row.hostfact.power_state|default:"" }}</td>
-      <td>{{ row.hostfact.last_seen_at|default:"" }}</td>
-      <td>{{ row.asset.created_at|default:"" }}</td>
-      <td>{{ row.asset.last_changed_at|default:"" }}</td>
-      {% for value in row.dynamic_values %}
-      <td>{{ value|default:"" }}</td>
-      {% endfor %}
-    </tr>
-    {% empty %}
-    <tr><td colspan="100">데이터가 없습니다.</td></tr>
-    {% endfor %}
-  </tbody>
-</table>
-
-<div class="pagination">
-  {% if page_obj.has_previous %}
-    <a href="{% querystring page=page_obj.previous_page_number %}">이전</a>
-  {% endif %}
-  <span>{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
-  {% if page_obj.has_next %}
-    <a href="{% querystring page=page_obj.next_page_number %}">다음</a>
-  {% endif %}
+    </tbody>
+  </table>
 </div>
-</body>
-</html>
+
+<nav class="pagination" role="navigation" aria-label="pagination">
+  {% if page_obj.has_previous %}
+    <a class="pagination-previous" href="{% querystring page=page_obj.previous_page_number %}">이전</a>
+  {% else %}
+    <a class="pagination-previous" disabled>이전</a>
+  {% endif %}
+  {% if page_obj.has_next %}
+    <a class="pagination-next" href="{% querystring page=page_obj.next_page_number %}">다음</a>
+  {% else %}
+    <a class="pagination-next" disabled>다음</a>
+  {% endif %}
+  <span class="pagination-list">
+    <span class="pagination-link is-current">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
+  </span>
+</nav>
+{% endblock %}

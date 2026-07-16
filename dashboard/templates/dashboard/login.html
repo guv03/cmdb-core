@@ -1,27 +1,48 @@
-<!DOCTYPE html>
+{% load static %}<!DOCTYPE html>
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<title>로그인 - 자산 대시보드</title>
-<style>
-  body { font-family: sans-serif; margin: 0; height: 100vh; display: flex; align-items: center; justify-content: center; }
-  .login-box { border: 1px solid #ccc; padding: 2rem; border-radius: 6px; min-width: 280px; }
-  .login-box h1 { font-size: 1.2rem; margin-top: 0; }
-  .login-box p { margin: 0.75rem 0; }
-  .login-box input { width: 100%; padding: 6px; box-sizing: border-box; }
-  .login-box button { margin-top: 1rem; padding: 6px 16px; }
-  .errorlist { color: #b91c1c; padding-left: 1.2rem; }
-</style>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>로그인 - CMDB</title>
+<link rel="stylesheet" href="{% static 'dashboard/css/bulma.min.css' %}">
 </head>
 <body>
-<div class="login-box">
-  <h1>자산 대시보드 로그인</h1>
-  <form method="post">
-    {% csrf_token %}
-    {{ form.as_p }}
-    <input type="hidden" name="next" value="{{ next }}">
-    <button type="submit">로그인</button>
-  </form>
-</div>
+<section class="hero is-fullheight" style="background:#f5f6f8">
+  <div class="hero-body">
+    <div class="container">
+      <div class="columns is-centered">
+        <div class="column is-4">
+          <div class="box">
+            <h1 class="title is-5 has-text-centered">CMDB 로그인</h1>
+            {% if form.non_field_errors %}
+            <div class="notification is-danger is-light">
+              {{ form.non_field_errors|join:" " }}
+            </div>
+            {% endif %}
+            <form method="post">
+              {% csrf_token %}
+              <div class="field">
+                <label class="label" for="id_username">아이디</label>
+                <div class="control">
+                  <input class="input" type="text" name="username" id="id_username" autofocus required>
+                </div>
+              </div>
+              <div class="field">
+                <label class="label" for="id_password">비밀번호</label>
+                <div class="control">
+                  <input class="input" type="password" name="password" id="id_password" required>
+                </div>
+              </div>
+              <input type="hidden" name="next" value="{{ next }}">
+              <div class="control">
+                <button type="submit" class="button is-link is-fullwidth">로그인</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
 </body>
 </html>

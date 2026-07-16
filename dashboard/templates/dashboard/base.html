@@ -1,0 +1,70 @@
+{% load static %}<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}CMDB{% endblock %}</title>
+<link rel="stylesheet" href="{% static 'dashboard/css/bulma.min.css' %}">
+</head>
+<body>
+<nav class="navbar" role="navigation" aria-label="main navigation">
+  <div class="container">
+    <div class="navbar-brand">
+      <a class="navbar-item" href="{% url 'dashboard-asset-list' %}"><strong>CMDB</strong></a>
+      <a role="button" class="navbar-burger" data-target="navMenu" aria-label="menu" aria-expanded="false">
+        <span aria-hidden="true"></span>
+        <span aria-hidden="true"></span>
+        <span aria-hidden="true"></span>
+      </a>
+    </div>
+    <div id="navMenu" class="navbar-menu">
+      <div class="navbar-start">
+        <a class="navbar-item {% if request.resolver_match.url_name == 'dashboard-asset-list' %}is-active{% endif %}"
+           href="{% url 'dashboard-asset-list' %}">자산 대시보드</a>
+        <a class="navbar-item {% if request.resolver_match.url_name == 'dashboard-change-history' %}is-active{% endif %}"
+           href="{% url 'dashboard-change-history' %}">변경 이력</a>
+      </div>
+      {% if user.is_authenticated %}
+      <div class="navbar-end">
+        <div class="navbar-item">
+          <span class="mr-3">{{ user.username }}님</span>
+          <form method="post" action="{% url 'dashboard-logout' %}">
+            {% csrf_token %}
+            <button type="submit" class="button is-small is-light">로그아웃</button>
+          </form>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</nav>
+
+<section class="section">
+  <div class="container">
+    {% if messages %}
+    <div class="messages">
+      {% for message in messages %}
+      <div class="notification {% if message.tags == 'success' %}is-success{% elif message.tags == 'warning' %}is-warning{% else %}is-info{% endif %} is-light">
+        {{ message }}
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+    {% block content %}{% endblock %}
+  </div>
+</section>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  var burger = document.querySelector('.navbar-burger');
+  var menu = document.getElementById(burger && burger.dataset.target);
+  if (burger && menu) {
+    burger.addEventListener('click', function () {
+      burger.classList.toggle('is-active');
+      menu.classList.toggle('is-active');
+    });
+  }
+});
+</script>
+</body>
+</html>

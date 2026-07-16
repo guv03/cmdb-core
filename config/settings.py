@@ -27,7 +27,6 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
-    "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -35,6 +34,12 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
+
+if not DEBUG:
+    # 로컬 dev(runserver+DEBUG=True)는 django.contrib.staticfiles가 소스 디렉터리에서
+    # 바로 서빙해줘서 collectstatic 없이도 정적 파일이 즉시 반영된다. whitenoise는
+    # STATIC_ROOT(collectstatic 결과물)만 서빙하므로 운영(gunicorn)에서만 사용.
+    MIDDLEWARE.insert(1, "whitenoise.middleware.WhiteNoiseMiddleware")
 
 ROOT_URLCONF = "config.urls"
 
