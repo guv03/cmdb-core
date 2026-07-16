@@ -22,6 +22,11 @@
   - Dockerfile을 `collectstatic` + `gunicorn` 기반 운영용으로 개편, DEBUG=False·gunicorn 조합으로 실제 기동해 정적 파일 서빙까지 검증(로컬 dev는 docker-compose가 여전히 runserver로 오버라이드하므로 영향 없음)
   - `helm/cmdb-core/` 차트 신규 작성: Deployment/Service(NodePort)/ConfigMap/Secret(또는 `existingSecret`)/마이그레이션 Job(post-install,pre-upgrade hook). `helm lint`/`helm template`로 렌더링 검증
 - 루트에 `DEPLOY.md` 추가: 외부망 빌드 → 폐쇄망 반입(`docker save`/`load`, Harbor push) → Oracle 준비 → `values-prod.yaml` 작성(민감정보 git 미포함) → `helm install` → 배포 확인 → AWX 연동까지 이어지는 운영 배포 절차와 체크리스트. `helm/cmdb-core/README.md`(차트 옵션 레퍼런스), `awx/README.md`(AWX 설정)와 상호 링크
+- **대시보드 디자인 적용**: 코딩 전에 실제 화면 데이터(변경 이력 표, 상태 배지, 승인/반려 버튼)를 Pico.css/Bulma/Tabler로 각각 렌더링한 비교 아티팩트를 먼저 만들어 보고 결정 — Bulma 채택
+  - Bulma CSS를 CDN 링크 대신 `dashboard/static/dashboard/css/`에 직접 커밋해 이미지에 포함(폐쇄망에서도 외부 요청 없이 서빙)
+  - 공통 `base.html`(navbar + 메시지 배너)로 자산 대시보드/변경 이력/로그인 3개 화면 레이아웃 통일, 기존 기능(정렬·검색·페이지네이션·개별 및 일괄 승인/반려)은 그대로 유지하고 스타일만 교체
+  - 그 과정에서 whitenoise가 항상 켜져 있어 로컬 dev에서 새 정적 파일이 반영 안 되는 문제 발견 → `DEBUG=False`(운영)에서만 whitenoise를 쓰도록 수정, 로컬은 계속 Django 기본 정적 서빙 사용
+  - 로컬(runserver)과 운영 이미지(gunicorn+collectstatic) 양쪽 다 재빌드해서 화면·정적파일·승인 플로우 재검증
 
 ## 2026-07-15
 
