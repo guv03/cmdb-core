@@ -1,0 +1,53 @@
+---
+# AWX Job Template에서 실행하는 플레이북.
+# vCenter/Nutanix dynamic inventory로 감지된 호스트에 ansible facts를 수집하고,
+# 하이퍼바이저 메타데이터와 함께 CMDB(POST /api/facts/)로 push한다.
+# CMDB는 vCenter/Nutanix API를 직접 호출하지 않으므로 이 플레이북이 유일한 수집 경로다.
+#
+# 필요한 변수 (AWX Job Template의 Extra Variables / Survey / Credential로 주입):
+#   cmdb_base_url : CMDB 베이스 URL (예: http://cmdb.internal:8000)
+#   cmdb_api_key  : facts push API 인증 키 (X-API-Key 헤더값). Credential로 주입 권장, 플레이북에 하드코딩 금지.
+#
+# 하이퍼바이저 메타데이터는 이 플레이북이 직접 vCenter/Nutanix API를 파싱하지 않고,
+# dynamic inventory source의 hostvars를 정규화된 이름(cmdb_source_platform, cmdb_vm_uuid,
+# cmdb_cluster_name, cmdb_power_state, cmdb_num_cpu, cmdb_memory_mb)으로 사용한다.
+# 실제 vCenter/Nutanix 인벤토리 플러그인이 노출하는 hostvar 이름은 구성한 properties에 따라
+# 달라지므로, AWX 인벤토리 소스의 "Source Variables"(compose)에서 위 이름으로 매핑해두어야
+# 한다. 예시는 inventory_source_vars.example.yml 참고. 매핑이 없는 값은 CMDB에 null로 전달되고,
+# CMDB 쪽에서 physical/unknown 등 기본값으로 처리한다.
+
+- name: Collect ansible facts and push to CMDB
+  hosts: all
+  gather_facts: true
+
+  vars:
+    cmdb_validate_certs: true
+    cmdb_hypervisor:
+      source_platform: "{{ cmdb_source_platform | default('unknown') }}"
+      vm_uuid: "{{ cmdb_vm_uuid | default(None) }}"
+      cluster_name: "{{ cmdb_cluster_name | default(None) }}"
+      power_state: "{{ cmdb_power_state | default(None) }}"
+      num_cpu: "{{ cmdb_num_cpu | default(None) }}"
+      memory_mb: "{{ cmdb_memory_mb | default(None) }}"
+
+  tasks:
+    - name: CMDB로 facts push  # noqa: no-changed-when
+      ansible.builtin.uri:
+        url: "{{ cmdb_base_url }}/api/facts/"
+        method: POST
+        headers:
+          X-API-Key: "{{ cmdb_api_key }}"
+        body_format: json
+        body:
+          hostname: "{{ inventory_hostname }}"
+          ansible_facts: "{{ ansible_facts }}"
+          hypervisor: "{{ cmdb_hypervisor }}"
+        status_code: [200, 201]
+        validate_certs: "{{ cmdb_validate_certs }}"
+      delegate_to: localhost
+      no_log: true # 응답/헤더에 X-API-Key가 로그로 남지 않도록
+      register: cmdb_push_result
+
+    - name: push 결과 출력
+      ansible.builtin.debug:
+        msg: "CMDB push 완료: asset_id={{ cmdb_push_result.json.asset_id }}, hostname={{ cmdb_push_result.json.hostname }}"

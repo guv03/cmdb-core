@@ -1,0 +1,25 @@
+# AWX 인벤토리 소스의 "Source Variables"에 넣는 예시.
+# 실제 vCenter/Nutanix 인벤토리 플러그인이 노출하는 hostvar 이름은 구성한 properties에 따라
+# 달라지므로 아래는 참고용이며, 실제 환경에 맞춰 compose 값을 조정해야 한다.
+#
+# 목적: 플러그인마다 제각각인 hostvar 이름을,
+# push_facts_to_cmdb.yml이 기대하는 정규화된 변수(cmdb_source_platform, cmdb_vm_uuid, ...)로
+# 인벤토리 소스 단계에서 미리 맞춰준다. 플레이북 쪽은 플러그인 종류를 몰라도 되게 하기 위함.
+
+# --- vCenter (community.vmware.vmware_vm_inventory) 예시 ---
+# compose:
+#   cmdb_source_platform: "'vcenter'"
+#   cmdb_vm_uuid: config.uuid
+#   cmdb_cluster_name: summary.runtime.host.parent.name
+#   cmdb_power_state: runtime.powerState
+#   cmdb_num_cpu: config.hardware.numCPU
+#   cmdb_memory_mb: config.hardware.memoryMB
+
+# --- Nutanix (nutanix.ncp.ntnx_inventory 등) 예시 ---
+# compose:
+#   cmdb_source_platform: "'nutanix'"
+#   cmdb_vm_uuid: vm_uuid
+#   cmdb_cluster_name: cluster_name
+#   cmdb_power_state: power_state
+#   cmdb_num_cpu: vcpu_num
+#   cmdb_memory_mb: memory_size_mib
