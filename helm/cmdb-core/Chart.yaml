@@ -1,0 +1,6 @@
+apiVersion: v2
+name: cmdb-core
+description: Django + DRF 기반 CMDB (AWX facts push 수집, 승인 워크플로우, 대시보드)
+type: application
+version: 0.1.0
+appVersion: "1.0.0"

@@ -1,0 +1,17 @@
+CMDB가 배포되었습니다.
+
+{{- if eq .Values.service.type "NodePort" }}
+NodePort 서비스로 노출됩니다. 실제 포트 확인:
+  kubectl get svc {{ include "cmdb-core.fullname" . }} -o jsonpath='{.spec.ports[0].nodePort}'
+
+접속:
+  대시보드: http://<노드IP>:<NodePort>/dashboard/assets/ (로그인 필요)
+  admin:    http://<노드IP>:<NodePort>/admin/ (ApprovalFieldConfig 등 저빈도 설정용)
+  facts push API: http://<노드IP>:<NodePort>/api/facts/ (AWX가 X-API-Key 헤더로 호출)
+{{- end }}
+
+관리자 계정이 아직 없다면 파드에 접속해서 생성:
+  kubectl exec -it deploy/{{ include "cmdb-core.fullname" . }} -- python manage.py createsuperuser
+
+마이그레이션은 install/upgrade 시 자동 실행되는 Job으로 처리됩니다
+(values.yaml의 migration.enabled로 끌 수 있음).

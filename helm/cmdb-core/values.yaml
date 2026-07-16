@@ -1,0 +1,53 @@
+# Harbor에 push한 이미지 참조
+image:
+  repository: harbor.internal/cmdb/cmdb-core
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+replicaCount: 2
+
+service:
+  type: NodePort
+  port: 8000
+  # 비워두면 K8s가 임의 NodePort(30000-32767)를 할당한다. 고정하고 싶으면 값 지정.
+  nodePort: ""
+
+resources: {}
+# resources:
+#   requests: { cpu: 250m, memory: 256Mi }
+#   limits: { cpu: "1", memory: 512Mi }
+
+# 코드 변경 없이 admin에서 필드/승인 대상을 등록하는 구조라 상태 없는 배포이고,
+# 처리 방식도 동기(요청 내 즉시 저장)만 쓰므로 워커/큐 리소스는 따로 없다.
+
+django:
+  debug: "false"
+  allowedHosts: "*"
+  # 실제 배포 시 --set django.secretKey=... 로 반드시 덮어쓸 것. 아래 값은 placeholder.
+  secretKey: "change-me-in-production"
+
+# 로컬/개발: django.db.backends.postgresql, 운영(폐쇄망): django.db.backends.oracle
+# NAME/USER/PASSWORD 키 이름은 Postgres 시절 그대로지만 Oracle 접속 정보도 여기 넣는다
+# (config/settings.py가 이 이름으로 읽음. Oracle 서비스명 연결 시 name에
+# "host:port/service_name" 형태의 easy-connect 문자열을 넣고 host/port는 비워도 됨).
+database:
+  engine: django.db.backends.oracle
+  name: cmdb
+  user: cmdb
+  password: change-me
+  host: oracle.internal
+  port: "1521"
+
+awx:
+  # AWX가 POST /api/facts/ 호출 시 보내는 X-API-Key 값과 일치해야 함
+  apiKey: change-me
+
+# 이름을 지정하면 위 django.secretKey / database.password / awx.apiKey 대신
+# 이 Secret(직접 kubectl로 만들었거나 외부 시크릿 도구로 주입한 것)을 사용한다.
+# 아래 키를 담고 있어야 함: DJANGO_SECRET_KEY, POSTGRES_PASSWORD, AWX_API_KEY
+existingSecret: ""
+
+# helm install/upgrade 시 매번 `manage.py migrate`를 실행하는 Job(Helm hook).
+# Celery 등 별도 워커 없이 요청 내 동기 처리만 쓰는 구조라 배포 파이프라인도 단순하게 유지.
+migration:
+  enabled: true

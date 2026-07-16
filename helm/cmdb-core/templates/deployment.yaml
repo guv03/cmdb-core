@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "cmdb-core.fullname" . }}
+  labels:
+    {{- include "cmdb-core.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "cmdb-core.labels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "cmdb-core.labels" . | nindent 8 }}
+    spec:
+      containers:
+        - name: cmdb-core
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: {{ include "cmdb-core.fullname" . }}
+            - secretRef:
+                name: {{ include "cmdb-core.secretName" . }}
+          readinessProbe:
+            httpGet:
+              path: /dashboard/login/
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /dashboard/login/
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}

@@ -1,0 +1,32 @@
+{{- if .Values.migration.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "cmdb-core.fullname" . }}-migrate
+  labels:
+    {{- include "cmdb-core.labels" . | nindent 4 }}
+  annotations:
+    # 최초 설치 때는 ConfigMap/Secret/Deployment가 먼저 만들어진 뒤(post-install) 실행하고,
+    # 업그레이드 때는 새 버전 파드가 뜨기 전에(pre-upgrade) 먼저 마이그레이션을 끝낸다.
+    "helm.sh/hook": post-install,pre-upgrade
+    "helm.sh/hook-weight": "0"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 2
+  template:
+    metadata:
+      labels:
+        {{- include "cmdb-core.labels" . | nindent 8 }}
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: migrate
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["python", "manage.py", "migrate", "--noinput"]
+          envFrom:
+            - configMapRef:
+                name: {{ include "cmdb-core.fullname" . }}
+            - secretRef:
+                name: {{ include "cmdb-core.secretName" . }}
+{{- end }}

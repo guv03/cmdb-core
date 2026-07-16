@@ -2,3 +2,6 @@ Django==6.0.7
 djangorestframework==3.17.1
 psycopg[binary]==3.3.4
 python-dotenv==1.2.2
+oracledb==4.0.2
+gunicorn==26.0.0
+whitenoise==6.12.0
