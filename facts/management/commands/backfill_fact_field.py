@@ -1,7 +1,7 @@
 from django.core.management.base import BaseCommand, CommandError
 
-from facts.dynamic_fields import coerce_fact_value, extract_json_path
-from facts.models import FactFieldDefinition, HostFact, HostFactValue
+from facts.dynamic_fields import backfill_field
+from facts.models import FactFieldDefinition
 
 
 class Command(BaseCommand):
@@ -17,13 +17,5 @@ class Command(BaseCommand):
         except FactFieldDefinition.DoesNotExist:
             raise CommandError(f"필드 정의를 찾을 수 없음: {field_key}")
 
-        updated = 0
-        for host_fact in HostFact.objects.all():
-            raw_value = extract_json_path(host_fact.raw_facts, field_definition.key)
-            defaults = coerce_fact_value(raw_value, field_definition.value_type)
-            HostFactValue.objects.update_or_create(
-                host_fact=host_fact, field_definition=field_definition, defaults=defaults
-            )
-            updated += 1
-
+        updated = backfill_field(field_definition)
         self.stdout.write(self.style.SUCCESS(f"{updated}개 호스트에 대해 '{field_key}' 필드를 갱신했습니다."))

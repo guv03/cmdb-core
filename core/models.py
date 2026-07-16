@@ -14,6 +14,9 @@ class Asset(TimeStampedModel):
     primary_ip = models.GenericIPAddressField(null=True, blank=True)
     description = models.CharField(max_length=255, blank=True)
     is_active = models.BooleanField(default=True)
+    last_changed_at = models.DateTimeField(
+        null=True, blank=True, help_text="승인 대상 필드의 변경이 승인되어 반영된 시각"
+    )
 
     class Meta:
         ordering = ["hostname"]

@@ -56,6 +56,68 @@ class FactFieldDefinition(TimeStampedModel):
         return self.label
 
 
+class ApprovalFieldConfig(TimeStampedModel):
+    """이 필드의 값 변경은 자동 반영하지 않고 admin 승인을 거치게 한다."""
+
+    class SourceType(models.TextChoices):
+        FIXED = "fixed", "고정 컬럼"
+        DYNAMIC = "dynamic", "동적 필드"
+
+    source_type = models.CharField(max_length=10, choices=SourceType.choices)
+    key = models.CharField(
+        max_length=255,
+        help_text="fixed: HostFact 고정 컬럼명 / dynamic: FactFieldDefinition.key와 동일한 값",
+    )
+    label = models.CharField(max_length=255)
+    value_type = models.CharField(max_length=10, choices=FactFieldDefinition.ValueType.choices)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["source_type", "key"], name="unique_approval_field")
+        ]
+
+    def __str__(self):
+        return self.label
+
+
+class PendingChange(TimeStampedModel):
+    class Status(models.TextChoices):
+        PENDING = "pending", "대기"
+        APPROVED = "approved", "승인"
+        REJECTED = "rejected", "반려"
+
+    asset = models.ForeignKey(Asset, on_delete=models.CASCADE, related_name="pending_changes")
+    field_config = models.ForeignKey(
+        ApprovalFieldConfig, on_delete=models.CASCADE, related_name="pending_changes"
+    )
+
+    old_value_text = models.CharField(max_length=500, null=True, blank=True)
+    old_value_number = models.DecimalField(max_digits=20, decimal_places=4, null=True, blank=True)
+    old_value_date = models.DateField(null=True, blank=True)
+
+    new_value_text = models.CharField(max_length=500, null=True, blank=True)
+    new_value_number = models.DecimalField(max_digits=20, decimal_places=4, null=True, blank=True)
+    new_value_date = models.DateField(null=True, blank=True)
+
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.PENDING)
+    decided_at = models.DateTimeField(null=True, blank=True)
+    decided_by = models.CharField(max_length=150, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.asset.hostname} / {self.field_config.key}"
+
+    @property
+    def old_value(self):
+        return self.old_value_text if self.old_value_text is not None else self.old_value_number if self.old_value_number is not None else self.old_value_date
+
+    @property
+    def new_value(self):
+        return self.new_value_text if self.new_value_text is not None else self.new_value_number if self.new_value_number is not None else self.new_value_date
+
+
 class HostFactValue(models.Model):
     host_fact = models.ForeignKey(HostFact, on_delete=models.CASCADE, related_name="values")
     field_definition = models.ForeignKey(FactFieldDefinition, on_delete=models.CASCADE)

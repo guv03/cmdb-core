@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>로그인 - 자산 대시보드</title>
+<style>
+  body { font-family: sans-serif; margin: 0; height: 100vh; display: flex; align-items: center; justify-content: center; }
+  .login-box { border: 1px solid #ccc; padding: 2rem; border-radius: 6px; min-width: 280px; }
+  .login-box h1 { font-size: 1.2rem; margin-top: 0; }
+  .login-box p { margin: 0.75rem 0; }
+  .login-box input { width: 100%; padding: 6px; box-sizing: border-box; }
+  .login-box button { margin-top: 1rem; padding: 6px 16px; }
+  .errorlist { color: #b91c1c; padding-left: 1.2rem; }
+</style>
+</head>
+<body>
+<div class="login-box">
+  <h1>자산 대시보드 로그인</h1>
+  <form method="post">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <input type="hidden" name="next" value="{{ next }}">
+    <button type="submit">로그인</button>
+  </form>
+</div>
+</body>
+</html>

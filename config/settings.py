@@ -73,6 +73,10 @@ AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
 ]
 
+LOGIN_URL = "dashboard-login"
+LOGIN_REDIRECT_URL = "dashboard-asset-list"
+LOGOUT_REDIRECT_URL = "dashboard-login"
+
 LANGUAGE_CODE = "ko-kr"
 TIME_ZONE = "Asia/Seoul"
 USE_I18N = True

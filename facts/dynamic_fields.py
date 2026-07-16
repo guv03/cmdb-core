@@ -40,11 +40,26 @@ def coerce_fact_value(raw_value, value_type: str) -> dict:
     return {**empty, "value_text": str(raw_value)}
 
 
-def sync_dynamic_fields(host_fact: HostFact) -> None:
+def sync_dynamic_fields(host_fact: HostFact, exclude_keys: set[str] | None = None) -> None:
     field_definitions = FactFieldDefinition.objects.all()
+    if exclude_keys:
+        field_definitions = field_definitions.exclude(key__in=exclude_keys)
     for field_definition in field_definitions:
         raw_value = extract_json_path(host_fact.raw_facts, field_definition.key)
         defaults = coerce_fact_value(raw_value, field_definition.value_type)
         HostFactValue.objects.update_or_create(
             host_fact=host_fact, field_definition=field_definition, defaults=defaults
         )
+
+
+def backfill_field(field_definition: FactFieldDefinition) -> int:
+    """기존 HostFact.raw_facts에서 field_definition 값을 소급 추출해 채운다. 갱신된 호스트 수를 반환."""
+    updated = 0
+    for host_fact in HostFact.objects.all():
+        raw_value = extract_json_path(host_fact.raw_facts, field_definition.key)
+        defaults = coerce_fact_value(raw_value, field_definition.value_type)
+        HostFactValue.objects.update_or_create(
+            host_fact=host_fact, field_definition=field_definition, defaults=defaults
+        )
+        updated += 1
+    return updated

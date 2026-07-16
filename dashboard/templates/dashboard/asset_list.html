@@ -11,10 +11,21 @@
   th.active { background: #eef2ff; }
   .pagination { margin-top: 1rem; }
   form.search { margin-bottom: 1rem; }
+  .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+  .topbar form { display: inline; }
+  .topbar button { background: none; border: none; color: #2563eb; cursor: pointer; padding: 0; font: inherit; text-decoration: underline; }
 </style>
 </head>
 <body>
+<div class="topbar">
+  <span>{{ user.username }}님으로 로그인됨</span>
+  <form method="post" action="{% url 'dashboard-logout' %}">
+    {% csrf_token %}
+    <button type="submit">로그아웃</button>
+  </form>
+</div>
 <h1>자산 대시보드</h1>
+<p><a href="{% url 'dashboard-change-history' %}">변경 이력 조회</a></p>
 
 <form class="search" method="get">
   <input type="text" name="q" value="{{ current_q }}" placeholder="hostname/IP 검색">
@@ -40,6 +51,8 @@
       <td>{{ row.hostfact.cluster_name|default:"" }}</td>
       <td>{{ row.hostfact.power_state|default:"" }}</td>
       <td>{{ row.hostfact.last_seen_at|default:"" }}</td>
+      <td>{{ row.asset.created_at|default:"" }}</td>
+      <td>{{ row.asset.last_changed_at|default:"" }}</td>
       {% for value in row.dynamic_values %}
       <td>{{ value|default:"" }}</td>
       {% endfor %}

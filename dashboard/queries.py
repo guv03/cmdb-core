@@ -1,7 +1,7 @@
 from django.db.models import CharField, DateField, DecimalField, OuterRef, Prefetch, Q, Subquery
 
 from core.models import Asset
-from facts.models import FactFieldDefinition, HostFactValue
+from facts.models import FactFieldDefinition, HostFactValue, PendingChange
 
 FIXED_COLUMNS = [
     {"key": "hostname", "label": "Hostname", "lookup": "hostname"},
@@ -10,6 +10,8 @@ FIXED_COLUMNS = [
     {"key": "cluster_name", "label": "Cluster", "lookup": "hostfact__cluster_name"},
     {"key": "power_state", "label": "Power State", "lookup": "hostfact__power_state"},
     {"key": "last_seen_at", "label": "Last Seen", "lookup": "hostfact__last_seen_at"},
+    {"key": "created_at", "label": "생성일", "lookup": "created_at"},
+    {"key": "last_changed_at", "label": "최근 변경일", "lookup": "last_changed_at"},
 ]
 
 _FIXED_LOOKUPS = {c["key"]: c["lookup"] for c in FIXED_COLUMNS}
@@ -105,6 +107,35 @@ def get_dashboard_columns(request):
         )
 
     return columns
+
+
+CHANGE_HISTORY_SORT_LOOKUPS = {
+    "created_at": "created_at",
+    "decided_at": "decided_at",
+    "status": "status",
+    "asset": "asset__hostname",
+}
+
+
+def get_change_history_queryset(request):
+    queryset = PendingChange.objects.select_related("asset", "field_config")
+
+    q = _request_param(request, "q", "search")
+    if q:
+        queryset = queryset.filter(
+            Q(asset__hostname__icontains=q) | Q(field_config__label__icontains=q)
+        )
+
+    change_status = request.GET.get("status")
+    if change_status:
+        queryset = queryset.filter(status=change_status)
+
+    sort = _request_param(request, "sort", "ordering", default="-created_at")
+    direction = "-" if sort.startswith("-") else ""
+    sort_key = sort.lstrip("-")
+    lookup = CHANGE_HISTORY_SORT_LOOKUPS.get(sort_key, "created_at")
+
+    return queryset.order_by(f"{direction}{lookup}")
 
 
 def build_rows(assets, dynamic_field_definitions):
