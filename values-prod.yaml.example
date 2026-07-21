@@ -1,0 +1,29 @@
+# 폐쇄망 배포용 values 파일 레이아웃.
+# 실제 값(비밀번호/키)은 이 파일을 복사해서 폐쇄망 안에서 직접 채워 넣을 것.
+# 채운 파일(values-prod.yaml)은 git에 커밋하지 않는다.
+#
+# 사용법:
+#   cp values-prod.yaml.example values-prod.yaml
+#   (값 채운 뒤)
+#   helm install cmdb helm/cmdb-core -f values-prod.yaml
+
+image:
+  repository: harbor.internal/cmdb/cmdb-core
+  tag: "1.0.0"
+
+django:
+  secretKey: "<openssl rand -base64 48 등으로 생성한 실제 값>"
+
+database:
+  engine: django.db.backends.oracle
+  host: <oracle host>
+  port: "1521"
+  name: <oracle service name 또는 easy-connect 문자열>
+  user: <oracle user>
+  password: "<실제 비밀번호>"
+
+awx:
+  apiKey: "<AWX 플레이북과 동일한 값으로 생성>"
+
+service:
+  nodePort: 30080   # 고정하고 싶으면 지정, 비워두면 K8s가 임의 할당

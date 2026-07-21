@@ -2,6 +2,14 @@
 
 일 단위로 진행한 작업을 기록한다. 새 날짜는 위에 추가한다.
 
+## 2026-07-21
+
+- **폐쇄망 반입/배포 절차 점검**: Oracle 계정 준비 시 필요한 권한(CREATE SESSION/TABLE/SEQUENCE/TRIGGER 등)·테이블스페이스 쿼터·문자셋(AL32UTF8) 확인 필요성 정리. 테이블 자체는 Helm migrate Job(post-install/pre-upgrade hook)이 자동 생성하므로 DBA가 미리 만들 필요 없음을 확인
+- Harbor push/pull 인증 관련 점검: `imagePullSecrets`가 차트에 없다는 점을 확인했으나, 사내 Harbor 프로젝트가 public이라 현재는 불필요하다고 결론(추후 private 전환 시 대응 필요)
+- **`values-prod.yaml` 반입 방식 정리**: 비밀번호 등 실제 값은 외부망→폐쇄망으로 옮기지 않고 폐쇄망 내부에서 직접 작성하기로 결정. 레이아웃만 반입할 수 있도록 `values-prod.yaml.example` 신규 작성, `DEPLOY.md` 4단계가 이 예시 파일을 가리키도록 정리, 실수 커밋 방지를 위해 `.gitignore`에 `values-prod.yaml` 추가
+- `CLAUDE.md`에 "세션 종료" 절차(작업 종료 신호 시 WORKLOG 갱신→커밋→push) 명문화
+- NodePort/서비스 포트 개념 정리: `service.port`(클러스터 내부용)와 `service.nodePort`(외부 접근용, 미지정 시 랜덤)가 다르다는 점, AWX `cmdb_base_url`은 nodePort 기준으로 설정해야 함을 확인. `helm install`에 `-f` 미지정 시 차트 기본 `values.yaml`의 placeholder(`change-me` 등)로 조용히 배포될 위험이 있음을 확인
+
 ## 2026-07-16
 
 - 로컬 기동 스크립트(`start.ps1`)로 Docker Compose 기동 확인, AWX facts push를 흉내낸 샘플 payload로 API 동작 검증 (X-API-Key 인증, 자산 생성, 재push 시 upsert)

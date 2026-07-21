@@ -1,5 +1,6 @@
 .claude/settings.local.json
 LOCAL_ACCESS.md
+values-prod.yaml
 
 __pycache__/
 *.pyc
