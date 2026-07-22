@@ -7,9 +7,6 @@ FIXED_COLUMNS = [
     {"key": "hostname", "label": "Hostname", "lookup": "hostname"},
     {"key": "primary_ip", "label": "IP", "lookup": "primary_ip"},
     {"key": "os_family", "label": "OS", "lookup": "hostfact__os_family"},
-    {"key": "cluster_name", "label": "Cluster", "lookup": "hostfact__cluster_name"},
-    {"key": "power_state", "label": "Power State", "lookup": "hostfact__power_state"},
-    {"key": "last_seen_at", "label": "Last Seen", "lookup": "hostfact__last_seen_at"},
     {"key": "created_at", "label": "생성일", "lookup": "created_at"},
     {"key": "last_changed_at", "label": "최근 변경일", "lookup": "last_changed_at"},
 ]

@@ -1,10 +1,18 @@
 {% load static %}<!DOCTYPE html>
-<html lang="ko">
+<html lang="ko" data-theme="dark">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{% block title %}CMDB{% endblock %}</title>
 <link rel="stylesheet" href="{% static 'dashboard/css/bulma.min.css' %}">
+<style>
+  /* 선택된 상단 메뉴를 배경색 대신 밑줄 강조로 표시 */
+  .navbar-item.is-active {
+    background-color: transparent;
+    color: var(--bulma-link);
+    box-shadow: inset 0 -2px 0 0 var(--bulma-link);
+  }
+</style>
 </head>
 <body>
 <nav class="navbar" role="navigation" aria-label="main navigation">
@@ -66,5 +74,6 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 });
 </script>
+{% block extra_body %}{% endblock %}
 </body>
 </html>

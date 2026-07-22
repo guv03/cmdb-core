@@ -1,6 +1,7 @@
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.views import LoginView
+from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse_lazy
 from django.views import View
@@ -9,6 +10,7 @@ from rest_framework.authentication import SessionAuthentication
 from rest_framework.generics import ListAPIView
 from rest_framework.permissions import IsAuthenticated
 
+from core.models import Asset
 from dashboard.queries import (
     build_rows,
     get_asset_queryset,
@@ -40,6 +42,14 @@ class AssetListView(LoginRequiredMixin, ListView):
         context["rows"] = build_rows(context["assets"], dynamic_field_definitions)
         context["current_q"] = self.request.GET.get("q", "")
         return context
+
+
+class AssetFactsDetailView(LoginRequiredMixin, View):
+    def get(self, request, pk):
+        asset = get_object_or_404(Asset, pk=pk)
+        hostfact = getattr(asset, "hostfact", None)
+        raw_facts = hostfact.raw_facts if hostfact is not None else {}
+        return JsonResponse({"hostname": asset.hostname, "raw_facts": raw_facts})
 
 
 class AssetListAPIView(ListAPIView):

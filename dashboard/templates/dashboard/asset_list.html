@@ -28,21 +28,10 @@
     </thead>
     <tbody>
       {% for row in rows %}
-      <tr>
+      <tr class="asset-row" style="cursor: pointer;" data-asset-id="{{ row.asset.id }}" data-hostname="{{ row.asset.hostname }}">
         <td>{{ row.asset.hostname }}</td>
         <td>{{ row.asset.primary_ip|default:"" }}</td>
         <td>{{ row.hostfact.os_family|default:"" }}</td>
-        <td>{{ row.hostfact.cluster_name|default:"" }}</td>
-        <td>
-          {% if row.hostfact.power_state == "poweredOn" %}
-          <span class="tag is-success is-light">{{ row.hostfact.power_state }}</span>
-          {% elif row.hostfact.power_state == "poweredOff" %}
-          <span class="tag is-danger is-light">{{ row.hostfact.power_state }}</span>
-          {% elif row.hostfact.power_state %}
-          <span class="tag is-light">{{ row.hostfact.power_state }}</span>
-          {% endif %}
-        </td>
-        <td>{{ row.hostfact.last_seen_at|default:"" }}</td>
         <td>{{ row.asset.created_at|default:"" }}</td>
         <td>{{ row.asset.last_changed_at|default:"" }}</td>
         {% for value in row.dynamic_values %}
@@ -71,4 +60,52 @@
     <span class="pagination-link is-current">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
   </span>
 </nav>
+
+<div class="modal" id="factsModal">
+  <div class="modal-background"></div>
+  <div class="modal-card" style="width: 90%; max-width: 960px;">
+    <header class="modal-card-head">
+      <p class="modal-card-title" id="factsModalTitle">Facts</p>
+      <button class="delete" aria-label="close" id="factsModalClose"></button>
+    </header>
+    <section class="modal-card-body">
+      <pre id="factsModalBody" style="white-space: pre-wrap; word-break: break-all; max-height: 70vh; overflow-y: auto;">불러오는 중...</pre>
+    </section>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_body %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  var modal = document.getElementById('factsModal');
+  var modalTitle = document.getElementById('factsModalTitle');
+  var modalBody = document.getElementById('factsModalBody');
+
+  function closeModal() {
+    modal.classList.remove('is-active');
+  }
+
+  document.querySelectorAll('.asset-row').forEach(function (row) {
+    row.addEventListener('click', function () {
+      var assetId = row.dataset.assetId;
+      modalTitle.textContent = row.dataset.hostname + ' - Facts';
+      modalBody.textContent = '불러오는 중...';
+      modal.classList.add('is-active');
+
+      fetch('/dashboard/assets/' + assetId + '/facts/')
+        .then(function (res) { return res.json(); })
+        .then(function (data) {
+          modalBody.textContent = JSON.stringify(data.raw_facts, null, 2);
+        })
+        .catch(function () {
+          modalBody.textContent = '불러오기 실패';
+        });
+    });
+  });
+
+  document.getElementById('factsModalClose').addEventListener('click', closeModal);
+  modal.querySelector('.modal-background').addEventListener('click', closeModal);
+});
+</script>
 {% endblock %}
