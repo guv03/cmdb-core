@@ -17,6 +17,10 @@
   - 행 클릭 시 해당 자산의 raw facts를 Bulma 모달 팝업으로 예쁘게(들여쓰기 pretty-print) 보여주는 기능 추가(`/dashboard/assets/<id>/facts/` 신규 엔드포인트, 로그인 필요)
   - 다크 테마 적용: vendoring된 Bulma 1.0.4가 CSS 변수 기반 다크 테마를 내장하고 있어 `<html data-theme="dark">`만 추가. 상단 메뉴 선택 시 배경색 채움 대신 밑줄(box-shadow) 강조로 커스텀
   - 로컬(docker-compose)에서 테스트 계정/샘플 자산 데이터로 컬럼·팝업·다크테마 전부 curl 기반으로 동작 확인 후 정리
+- **동적 필드(Number 타입) 표시/검색 버그 수정**
+  - 등록한 동적 필드(`processor_cores` 등)를 백필해도 대시보드에 값이 안 보이는 문제 발견: `value_text`가 `None`이 아니라 빈 문자열(`""`)로 저장된 값 우선순위 로직 때문에 `value_number`/`value_date`로 폴백을 안 하던 버그. 빈 문자열도 "값 없음"으로 취급하도록 `dashboard/queries.py`의 `build_rows` 수정
+  - 겸사겸사 동적 필드 검색(`is_searchable`)이 항상 `value_text__icontains`만 봐서 Number/Date 타입 필드는 검색이 항상 실패하던 문제도 같이 수정 — Number/Date는 값 파싱 성공 시 정확값 매칭, Text/Bool은 기존처럼 부분일치
+  - 로컬에서 숫자 검색(정확매칭)·빈 결과 케이스까지 curl로 재검증 후 이미지 재빌드 `1.0.4`
 
 ## 2026-07-21
 
