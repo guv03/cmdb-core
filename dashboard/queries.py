@@ -1,3 +1,6 @@
+from datetime import datetime
+from decimal import Decimal, InvalidOperation
+
 from django.db.models import CharField, DateField, DecimalField, OuterRef, Prefetch, Q, Subquery
 
 from core.models import Asset
@@ -33,6 +36,20 @@ def _request_param(request, *names, default=None):
     return default
 
 
+def _parse_number(value):
+    try:
+        return Decimal(value)
+    except (InvalidOperation, ValueError, TypeError):
+        return None
+
+
+def _parse_date(value):
+    try:
+        return datetime.fromisoformat(value).date()
+    except ValueError:
+        return None
+
+
 def get_asset_queryset(request):
     dynamic_fields = list(get_dynamic_field_definitions())
 
@@ -47,7 +64,24 @@ def get_asset_queryset(request):
     if q:
         search_q = Q(hostname__icontains=q) | Q(primary_ip__icontains=q)
         for field_definition in dynamic_fields:
-            if field_definition.is_searchable:
+            if not field_definition.is_searchable:
+                continue
+
+            if field_definition.value_type == FactFieldDefinition.ValueType.NUMBER:
+                parsed_number = _parse_number(q)
+                if parsed_number is not None:
+                    search_q |= Q(
+                        hostfact__values__field_definition=field_definition,
+                        hostfact__values__value_number=parsed_number,
+                    )
+            elif field_definition.value_type == FactFieldDefinition.ValueType.DATE:
+                parsed_date = _parse_date(q)
+                if parsed_date is not None:
+                    search_q |= Q(
+                        hostfact__values__field_definition=field_definition,
+                        hostfact__values__value_date=parsed_date,
+                    )
+            else:
                 search_q |= Q(
                     hostfact__values__field_definition=field_definition,
                     hostfact__values__value_text__icontains=q,
@@ -142,10 +176,11 @@ def build_rows(assets, dynamic_field_definitions):
         values_by_field_id = {}
         if hostfact is not None:
             for value in hostfact.values.all():
-                values_by_field_id[value.field_definition_id] = (
-                    value.value_text
-                    if value.value_text is not None
-                    else value.value_number if value.value_number is not None else value.value_date
+                # value_text가 None 대신 빈 문자열("")로 저장된 경우도 "값 없음"으로 취급해
+                # value_number/value_date로 폴백하도록 한다.
+                candidates = (value.value_text, value.value_number, value.value_date)
+                values_by_field_id[value.field_definition_id] = next(
+                    (v for v in candidates if v not in (None, "")), None
                 )
 
         dynamic_values = [values_by_field_id.get(fd.id) for fd in dynamic_field_definitions]
