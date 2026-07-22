@@ -5,8 +5,8 @@ from facts.models import ApprovalFieldConfig, FactFieldDefinition, HostFactValue
 
 # fixed 필드 key -> (raw_facts 안의 dot-path, 값이 없을 때 기본값)
 FIXED_FIELD_PATHS = {
-    "os_family": ("ansible_facts.ansible_distribution", ""),
-    "os_version": ("ansible_facts.ansible_distribution_version", ""),
+    "os_family": ("ansible_facts.distribution", ""),
+    "os_version": ("ansible_facts.distribution_version", ""),
     "source_platform": ("hypervisor.source_platform", None),
     "vm_uuid": ("hypervisor.vm_uuid", None),
     "cluster_name": ("hypervisor.cluster_name", None),

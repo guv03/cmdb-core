@@ -24,18 +24,25 @@ class FactsIngestView(APIView):
         ansible_facts = serializer.validated_data["ansible_facts"]
         hypervisor = serializer.validated_data["hypervisor"]
 
-        default_ipv4 = ansible_facts.get("ansible_default_ipv4")
+        # ansible_facts 딕셔너리 안의 원본 키는 hostvars에 주입될 때 붙는 "ansible_" 접두사가
+        # 없다 (예: ansible_facts.distribution, ansible_distribution이 아님).
+        default_ipv4 = ansible_facts.get("default_ipv4")
         primary_ip = default_ipv4.get("address") if isinstance(default_ipv4, dict) else None
 
+        # AWX 인벤토리 쪽 매핑 누락 시 키가 아예 없거나(None) 빈 문자열로 오는 두 경우가
+        # 다 있을 수 있어서, 숫자 필드는 빈 값을 None으로 정규화해 DB 저장 실패를 막는다.
+        num_cpu = hypervisor.get("num_cpu")
+        memory_mb = hypervisor.get("memory_mb")
+
         fixed_values = {
-            "os_family": ansible_facts.get("ansible_distribution", ""),
-            "os_version": ansible_facts.get("ansible_distribution_version", ""),
+            "os_family": ansible_facts.get("distribution", ""),
+            "os_version": ansible_facts.get("distribution_version", ""),
             "source_platform": hypervisor.get("source_platform"),
             "vm_uuid": hypervisor.get("vm_uuid"),
             "cluster_name": hypervisor.get("cluster_name"),
             "power_state": hypervisor.get("power_state"),
-            "num_cpu": hypervisor.get("num_cpu"),
-            "memory_mb": hypervisor.get("memory_mb"),
+            "num_cpu": num_cpu if num_cpu not in ("", None) else None,
+            "memory_mb": memory_mb if memory_mb not in ("", None) else None,
         }
         raw_facts = {"ansible_facts": ansible_facts, "hypervisor": hypervisor}
 
