@@ -2,6 +2,22 @@
 
 일 단위로 진행한 작업을 기록한다. 새 날짜는 위에 추가한다.
 
+## 2026-07-22
+
+- **첫 폐쇄망 반입 후 AWX facts push 장애 대응**
+  - 증상: AWX Job이 gunicorn `WORKER TIMEOUT`으로 30초 뒤 SIGKILL, 응답 없이 실패. `kubectl logs`에 아무것도 안 찍혀서 원인 파악이 막힘
+  - 원인 1: `Dockerfile`의 gunicorn이 `--access-logfile` 없이 떠서 요청 로그 자체가 안 남고, `settings.py`에 `LOGGING` 설정이 없어 `DEBUG=False`에서 예외도 콘솔에 안 찍힘 → 둘 다 추가(`--access-logfile -`/`--error-logfile -`, Django `LOGGING`)
+  - 원인 2: 실제 hang의 진짜 원인은 `ansible.builtin.uri` 모듈이 대용량 payload에서 이 환경(AWX 실행환경)과 조합했을 때만 걸리는 문제로 확인(curl로는 같은 환경/같은 payload에서도 즉시 응답). AWX 실행환경에 `which`는 없지만 `curl`은 있음을 확인
+  - 원인 3(진짜 버그): 승인 미지정 hypervisor 필드가 빈 문자열로 올 때 `PositiveIntegerField`에 그대로 넣어서 `ValueError` 500 발생(`num_cpu`/`memory_mb`) → `facts/views.py`에서 빈 문자열을 `None`으로 정규화하도록 수정
+  - 원인 4(진짜 버그): `ansible_facts` 딕셔너리 원본 키는 `ansible_` 접두사가 없는데(`distribution`, `default_ipv4` 등) 코드가 접두사 붙은 키(`ansible_distribution` 등)를 찾고 있어서 OS 정보가 항상 빈 값으로 저장되던 버그 발견, `facts/views.py`/`facts/approval.py`의 dot-path 수정
+  - 위 수정들을 묶어 이미지 재빌드 `1.0.1`→`1.0.2`→`1.0.3` (마지막은 아래 대시보드 변경 포함)
+- vCenter/Nutanix는 추후 연동하기로 하고 1차는 AWX(ansible facts)만으로 운영하기로 결정. 하이퍼바이저 메타데이터(Cluster/Power State 등)는 AWX 인벤토리 Source Variables 매핑 전까지 비어있는 게 정상이라는 점 확인(코드 변경 불필요, 이미 범용 설계)
+- **대시보드 개선**
+  - 기본 컬럼을 Hostname/IP/OS/생성일/최근 변경일로 정리(Cluster/Power State/Last Seen 제거, `dashboard/queries.py`/`asset_list.html`)
+  - 행 클릭 시 해당 자산의 raw facts를 Bulma 모달 팝업으로 예쁘게(들여쓰기 pretty-print) 보여주는 기능 추가(`/dashboard/assets/<id>/facts/` 신규 엔드포인트, 로그인 필요)
+  - 다크 테마 적용: vendoring된 Bulma 1.0.4가 CSS 변수 기반 다크 테마를 내장하고 있어 `<html data-theme="dark">`만 추가. 상단 메뉴 선택 시 배경색 채움 대신 밑줄(box-shadow) 강조로 커스텀
+  - 로컬(docker-compose)에서 테스트 계정/샘플 자산 데이터로 컬럼·팝업·다크테마 전부 curl 기반으로 동작 확인 후 정리
+
 ## 2026-07-21
 
 - **폐쇄망 반입/배포 절차 점검**: Oracle 계정 준비 시 필요한 권한(CREATE SESSION/TABLE/SEQUENCE/TRIGGER 등)·테이블스페이스 쿼터·문자셋(AL32UTF8) 확인 필요성 정리. 테이블 자체는 Helm migrate Job(post-install/pre-upgrade hook)이 자동 생성하므로 DBA가 미리 만들 필요 없음을 확인
