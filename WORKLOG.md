@@ -2,6 +2,28 @@
 
 일 단위로 진행한 작업을 기록한다. 새 날짜는 위에 추가한다.
 
+## 2026-07-23
+
+- **대시보드 컬럼 레이아웃 개선**
+  - 고정 컬럼을 두 그룹으로 분리(`LEADING_FIXED_COLUMNS`: Hostname/IP/OS, `TRAILING_FIXED_COLUMNS`: 생성일/최근 변경일). 동적 필드가 그 사이에 끼도록 순서 재배치해 생성일/최근변경일이 동적 컬럼 오른쪽으로 이동(`dashboard/queries.py`, `asset_list.html`)
+  - Hostname/IP 컬럼은 가로 스크롤해도 화면에 고정 표시(`position: sticky`, Bulma 다크테마 CSS 변수 재사용해 배경색 처리)
+- **수기 입력(MANUAL) 동적 필드 신규 구축**
+  - `FactFieldDefinition`에 `source`(AUTO/MANUAL) 구분 추가. push 동기화(`sync_dynamic_fields`)가 AUTO만 대상으로 하도록 수정 — MANUAL 필드는 push로 값이 덮어써지지 않음(핵심 설계 포인트)
+  - 곁가지로 발견한 버그 수정: `coerce_fact_value`의 BOOL 처리가 문자열 `"false"`도 진위값 True로 취급해 체크 해제해도 항상 "true"로 저장되던 문제
+  - 대시보드 값 입력 UX를 세 단계로 반복 개선: (1) 자산 행마다 전체 수기 필드를 한 모달에 모아 편집 → (2) 셀 클릭 시 그 자리에서 바로 입력(인라인) → (3) 필드 수가 늘어날 걸 감안해 셀 클릭 시 작은 팝업(모달)으로 그 필드 하나만 편집하는 방식으로 최종 정착. 테두리/점선으로 편집 가능 컬럼을 표시하는 것도 시도했다가 "보기 안 좋다"는 피드백으로 제거, 헤더 글자색(Bulma info색)만으로 구분
+  - 저장은 승인 절차 없이 즉시 반영 + `Asset.last_changed_at` 갱신
+  - CLAUDE.md에 AUTO/MANUAL 구분, 승인 절차 미적용, 최근 변경일 갱신 조건 등 반영
+- **수기 필드 엑셀 일괄 업로드**
+  - `openpyxl`/`et-xmlfile` 신규 vendoring(`vendor/wheels`, 순수 파이썬이라 폐쇄망 문제없음)
+  - `hostname / 필드label / 필드label...` 형식 업로드 → 헤더 검증(label 매칭, 중복 라벨 거부) → 행별 검증(hostname 불일치, 값 형식 오류는 반영 안 함, 빈 셀은 해당 필드 값 유지) → 미리보기 → 확정 2단계 흐름(`dashboard/excel_import.py`)
+  - 신규 자산은 생성하지 않음(기존 자산만 갱신 대상), 확정 시 영향받은 자산마다 `last_changed_at` 갱신
+  - 대시보드 네비에 업로드 메뉴 추가
+- **선택형(CHOICE) 값 타입 추가**
+  - `FactFieldDefinition.value_type`에 `CHOICE` 추가, 선택지 목록을 담는 자식 모델 `FactFieldChoice` 신규(관계형 테이블로 분리 — ArrayField/JSONField로 욱여넣지 않기로 한 기존 원칙과 동일선상)
+  - admin에서 필드 등록 화면에 선택지 인라인 추가해 필드+선택지를 한 번에 관리
+  - 저장 시(대시보드 팝업 편집·엑셀 업로드 양쪽 다) 제출값이 등록된 선택지에 있는지 서버에서 검증(`is_valid_choice`), 팝업 편집 UI는 CHOICE 타입이면 텍스트 입력 대신 `<select>` 드롭다운으로 렌더링
+- 위 기능들 전부 Django 테스트 클라이언트/curl 기반 재현 테스트로 저장·검증·오류 케이스까지 확인 후 진행(정상 저장, 형식 오류, hostname 불일치, 선택지 밖 값, BOOL 체크/해제 등)
+
 ## 2026-07-22
 
 - **첫 폐쇄망 반입 후 AWX facts push 장애 대응**
