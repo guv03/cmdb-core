@@ -3,7 +3,14 @@ from django.contrib import admin
 
 from facts.approval import FIXED_FIELD_PATHS, apply_pending_change, reject_pending_change
 from facts.dynamic_fields import backfill_field
-from facts.models import ApprovalFieldConfig, FactFieldDefinition, HostFact, HostFactValue, PendingChange
+from facts.models import (
+    ApprovalFieldConfig,
+    FactFieldChoice,
+    FactFieldDefinition,
+    HostFact,
+    HostFactValue,
+    PendingChange,
+)
 
 
 @admin.register(HostFact)
@@ -20,16 +27,40 @@ class HostFactAdmin(admin.ModelAdmin):
     search_fields = ["asset__hostname", "cluster_name", "vm_uuid"]
 
 
+class FactFieldChoiceInline(admin.TabularInline):
+    model = FactFieldChoice
+    extra = 1
+    verbose_name = "선택지 (value_type이 '선택형'일 때만 사용)"
+    verbose_name_plural = "선택지 (value_type이 '선택형'일 때만 사용)"
+
+
 @admin.register(FactFieldDefinition)
 class FactFieldDefinitionAdmin(admin.ModelAdmin):
-    list_display = ["label", "key", "value_type", "is_visible", "is_searchable", "sort_order"]
+    list_display = [
+        "label",
+        "key",
+        "source",
+        "value_type",
+        "is_visible",
+        "is_searchable",
+        "sort_order",
+    ]
     list_editable = ["is_visible", "is_searchable", "sort_order"]
+    list_filter = ["source", "value_type"]
     search_fields = ["key", "label"]
     actions = ["run_backfill"]
+    inlines = [FactFieldChoiceInline]
 
-    @admin.action(description="선택한 필드 소급 백필 실행")
+    @admin.action(description="선택한 필드 소급 백필 실행 (AUTO 필드만 대상)")
     def run_backfill(self, request, queryset):
         for field_definition in queryset:
+            if field_definition.source == FactFieldDefinition.Source.MANUAL:
+                self.message_user(
+                    request,
+                    f"'{field_definition.label}'은 수기 입력 필드라 백필 대상이 아닙니다.",
+                    level="warning",
+                )
+                continue
             updated = backfill_field(field_definition)
             self.message_user(
                 request, f"'{field_definition.label}' ({field_definition.key}): {updated}개 호스트 갱신"

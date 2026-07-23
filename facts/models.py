@@ -37,14 +37,23 @@ class FactFieldDefinition(TimeStampedModel):
         NUMBER = "number", "Number"
         DATE = "date", "Date"
         BOOL = "bool", "Boolean"
+        CHOICE = "choice", "선택형"
+
+    class Source(models.TextChoices):
+        AUTO = "auto", "자동 (raw facts 승격)"
+        MANUAL = "manual", "수기 입력"
 
     key = models.CharField(
         max_length=255,
         unique=True,
-        help_text="raw_facts 안의 dot-path, 예: ansible_facts.ansible_memtotal_mb",
+        help_text=(
+            "AUTO: raw_facts 안의 dot-path, 예: ansible_facts.ansible_memtotal_mb / "
+            "MANUAL: raw_facts와 무관한 고유 식별자"
+        ),
     )
     label = models.CharField(max_length=255)
     value_type = models.CharField(max_length=10, choices=ValueType.choices)
+    source = models.CharField(max_length=10, choices=Source.choices, default=Source.AUTO)
     is_visible = models.BooleanField(default=True)
     is_searchable = models.BooleanField(default=False)
     sort_order = models.PositiveIntegerField(default=0)
@@ -54,6 +63,27 @@ class FactFieldDefinition(TimeStampedModel):
 
     def __str__(self):
         return self.label
+
+
+class FactFieldChoice(models.Model):
+    """value_type이 CHOICE인 필드에서 선택 가능한 값 목록. admin에서 필드 정의와 함께 관리한다."""
+
+    field_definition = models.ForeignKey(
+        FactFieldDefinition, on_delete=models.CASCADE, related_name="choices"
+    )
+    value = models.CharField(max_length=255)
+    sort_order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ["sort_order", "id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["field_definition", "value"], name="unique_field_choice"
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.field_definition.label}: {self.value}"
 
 
 class ApprovalFieldConfig(TimeStampedModel):

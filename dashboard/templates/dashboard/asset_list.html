@@ -2,8 +2,45 @@
 
 {% block title %}자산 대시보드 - CMDB{% endblock %}
 
+{% block extra_head %}
+<style>
+  /* Hostname/IP 컬럼을 가로 스크롤 시에도 고정 표시 (Bulma 테이블 CSS 변수 재사용) */
+  .asset-table th.sticky-col,
+  .asset-table td.sticky-col {
+    position: sticky;
+    background-color: var(--bulma-table-background-color);
+  }
+  .asset-table thead th.sticky-col { z-index: 3; }
+  .asset-table tbody td.sticky-col { z-index: 2; }
+  .asset-table .sticky-col-1 { left: 0; width: 12em; min-width: 12em; }
+  .asset-table .sticky-col-2 {
+    left: 12em; width: 9em; min-width: 9em;
+    box-shadow: 2px 0 4px -2px rgba(0, 0, 0, 0.4);
+  }
+  .asset-table td.sticky-col { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .asset-table.is-striped tbody tr:not(.is-selected):nth-child(2n) td.sticky-col {
+    background-color: var(--bulma-table-striped-row-even-background-color);
+  }
+  .asset-table.is-hoverable tbody tr:not(.is-selected):hover td.sticky-col {
+    background-color: var(--bulma-table-row-hover-background-color);
+  }
+  .asset-table.is-hoverable.is-striped tbody tr:not(.is-selected):hover:nth-child(2n) td.sticky-col {
+    background-color: var(--bulma-table-striped-row-even-hover-background-color);
+  }
+  /* 수기 입력 필드는 헤더 글자색만 다르게 줘서 자동 추출 필드와 구분 */
+  .asset-table th.manual-col a {
+    color: var(--bulma-info);
+  }
+  /* 수기 입력 셀: 클릭하면 팝업으로 편집. 마우스 올렸을 때 커서만 바뀌는 정도로만 표시 */
+  .asset-table td.manual-cell {
+    cursor: pointer;
+  }
+</style>
+{% endblock %}
+
 {% block content %}
 <h1 class="title is-4">자산 대시보드</h1>
+{% csrf_token %}
 
 <form class="field has-addons" method="get">
   <div class="control is-expanded">
@@ -15,11 +52,11 @@
 </form>
 
 <div class="table-container">
-  <table class="table is-fullwidth is-hoverable is-striped">
+  <table class="table is-fullwidth is-hoverable is-striped asset-table">
     <thead>
       <tr>
         {% for column in columns %}
-        <th>
+        <th class="{% if forloop.counter == 1 %}sticky-col sticky-col-1{% elif forloop.counter == 2 %}sticky-col sticky-col-2{% endif %}{% if column.is_manual %} manual-col{% endif %}">
           <a class="{% if column.is_active %}has-text-link has-text-weight-bold{% endif %}"
              href="{% querystring sort=column.next_sort page=None %}">{{ column.label }}</a>
         </th>
@@ -29,14 +66,21 @@
     <tbody>
       {% for row in rows %}
       <tr class="asset-row" style="cursor: pointer;" data-asset-id="{{ row.asset.id }}" data-hostname="{{ row.asset.hostname }}">
-        <td>{{ row.asset.hostname }}</td>
-        <td>{{ row.asset.primary_ip|default:"" }}</td>
+        <td class="sticky-col sticky-col-1">{{ row.asset.hostname }}</td>
+        <td class="sticky-col sticky-col-2">{{ row.asset.primary_ip|default:"" }}</td>
         <td>{{ row.hostfact.os_family|default:"" }}</td>
+        {% for cell in row.dynamic_cells %}
+        {% if cell.is_manual %}
+        <td class="manual-cell" data-asset-id="{{ row.asset.id }}" data-hostname="{{ row.asset.hostname }}"
+            data-field-id="{{ cell.field_id }}" data-field-label="{{ cell.label }}" data-value-type="{{ cell.value_type }}">
+          <span class="cell-value">{{ cell.value|default:"" }}</span>
+        </td>
+        {% else %}
+        <td>{{ cell.value|default:"" }}</td>
+        {% endif %}
+        {% endfor %}
         <td>{{ row.asset.created_at|default:"" }}</td>
         <td>{{ row.asset.last_changed_at|default:"" }}</td>
-        {% for value in row.dynamic_values %}
-        <td>{{ value|default:"" }}</td>
-        {% endfor %}
       </tr>
       {% empty %}
       <tr><td colspan="100" class="has-text-grey">데이터가 없습니다.</td></tr>
@@ -73,6 +117,25 @@
     </section>
   </div>
 </div>
+
+{{ columns|json_script:"dashboard-columns" }}
+<div class="modal" id="manualCellModal">
+  <div class="modal-background"></div>
+  <div class="modal-card" style="width: 90%; max-width: 420px;">
+    <header class="modal-card-head">
+      <p class="modal-card-title" id="manualCellModalTitle">필드 편집</p>
+      <button class="delete" aria-label="close" id="manualCellModalClose"></button>
+    </header>
+    <section class="modal-card-body">
+      <div class="field" id="manualCellInputWrapper"></div>
+      <p class="help is-danger" id="manualCellError" style="display: none;"></p>
+    </section>
+    <footer class="modal-card-foot">
+      <button type="button" class="button is-link" id="manualCellSave">저장</button>
+      <button type="button" class="button" id="manualCellCancel">취소</button>
+    </footer>
+  </div>
+</div>
 {% endblock %}
 
 {% block extra_body %}
@@ -106,6 +169,141 @@ document.addEventListener('DOMContentLoaded', function () {
 
   document.getElementById('factsModalClose').addEventListener('click', closeModal);
   modal.querySelector('.modal-background').addEventListener('click', closeModal);
+
+  function getCsrfToken() {
+    var input = document.querySelector('input[name=csrfmiddlewaretoken]');
+    return input ? input.value : '';
+  }
+
+  var cellModal = document.getElementById('manualCellModal');
+  var cellModalTitle = document.getElementById('manualCellModalTitle');
+  var inputWrapper = document.getElementById('manualCellInputWrapper');
+  var errorEl = document.getElementById('manualCellError');
+  var saveBtn = document.getElementById('manualCellSave');
+  var cancelBtn = document.getElementById('manualCellCancel');
+
+  var activeCell = null;
+  var activeInput = null;
+
+  var choicesByFieldId = {};
+  var columnsDataEl = document.getElementById('dashboard-columns');
+  if (columnsDataEl) {
+    JSON.parse(columnsDataEl.textContent).forEach(function (column) {
+      if (column.choices) {
+        choicesByFieldId[column.field_id] = column.choices;
+      }
+    });
+  }
+
+  function closeCellModal() {
+    cellModal.classList.remove('is-active');
+    activeCell = null;
+    activeInput = null;
+  }
+
+  function buildInput(valueType, currentValue, fieldId) {
+    if (valueType === 'bool') {
+      var label = document.createElement('label');
+      label.className = 'checkbox';
+      var checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.checked = currentValue === 'true';
+      label.appendChild(checkbox);
+      label.appendChild(document.createTextNode(' 예'));
+      return { element: label, input: checkbox };
+    }
+
+    if (valueType === 'choice') {
+      var select = document.createElement('select');
+      var blankOption = document.createElement('option');
+      blankOption.value = '';
+      blankOption.textContent = '(선택 안 함)';
+      select.appendChild(blankOption);
+      (choicesByFieldId[fieldId] || []).forEach(function (choiceValue) {
+        var option = document.createElement('option');
+        option.value = choiceValue;
+        option.textContent = choiceValue;
+        if (choiceValue === currentValue) option.selected = true;
+        select.appendChild(option);
+      });
+      var wrapper = document.createElement('div');
+      wrapper.className = 'select';
+      wrapper.appendChild(select);
+      return { element: wrapper, input: select };
+    }
+
+    var input = document.createElement('input');
+    input.className = 'input';
+    input.value = currentValue;
+    if (valueType === 'number') {
+      input.type = 'number';
+      input.step = 'any';
+    } else if (valueType === 'date') {
+      input.type = 'date';
+    } else {
+      input.type = 'text';
+    }
+    return { element: input, input: input };
+  }
+
+  function openCellModal(cell) {
+    activeCell = cell;
+    errorEl.style.display = 'none';
+    cellModalTitle.textContent = cell.dataset.hostname + ' · ' + cell.dataset.fieldLabel;
+
+    var currentValue = cell.querySelector('.cell-value').textContent;
+    var built = buildInput(cell.dataset.valueType, currentValue, cell.dataset.fieldId);
+    inputWrapper.innerHTML = '';
+    inputWrapper.appendChild(built.element);
+    activeInput = built.input;
+
+    cellModal.classList.add('is-active');
+    activeInput.focus();
+  }
+
+  function saveActiveCell() {
+    if (!activeCell) return;
+    var valueType = activeCell.dataset.valueType;
+    var newValue = valueType === 'bool' ? (activeInput.checked ? 'true' : 'false') : activeInput.value;
+
+    saveBtn.classList.add('is-loading');
+    fetch('/dashboard/assets/' + activeCell.dataset.assetId + '/manual-fields/', {
+      method: 'POST',
+      headers: {
+        'X-CSRFToken': getCsrfToken(),
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({ field_id: activeCell.dataset.fieldId, value: newValue }),
+    })
+      .then(function (res) { return res.json().then(function (data) { return { ok: res.ok, data: data }; }); })
+      .then(function (result) {
+        saveBtn.classList.remove('is-loading');
+        if (!result.ok) {
+          errorEl.textContent = result.data.error || '저장 실패';
+          errorEl.style.display = 'block';
+          return;
+        }
+        activeCell.querySelector('.cell-value').textContent = result.data.value;
+        closeCellModal();
+      })
+      .catch(function () {
+        saveBtn.classList.remove('is-loading');
+        errorEl.textContent = '저장 실패';
+        errorEl.style.display = 'block';
+      });
+  }
+
+  document.querySelectorAll('.manual-cell').forEach(function (cell) {
+    cell.addEventListener('click', function (e) {
+      e.stopPropagation();
+      openCellModal(cell);
+    });
+  });
+
+  saveBtn.addEventListener('click', saveActiveCell);
+  cancelBtn.addEventListener('click', closeCellModal);
+  document.getElementById('manualCellModalClose').addEventListener('click', closeCellModal);
+  cellModal.querySelector('.modal-background').addEventListener('click', closeCellModal);
 });
 </script>
 {% endblock %}

@@ -6,26 +6,36 @@ from django.db.models import CharField, DateField, DecimalField, OuterRef, Prefe
 from core.models import Asset
 from facts.models import FactFieldDefinition, HostFactValue, PendingChange
 
-FIXED_COLUMNS = [
+LEADING_FIXED_COLUMNS = [
     {"key": "hostname", "label": "Hostname", "lookup": "hostname"},
     {"key": "primary_ip", "label": "IP", "lookup": "primary_ip"},
     {"key": "os_family", "label": "OS", "lookup": "hostfact__os_family"},
+]
+
+TRAILING_FIXED_COLUMNS = [
     {"key": "created_at", "label": "생성일", "lookup": "created_at"},
     {"key": "last_changed_at", "label": "최근 변경일", "lookup": "last_changed_at"},
 ]
 
-_FIXED_LOOKUPS = {c["key"]: c["lookup"] for c in FIXED_COLUMNS}
+_FIXED_LOOKUPS = {
+    c["key"]: c["lookup"] for c in LEADING_FIXED_COLUMNS + TRAILING_FIXED_COLUMNS
+}
 
 _VALUE_FIELD_BY_TYPE = {
     FactFieldDefinition.ValueType.NUMBER: ("value_number", DecimalField()),
     FactFieldDefinition.ValueType.DATE: ("value_date", DateField()),
     FactFieldDefinition.ValueType.TEXT: ("value_text", CharField()),
     FactFieldDefinition.ValueType.BOOL: ("value_text", CharField()),
+    FactFieldDefinition.ValueType.CHOICE: ("value_text", CharField()),
 }
 
 
 def get_dynamic_field_definitions():
-    return FactFieldDefinition.objects.filter(is_visible=True).order_by("sort_order", "id")
+    return (
+        FactFieldDefinition.objects.filter(is_visible=True)
+        .prefetch_related("choices")
+        .order_by("sort_order", "id")
+    )
 
 
 def _request_param(request, *names, default=None):
@@ -115,11 +125,12 @@ def get_dashboard_columns(request):
     current_key = sort.lstrip("-")
     current_desc = sort.startswith("-")
 
-    columns = []
-    for column in FIXED_COLUMNS:
+    def _fixed_column(column):
         is_active = column["key"] == current_key
         next_sort = f"-{column['key']}" if is_active and not current_desc else column["key"]
-        columns.append({**column, "is_active": is_active, "next_sort": next_sort})
+        return {**column, "is_active": is_active, "next_sort": next_sort}
+
+    columns = [_fixed_column(column) for column in LEADING_FIXED_COLUMNS]
 
     for field_definition in get_dynamic_field_definitions():
         is_active = field_definition.key == current_key
@@ -133,9 +144,17 @@ def get_dashboard_columns(request):
                 "is_active": is_active,
                 "next_sort": next_sort,
                 "is_dynamic": True,
+                "is_manual": field_definition.source == FactFieldDefinition.Source.MANUAL,
                 "field_id": field_definition.id,
+                "choices": (
+                    [c.value for c in field_definition.choices.all()]
+                    if field_definition.value_type == FactFieldDefinition.ValueType.CHOICE
+                    else None
+                ),
             }
         )
+
+    columns.extend(_fixed_column(column) for column in TRAILING_FIXED_COLUMNS)
 
     return columns
 
@@ -183,7 +202,16 @@ def build_rows(assets, dynamic_field_definitions):
                     (v for v in candidates if v not in (None, "")), None
                 )
 
-        dynamic_values = [values_by_field_id.get(fd.id) for fd in dynamic_field_definitions]
-        rows.append({"asset": asset, "hostfact": hostfact, "dynamic_values": dynamic_values})
+        dynamic_cells = [
+            {
+                "value": values_by_field_id.get(fd.id),
+                "field_id": fd.id,
+                "label": fd.label,
+                "is_manual": fd.source == FactFieldDefinition.Source.MANUAL,
+                "value_type": fd.value_type,
+            }
+            for fd in dynamic_field_definitions
+        ]
+        rows.append({"asset": asset, "hostfact": hostfact, "dynamic_cells": dynamic_cells})
 
     return rows

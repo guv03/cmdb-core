@@ -5,9 +5,12 @@ from dashboard.views import (
     AssetFactsDetailView,
     AssetListAPIView,
     AssetListView,
+    AssetManualFieldUpdateView,
     BulkPendingChangeDecisionView,
     ChangeHistoryListView,
     DashboardLoginView,
+    ManualFieldImportConfirmView,
+    ManualFieldImportView,
     PendingChangeDecisionView,
 )
 
@@ -16,6 +19,17 @@ urlpatterns = [
     path("logout/", LogoutView.as_view(), name="dashboard-logout"),
     path("assets/", AssetListView.as_view(), name="dashboard-asset-list"),
     path("assets/<int:pk>/facts/", AssetFactsDetailView.as_view(), name="dashboard-asset-facts"),
+    path(
+        "assets/<int:pk>/manual-fields/",
+        AssetManualFieldUpdateView.as_view(),
+        name="dashboard-asset-manual-fields-update",
+    ),
+    path("assets/import/", ManualFieldImportView.as_view(), name="dashboard-asset-import"),
+    path(
+        "assets/import/confirm/",
+        ManualFieldImportConfirmView.as_view(),
+        name="dashboard-asset-import-confirm",
+    ),
     path("changes/", ChangeHistoryListView.as_view(), name="dashboard-change-history"),
     path(
         "changes/bulk-approve/",

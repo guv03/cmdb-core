@@ -13,6 +13,7 @@
     box-shadow: inset 0 -2px 0 0 var(--bulma-link);
   }
 </style>
+{% block extra_head %}{% endblock %}
 </head>
 <body>
 <nav class="navbar" role="navigation" aria-label="main navigation">
@@ -31,6 +32,8 @@
            href="{% url 'dashboard-asset-list' %}">자산 대시보드</a>
         <a class="navbar-item {% if request.resolver_match.url_name == 'dashboard-change-history' %}is-active{% endif %}"
            href="{% url 'dashboard-change-history' %}">변경 이력</a>
+        <a class="navbar-item {% if request.resolver_match.url_name == 'dashboard-asset-import' %}is-active{% endif %}"
+           href="{% url 'dashboard-asset-import' %}">엑셀 업로드</a>
       </div>
       {% if user.is_authenticated %}
       <div class="navbar-end">
