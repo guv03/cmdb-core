@@ -3,12 +3,13 @@ import json
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.views import LoginView
+from django.db.models import Count
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse_lazy
 from django.utils import timezone
 from django.views import View
-from django.views.generic import ListView
+from django.views.generic import DetailView, ListView
 from rest_framework.authentication import SessionAuthentication
 from rest_framework.generics import ListAPIView
 from rest_framework.permissions import IsAuthenticated
@@ -26,6 +27,7 @@ from dashboard.serializers import AssetSerializer
 from facts.approval import apply_pending_change, reject_pending_change
 from facts.dynamic_fields import coerce_fact_value, is_valid_choice
 from facts.models import FactFieldDefinition, HostFactValue, PendingChange
+from webconfig.models import WebConfigSource
 
 
 class DashboardLoginView(LoginView):
@@ -220,3 +222,32 @@ class BulkPendingChangeDecisionView(LoginRequiredMixin, View):
 
         next_url = request.POST.get("next") or reverse_lazy("dashboard-change-history")
         return redirect(next_url)
+
+
+class WebConfigListView(LoginRequiredMixin, ListView):
+    template_name = "dashboard/webconfig_list.html"
+    context_object_name = "sources"
+    paginate_by = 50
+
+    def get_queryset(self):
+        queryset = (
+            WebConfigSource.objects.select_related("asset", "node")
+            .annotate(vhost_count=Count("vhosts", distinct=True))
+            .order_by("asset__hostname")
+        )
+        q = self.request.GET.get("q")
+        if q:
+            queryset = queryset.filter(asset__hostname__icontains=q)
+        return queryset
+
+
+class WebConfigDetailView(LoginRequiredMixin, DetailView):
+    template_name = "dashboard/webconfig_detail.html"
+    context_object_name = "source"
+
+    def get_queryset(self):
+        return WebConfigSource.objects.select_related("asset", "node").prefetch_related(
+            "vhosts__ssl",
+            "vhosts__svrgroups__servers",
+            "vhosts__uris__server",
+        )

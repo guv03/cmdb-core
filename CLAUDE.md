@@ -1,5 +1,5 @@
 # CMDB 프로젝트
-Django + DRF 기반 CMDB. 자산 자체(신규 생성)는 AWX push 경로 하나뿐이다. 다만 일부 필드 값(수기 입력 동적 필드)은 대시보드에서 사람이 직접 입력할 수 있다 — 아래 "신규 수집 항목 추가" 참고.
+Django + DRF 기반 CMDB. 자산 자체(신규 생성)는 AWX push 경로 하나뿐이다. 다만 일부 필드 값(수기 입력 동적 필드)은 대시보드에서 사람이 직접 입력할 수 있다 — 아래 "신규 수집 항목 추가" 참고. OS 팩트 외에 웹서버 설정(WebtoB 등) 시각화도 다룬다 — 아래 "웹 서버 설정" 참고.
 
 # 환경
 - 로컬 개발: Docker Compose + PostgreSQL
@@ -30,6 +30,16 @@ Django + DRF 기반 CMDB. 자산 자체(신규 생성)는 AWX push 경로 하나
 - 대기 중 재push 시: 새 값이 기존 대기 건과 동일하면 무시, 다르면 별도 건으로 쌓는다(덮어쓰지 않음).
 - 같은 필드에 여러 건이 대기 중일 때 하나를 승인/반려해도 나머지 대기 건은 자동 정리되지 않는다 — 필요 시 수동으로 함께 정리(대시보드 일괄 처리로 가능).
 
+# 웹 서버 설정
+- OS ansible facts와 별개로, 웹서버 설정 파일(WebtoB의 `http.m` 등)을 파싱해 vhost 중심으로 시각화하는 기능. `facts` 앱과는 완전히 분리된 `webconfig` 앱으로 둔다 — ansible facts는 "필드 하나 = 값 하나" EAV 구조인데, 웹서버 설정은 호스트 하나에 vhost/server/uri가 여러 개씩 있고 서로 이름으로 참조하는 관계형 구조라 성격이 다름.
+- `WebConfigSource`가 push된 원본 텍스트를 통째로 보관(`raw_content`, 감사/재현용). 종류(`kind`, 현재는 `webtob`만)별로 자산당 1개, push마다 구조화 테이블을 전부 지우고 다시 만든다(diff 없이 통짜 교체 — 승인 절차 대상 아님, push 즉시 반영).
+- 파서(`webconfig/parsers.py`)와 재생성 로직(`webconfig/sync.py`)은 `kind`별로 분리해서 등록(`PARSERS`/`SYNC_FUNCS` dict). 새 웹서버 종류 추가 시 이 두 군데에 함수 하나씩 등록하면 됨 — WebtoB/Apache/Nginx는 개념 자체가 달라서 억지로 공통 프레임워크로 통일하지 않음.
+- WebtoB 구조: `VHost`가 중심 엔티티, `SSL`은 VHost가 이름으로 참조, `SvrGroup`/`Uri`는 `VhostName` 속성으로 VHost를 참조하는데 **콤마로 여러 vhost를 한 번에 지정하는 경우가 있어 ManyToMany**(예: `VhostName = "vhost1,vhost1_ssl"`). `Server`는 `SVGNAME`으로 `SvrGroup`을 참조. 파싱 시점에 이름으로 실제 FK/M2M을 연결해서 저장(문자열 매칭이 아니라 진짜 DB join으로 역추적 가능 — Server→SvrGroup→VHost).
+- `VhostName` 없는 `SvrGroup`/`Server`(정적 파일 처리용 공용 그룹 등)는 대시보드 vhost 상세 화면에서는 노출 안 함(vhost 기준 화면이라 자연히 빠짐 — 별도 필터링 코드 불필요, `vhost.svrgroups.all()`로 순회하면 애초에 그 vhost에 안 걸린 svrgroup은 안 나옴).
+- `EXT`/`ALIAS`/`LOGGING`/`ERRORDOCUMENT` 등 검색 가치가 낮은 절은 구조화 테이블로 안 만들고 `WebConfigSource.extra_sections`(JSON)에만 보관 — 지금은 원본 설정 펼쳐보기로만 노출, 조회 대상 아님.
+- 자산 신규 생성은 이 경로로 안 함(자산 생성은 facts push 경로 하나뿐이라는 원칙 유지) — hostname은 push payload가 아니라 **설정 내용의 `*NODE` 절 항목 이름**을 기준으로 기존 자산을 찾고, 없으면 에러(먼저 facts push로 자산이 등록돼 있어야 함).
+- 대시보드 `/dashboard/webconfig/`에서 목록(호스트/종류/vhost 수) → 상세(vhost별 카드, 원본 설정은 `<details>`로 접어둠) 확인. 샘플 데이터는 `samples/webtob/`.
+
 # 대시보드
 - Django admin과 별개로 검색/정렬/페이지네이션이 되는 조회 화면을 둔다. 신규 자산은 push로 즉시, 승인 대상 필드의 값 변경은 승인 시점에 반영된다.
 - 관리는 대시보드 중심으로 가고 Django admin은 최소화한다(주로 `FactFieldDefinition` 필드 정의/승인 대상 지정 같이 자주 안 바뀌는 설정용). 그래서 승인/반려도 admin이 아니라 대시보드의 변경 이력 화면에서 처리한다.
@@ -41,7 +51,7 @@ Django + DRF 기반 CMDB. 자산 자체(신규 생성)는 AWX push 경로 하나
 
 # 테스트/검증
 - 자동화 테스트 스위트는 사실상 없다(`*/tests.py`는 있지만 비어있음, `manage.py test` 실행해도 0건). 변경 검증은 로컬 Docker Compose에서 curl로 실제 API를 호출하거나 `manage.py shell`로 재현해 직접 확인하는 방식이 관례.
-- `samples/facts/`에 실제 AWX facts push 페이로드 샘플을 모아둔다(`README.md`에 재push용 curl 명령 포함). 동적 필드/승인 흐름 등을 검증할 때 새로 지어내지 말고 여기 있는 걸 재사용할 것.
+- `samples/facts/`에 실제 AWX facts push 페이로드 샘플을 모아둔다(`README.md`에 재push용 curl 명령 포함). 동적 필드/승인 흐름 등을 검증할 때 새로 지어내지 말고 여기 있는 걸 재사용할 것. 웹서버 설정 샘플은 `samples/webtob/`(호스트네임_http.m 원본 파일).
 
 # 배포
 - 이미지는 Harbor로 push 후 K8s Deployment

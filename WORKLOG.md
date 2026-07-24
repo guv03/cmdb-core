@@ -22,6 +22,17 @@
 - **폐쇄망 K8s 500 에러 트러블슈팅(원인 미확정, 재현 안 됨)**: replica 2개 환경에서 "AWX push와 동시에 대시보드 접속 시 500"이라는 제보. 코드 리뷰로 두 가설 도출 — (1) `apply_pending_change`(`facts/approval.py`)가 `pending_change.asset.hostfact`를 `getattr` 없이 직접 접근해서 HostFact가 없는 상태면 터질 수 있음(다만 이건 pod 개수와 무관), (2) 더 유력하게는 gunicorn worker 3개 × replica 2개인데 `CONN_MAX_AGE` 미설정이라 요청마다 Oracle 커넥션을 새로 열어서, push 트랜잭션(동적 필드 개수만큼 순차 처리라 꽤 오래 걸림)과 대시보드 조회가 겹치면 폐쇄망 Oracle 계정의 세션 제한에 걸릴 가능성. 실제 `kubectl logs`의 `ORA-` 에러 코드로 확정 필요 — 재현 안 돼서 이번엔 보류
 - **Hostname/IP 고정 컬럼 동작 검증(Playwright 신규 도입)**: 로컬에 브라우저 자동화 도구가 없어서 `.venv`에 Playwright+Chromium 설치, 로그인 → 뷰포트 강제로 좁혀 스크롤 발생 → 스크롤 전/후 셀 좌표(`getBoundingClientRect`) 비교로 Hostname/IP만 고정되고 나머지 컬럼은 흘러가는 것 확인(스크린샷도 저장)
 - **가로 스크롤 시 셀 줄바꿈 버그 수정**: 컬럼이 많아지면 테이블이 옆으로 안 넓어지고 셀 안에서 줄바꿈되며 행이 세로로 늘어나던 문제. 원인은 `white-space: nowrap`이 sticky 컬럼(Hostname/IP)에만 걸려있고 나머지 일반 컬럼엔 없어서, Bulma `table-layout:auto` + `is-fullwidth`(`width:100%`) 조합에서 브라우저가 테이블을 넓히는 대신 텍스트를 줄바꿈하는 쪽을 택했던 것. `.asset-table th/td` 전체에 `white-space: nowrap` 추가로 해결(`table-container`는 이미 Bulma 기본값으로 `overflow-x` 처리돼 있어서 CSS 한 줄로 충분). 검증은 실제 동적 필드 8개를 임시 등록해 컬럼 17개까지 늘린 뒤 일반 노트북 해상도(1280px, 인위적 축소 없이)에서 자연스럽게 가로 스크롤 뜨는 것/셀이 한 줄(41px) 유지되는 것을 Playwright로 확인 후 테스트용 필드·계정은 정리
+- **이미지 버전/릴리즈 프로세스 신규 도입**: 버전을 WORKLOG 프로즈로만 추적하다 실제 배포 버전과 어긋난 적이 있어(WORKLOG엔 1.0.4가 최신인데 실제론 1.0.6까지 나가 있었음) 루트 `VERSION` 파일을 단일 기준으로 도입. `CHANGELOG.md` 신규(배포자 관점 릴리즈 노트, WORKLOG와 역할 분리). 앱 코드가 바뀐 push마다 버전업 → 이미지 빌드 → `docker save`+7z 압축 → CHANGELOG 갱신 → 커밋/push → GitHub Release(압축 이미지 첨부) 자동 처리하는 절차를 CLAUDE.md에 명문화, 로컬에 없던 7-Zip/GitHub CLI를 winget으로 설치. 첨부파일 용량이 계속 쌓이지 않게 "최신 3개 릴리즈만 첨부파일 유지, 오래된 건 태그/노트만 남기고 첨부파일 삭제" 정책도 추가
+  - v1.0.7(승인 설정 통합 리팩터링 + nowrap 수정), v1.0.8(gunicorn worker 변경) 실제 릴리즈까지 진행
+- **gunicorn worker 클래스 `sync` → `gthread` 변경**: 폐쇄망에서 간헐적으로 잡힌 `WORKER TIMEOUT`(gunicorn이 요청 자체를 읽는 단계, `no URI read`)에 대한 대응. 지난번(07-22) AWX push 크기 문제로 났던 것과는 다른 종류(Django 뷰 진입 전에 죽음)로 판단. 유휴 TCP 연결에서 sync 워커가 `recv()`에 블로킹되다 30초 워커 타임아웃에 걸려 SIGKILL당하는 걸로 추정(폐쇄망 NAT/방화벽이 연결을 조용히 끊는 경우 흔한 패턴). 사용자 규모(~30명) 기준 `gthread`(워커 2 × 스레드 4)가 표준적인 선택이라 판단해 `Dockerfile` 변경, 컨테이너 단독 기동으로 정상 동작 확인 후 적용
+- **커밋 전 사용자 확인 절차 명문화**: 세션 종료/이미지 릴리즈 절차처럼 CLAUDE.md에 "자동으로 처리한다"고 적힌 흐름도 예외 없이, 실제 `git commit` 직전엔 항상 무엇이 바뀌었는지 보여주고 확인받도록 CLAUDE.md에 규칙 추가(빌드/버전업/CHANGELOG 작성 등 커밋 이전 준비 작업까지는 자동 진행 가능하지만 커밋 자체는 확인 후 실행)
+- **웹 서버 설정(WebtoB) 시각화 기능 신규 구축**: OS ansible facts와는 별개로 웹서버 설정 파일을 파싱해 vhost 중심으로 보여주는 기능. 방향성부터 검토 후 진행
+  - 설계: `facts`/`FactFieldDefinition`(EAV, 필드 하나=값 하나)과는 성격이 달라(vhost/server/uri가 호스트당 여러 개, 서로 이름으로 참조) 별도 앱 `webconfig`로 분리. `WebConfigSource`가 원본 텍스트 전체 보관, push마다 구조화 테이블 통짜 재생성(diff 없음, 승인 절차 미적용)
+  - WebtoB `http.m` 전용 파서(`webconfig/parsers.py`) 신규 작성: 따옴표 안 콤마/주석(`#`, 줄 중간에도 나옴) 구분, 들여쓰기로 항목 연속 여부 판단. 실제 샘플 3개(`samples/webtob/`)로 파싱 결과 전수 검증
+  - 자산 매칭 방식 정정: 처음엔 push payload에 별도 hostname 필드를 쓰려 했으나, 파일명이 실제 호스트명과 다를 수 있다는 사용자 지적으로 **설정 내용의 `*NODE` 절 항목 이름**을 hostname으로 쓰는 걸로 변경(자산 신규 생성은 안 함 — facts push로 이미 등록된 자산만 대상)
+  - VHost가 중심 엔티티, SSL/SvrGroup/Server/Uri가 이름으로 참조하는 구조를 파싱 시점에 실제 FK로 연결. 도중에 발견한 모델링 이슈: `SvrGroup`/`Uri`의 `VhostName`이 콤마로 여러 vhost를 한 번에 지정하는 경우가 있어(`"vhost1,vhost1_ssl"`) 단일 FK가 아니라 ManyToMany로 수정
+  - `EXT`/`ALIAS`/`LOGGING`/`ERRORDOCUMENT`처럼 검색 가치 낮은 절은 구조화 테이블 대신 JSON(`extra_sections`)에만 보관, VhostName 없는 SvrGroup/Server(정적 파일용 공용 그룹)는 vhost 상세 화면에서 자연히 제외
+  - 대시보드에 "웹 설정" 탭 신규(목록/vhost 중심 상세 화면, 원본 설정은 접어서 표시). 샘플 3개 전부 push → 관계(Server→SvrGroup→VHost 역추적 포함) 정확히 맺어지는 것 DB 조회로 검증, Playwright로 실제 렌더링까지 스크린샷 확인
 
 ## 2026-07-23
 

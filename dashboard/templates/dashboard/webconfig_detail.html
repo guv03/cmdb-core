@@ -1,0 +1,94 @@
+{% extends "dashboard/base.html" %}
+
+{% block title %}{{ source.asset.hostname }} 웹 설정 - CMDB{% endblock %}
+
+{% block content %}
+<h1 class="title is-4">{{ source.asset.hostname }} - {{ source.get_kind_display }} 설정</h1>
+<p class="subtitle is-6">최근 반영: {{ source.last_pushed_at }}</p>
+
+{% if source.node %}
+<div class="box">
+  <h2 class="title is-6">Node</h2>
+  <table class="table is-narrow">
+    <tbody>
+      <tr><th>이름</th><td>{{ source.node.name }}</td></tr>
+      <tr><th>WEBTOBDIR</th><td>{{ source.node.webtobdir }}</td></tr>
+      <tr><th>DOCROOT</th><td>{{ source.node.docroot }}</td></tr>
+      <tr><th>PORT</th><td>{{ source.node.port }}</td></tr>
+      <tr><th>HTH</th><td>{{ source.node.hth }}</td></tr>
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<h2 class="title is-6">VHost</h2>
+{% for vhost in source.vhosts.all %}
+<div class="box">
+  <p class="title is-6">
+    {{ vhost.name }}
+    {% if vhost.ssl_flag %}<span class="tag is-success">SSL</span>{% endif %}
+  </p>
+  <table class="table is-narrow is-fullwidth">
+    <tbody>
+      <tr><th style="width: 12em;">Hostname</th><td>{{ vhost.hostname }}</td></tr>
+      <tr><th>HostAlias</th><td>{{ vhost.hostalias }}</td></tr>
+      <tr><th>Port</th><td>{{ vhost.port }}</td></tr>
+      <tr><th>DocRoot</th><td>{{ vhost.docroot }}</td></tr>
+      {% if vhost.ssl %}
+      <tr><th>SSL 인증서</th><td>{{ vhost.ssl.name }} ({{ vhost.ssl.certificate_file }})</td></tr>
+      {% endif %}
+      <tr><th>Logging / ErrorLog</th><td>{{ vhost.logging }} / {{ vhost.errorlog }}</td></tr>
+    </tbody>
+  </table>
+
+  {% if vhost.svrgroups.all %}
+  <p class="has-text-weight-semibold mt-3">Server Group / Server</p>
+  <table class="table is-narrow is-fullwidth">
+    <thead><tr><th>SvrGroup</th><th>SvrType</th><th>Server</th><th>MinProc</th><th>MaxProc</th></tr></thead>
+    <tbody>
+      {% for svrgroup in vhost.svrgroups.all %}
+        {% for server in svrgroup.servers.all %}
+        <tr>
+          <td>{{ svrgroup.name }}</td>
+          <td>{{ svrgroup.svrtype }}</td>
+          <td>{{ server.name }}</td>
+          <td>{{ server.minproc|default:"" }}</td>
+          <td>{{ server.maxproc|default:"" }}</td>
+        </tr>
+        {% empty %}
+        <tr>
+          <td>{{ svrgroup.name }}</td>
+          <td>{{ svrgroup.svrtype }}</td>
+          <td colspan="3" class="has-text-grey">연결된 server 없음</td>
+        </tr>
+        {% endfor %}
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  {% if vhost.uris.all %}
+  <p class="has-text-weight-semibold mt-3">URI</p>
+  <table class="table is-narrow is-fullwidth">
+    <thead><tr><th>이름</th><th>경로</th><th>Server</th></tr></thead>
+    <tbody>
+      {% for uri in vhost.uris.all %}
+      <tr>
+        <td>{{ uri.name }}</td>
+        <td>{{ uri.uri_path }}</td>
+        <td>{{ uri.server.name|default:"" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
+{% empty %}
+<p class="has-text-grey">등록된 VHost가 없습니다.</p>
+{% endfor %}
+
+<details class="box">
+  <summary class="has-text-weight-semibold" style="cursor: pointer;">원본 설정 보기</summary>
+  <pre style="white-space: pre-wrap; word-break: break-all; max-height: 70vh; overflow-y: auto;">{{ source.raw_content }}</pre>
+</details>
+{% endblock %}

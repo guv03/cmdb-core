@@ -12,6 +12,8 @@ from dashboard.views import (
     ManualFieldImportConfirmView,
     ManualFieldImportView,
     PendingChangeDecisionView,
+    WebConfigDetailView,
+    WebConfigListView,
 )
 
 urlpatterns = [
@@ -51,6 +53,8 @@ urlpatterns = [
         PendingChangeDecisionView.as_view(action="reject"),
         name="dashboard-change-reject",
     ),
+    path("webconfig/", WebConfigListView.as_view(), name="dashboard-webconfig-list"),
+    path("webconfig/<int:pk>/", WebConfigDetailView.as_view(), name="dashboard-webconfig-detail"),
 ]
 
 api_urlpatterns = [

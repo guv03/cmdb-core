@@ -1,0 +1,59 @@
+{% extends "dashboard/base.html" %}
+
+{% block title %}웹 설정 - CMDB{% endblock %}
+
+{% block content %}
+<h1 class="title is-4">웹 설정</h1>
+
+<form class="field has-addons" method="get">
+  <div class="control is-expanded">
+    <input class="input" type="text" name="q" value="{{ request.GET.q }}" placeholder="hostname 검색">
+  </div>
+  <div class="control">
+    <button class="button is-link" type="submit">검색</button>
+  </div>
+</form>
+
+<div class="table-container">
+  <table class="table is-fullwidth is-hoverable is-striped">
+    <thead>
+      <tr>
+        <th>Hostname</th>
+        <th>종류</th>
+        <th>Node</th>
+        <th>VHost 수</th>
+        <th>최근 반영</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for source in sources %}
+      <tr class="is-clickable" onclick="location.href='{% url 'dashboard-webconfig-detail' source.pk %}'" style="cursor: pointer;">
+        <td>{{ source.asset.hostname }}</td>
+        <td>{{ source.get_kind_display }}</td>
+        <td>{{ source.node.name|default:"" }}</td>
+        <td>{{ source.vhost_count }}</td>
+        <td>{{ source.last_pushed_at }}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="5" class="has-text-grey">등록된 웹 설정이 없습니다.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<nav class="pagination" role="navigation" aria-label="pagination">
+  {% if page_obj.has_previous %}
+    <a class="pagination-previous" href="{% querystring page=page_obj.previous_page_number %}">이전</a>
+  {% else %}
+    <a class="pagination-previous" disabled>이전</a>
+  {% endif %}
+  {% if page_obj.has_next %}
+    <a class="pagination-next" href="{% querystring page=page_obj.next_page_number %}">다음</a>
+  {% else %}
+    <a class="pagination-next" disabled>다음</a>
+  {% endif %}
+  <span class="pagination-list">
+    <span class="pagination-link is-current">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
+  </span>
+</nav>
+{% endblock %}

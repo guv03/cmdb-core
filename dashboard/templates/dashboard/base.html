@@ -34,6 +34,8 @@
            href="{% url 'dashboard-change-history' %}">변경 이력</a>
         <a class="navbar-item {% if request.resolver_match.url_name == 'dashboard-asset-import' %}is-active{% endif %}"
            href="{% url 'dashboard-asset-import' %}">엑셀 업로드</a>
+        <a class="navbar-item {% if 'dashboard-webconfig' in request.resolver_match.url_name %}is-active{% endif %}"
+           href="{% url 'dashboard-webconfig-list' %}">웹 설정</a>
       </div>
       {% if user.is_authenticated %}
       <div class="navbar-end">
