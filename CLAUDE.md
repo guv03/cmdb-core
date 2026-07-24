@@ -61,6 +61,7 @@ Django + DRF 기반 CMDB. 자산 자체(신규 생성)는 AWX push 경로 하나
   5. `VERSION`/`CHANGELOG.md`를 커밋에 포함해서 push한다.
   6. `gh release create v<새 버전> cmdb-core-<새 버전>.tar.7z --title v<새 버전> --notes "<CHANGELOG.md의 해당 버전 섹션 내용>"`으로 GitHub Release를 만들고 압축한 이미지를 첨부한다(`gh`도 PATH에 없으면 `C:\Program Files\GitHub CLI\gh.exe`로 직접 호출). `gh auth login`은 사용자가 미리 해뒀다고 가정 — 로그인 안 돼 있으면 진행 못 하니 사용자에게 알릴 것.
   7. `.tar`/`.tar.7z` 산출물은 리포지토리에 커밋하지 않는다(`.gitignore`에 이미 제외 설정, GitHub Release 첨부파일로만 배포).
+  8. Release 업로드까지 끝나면 로컬(스크래치패드 등)에 남은 `.tar`/`.tar.7z` 파일은 지운다 — 원본은 GitHub Release에 있으니 필요하면 거기서 받으면 됨.
 - `WORKLOG.md`/`CLAUDE.md`처럼 앱 실행에 영향 없는 문서만 바뀐 push는 위 과정을 생략한다.
 
 # 커밋 규칙
