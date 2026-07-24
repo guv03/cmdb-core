@@ -14,6 +14,7 @@ from dashboard.views import (
     PendingChangeDecisionView,
     WebConfigDetailView,
     WebConfigListView,
+    WebtobVhostServiceUpdateView,
 )
 
 urlpatterns = [
@@ -55,6 +56,11 @@ urlpatterns = [
     ),
     path("webconfig/", WebConfigListView.as_view(), name="dashboard-webconfig-list"),
     path("webconfig/<int:pk>/", WebConfigDetailView.as_view(), name="dashboard-webconfig-detail"),
+    path(
+        "webconfig/vhost/<int:pk>/service/",
+        WebtobVhostServiceUpdateView.as_view(),
+        name="dashboard-webconfig-vhost-service",
+    ),
 ]
 
 api_urlpatterns = [

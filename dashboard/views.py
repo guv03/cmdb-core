@@ -3,7 +3,7 @@ import json
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.views import LoginView
-from django.db.models import Count
+from django.db.models import Count, Q
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse_lazy
@@ -27,7 +27,7 @@ from dashboard.serializers import AssetSerializer
 from facts.approval import apply_pending_change, reject_pending_change
 from facts.dynamic_fields import coerce_fact_value, is_valid_choice
 from facts.models import FactFieldDefinition, HostFactValue, PendingChange
-from webconfig.models import WebConfigSource
+from webconfig.models import WebConfigSource, WebtobVhost
 
 
 class DashboardLoginView(LoginView):
@@ -237,7 +237,11 @@ class WebConfigListView(LoginRequiredMixin, ListView):
         )
         q = self.request.GET.get("q")
         if q:
-            queryset = queryset.filter(asset__hostname__icontains=q)
+            queryset = queryset.filter(
+                Q(asset__hostname__icontains=q)
+                | Q(vhosts__hostname__icontains=q)
+                | Q(vhosts__hostalias__icontains=q)
+            ).distinct()
         return queryset
 
 
@@ -251,3 +255,13 @@ class WebConfigDetailView(LoginRequiredMixin, DetailView):
             "vhosts__svrgroups__servers",
             "vhosts__uris__server",
         )
+
+
+class WebtobVhostServiceUpdateView(LoginRequiredMixin, View):
+    """vhost 카드의 "서비스명" 수기 입력. 승인 절차 없이 즉시 반영(자산 MANUAL 필드와 동일 원칙)."""
+
+    def post(self, request, pk):
+        vhost = get_object_or_404(WebtobVhost, pk=pk)
+        vhost.service_name = request.POST.get("service_name", "").strip()
+        vhost.save(update_fields=["service_name"])
+        return JsonResponse({"service_name": vhost.service_name})

@@ -73,6 +73,9 @@ class WebtobVhost(TimeStampedModel):
     )
     logging = models.CharField(max_length=100, blank=True)
     errorlog = models.CharField(max_length=100, blank=True)
+    # 수기 입력: 이 vhost가 어떤 서비스인지. AUTO 필드와 달리 push로 덮어쓰지 않음(sync_webtob이
+    # vhost를 이름으로 upsert하고 이 필드는 defaults에서 빠져있어 보존됨).
+    service_name = models.CharField(max_length=255, blank=True)
 
     class Meta:
         constraints = [

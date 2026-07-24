@@ -3,6 +3,8 @@
 {% block title %}{{ source.asset.hostname }} 웹 설정 - CMDB{% endblock %}
 
 {% block content %}
+<div id="webconfig-content">
+{% csrf_token %}
 <h1 class="title is-4">{{ source.asset.hostname }} - {{ source.get_kind_display }} 설정</h1>
 <p class="subtitle is-6">최근 반영: {{ source.last_pushed_at }}</p>
 
@@ -30,12 +32,21 @@
   </p>
   <table class="table is-narrow is-fullwidth">
     <tbody>
-      <tr><th style="width: 12em;">Hostname</th><td>{{ vhost.hostname }}</td></tr>
+      <tr>
+        <th style="width: 12em;">서비스명</th>
+        <td>
+          <span class="vhost-service-value" data-vhost-id="{{ vhost.id }}">{{ vhost.service_name }}</span>
+          <button type="button" class="button is-small vhost-service-edit-btn" data-vhost-id="{{ vhost.id }}">편집</button>
+        </td>
+      </tr>
+      <tr><th>Hostname</th><td>{{ vhost.hostname }}</td></tr>
       <tr><th>HostAlias</th><td>{{ vhost.hostalias }}</td></tr>
       <tr><th>Port</th><td>{{ vhost.port }}</td></tr>
       <tr><th>DocRoot</th><td>{{ vhost.docroot }}</td></tr>
       {% if vhost.ssl %}
       <tr><th>SSL 인증서</th><td>{{ vhost.ssl.name }} ({{ vhost.ssl.certificate_file }})</td></tr>
+      <tr><th>SSL Protocols</th><td>{{ vhost.ssl.protocols }}</td></tr>
+      <tr><th>SSL RequiredCiphers</th><td style="word-break: break-all;">{{ vhost.ssl.required_ciphers }}</td></tr>
       {% endif %}
       <tr><th>Logging / ErrorLog</th><td>{{ vhost.logging }} / {{ vhost.errorlog }}</td></tr>
     </tbody>
@@ -91,4 +102,36 @@
   <summary class="has-text-weight-semibold" style="cursor: pointer;">원본 설정 보기</summary>
   <pre style="white-space: pre-wrap; word-break: break-all; max-height: 70vh; overflow-y: auto;">{{ source.raw_content }}</pre>
 </details>
+</div>
+{% endblock %}
+
+{% block extra_body %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  function getCsrfToken() {
+    var input = document.querySelector('input[name=csrfmiddlewaretoken]');
+    return input ? input.value : '';
+  }
+
+  document.addEventListener('click', function (e) {
+    if (!e.target.matches('.vhost-service-edit-btn')) return;
+    var vhostId = e.target.dataset.vhostId;
+    var valueEl = document.querySelector('.vhost-service-value[data-vhost-id="' + vhostId + '"]');
+    var next = prompt('서비스명', valueEl.textContent.trim());
+    if (next === null) return;
+
+    fetch('/dashboard/webconfig/vhost/' + vhostId + '/service/', {
+      method: 'POST',
+      headers: {
+        'X-CSRFToken': getCsrfToken(),
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({ service_name: next }),
+    })
+      .then(function (res) { return res.json(); })
+      .then(function (data) { valueEl.textContent = data.service_name; })
+      .catch(function () { alert('저장 실패'); });
+  });
+});
+</script>
 {% endblock %}

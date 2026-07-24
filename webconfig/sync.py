@@ -33,11 +33,11 @@ def _resolve_vhosts(vhost_names_attr: str | None, vhost_by_name: dict) -> list:
 
 @transaction.atomic
 def sync_webtob(source: WebConfigSource, sections: dict) -> None:
-    """파싱된 섹션 dict로 이 source에 딸린 구조화 테이블을 통째로 재생성한다."""
+    """파싱된 섹션 dict로 이 source에 딸린 구조화 테이블을 재생성한다.
+    VHost만 이름으로 upsert(수기 입력한 service_name 보존), 나머지는 통짜 재생성."""
     WebtobUri.objects.filter(source=source).delete()
     WebtobServer.objects.filter(source=source).delete()
     WebtobSvrGroup.objects.filter(source=source).delete()
-    WebtobVhost.objects.filter(source=source).delete()
     WebtobSsl.objects.filter(source=source).delete()
     WebtobNode.objects.filter(source=source).delete()
 
@@ -65,19 +65,26 @@ def sync_webtob(source: WebConfigSource, sections: dict) -> None:
         )
 
     vhost_by_name = {}
-    for name, attrs in (sections.get("VHOST") or {}).items():
-        vhost_by_name[name] = WebtobVhost.objects.create(
+    vhost_section = sections.get("VHOST") or {}
+    for name, attrs in vhost_section.items():
+        vhost, _ = WebtobVhost.objects.update_or_create(
             source=source,
             name=name,
-            hostname=attrs.get("hostname", ""),
-            hostalias=attrs.get("hostalias", ""),
-            docroot=attrs.get("docroot", ""),
-            port=attrs.get("port", ""),
-            ssl_flag=_is_yes(attrs.get("sslflag")),
-            ssl=ssl_by_name.get(attrs.get("sslname")),
-            logging=attrs.get("logging", ""),
-            errorlog=attrs.get("errorlog", ""),
+            defaults=dict(
+                hostname=attrs.get("hostname", ""),
+                hostalias=attrs.get("hostalias", ""),
+                docroot=attrs.get("docroot", ""),
+                port=attrs.get("port", ""),
+                ssl_flag=_is_yes(attrs.get("sslflag")),
+                ssl=ssl_by_name.get(attrs.get("sslname")),
+                logging=attrs.get("logging", ""),
+                errorlog=attrs.get("errorlog", ""),
+            ),
         )
+        vhost_by_name[name] = vhost
+
+    # 이번 push에서 더 이상 안 보이는 vhost만 정리(수기 입력 보존을 위해 통짜 삭제 대신 이 방식 사용)
+    WebtobVhost.objects.filter(source=source).exclude(name__in=vhost_section.keys()).delete()
 
     svrgroup_by_name = {}
     for name, attrs in (sections.get("SVRGROUP") or {}).items():

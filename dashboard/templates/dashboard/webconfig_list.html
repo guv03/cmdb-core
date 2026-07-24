@@ -3,11 +3,12 @@
 {% block title %}웹 설정 - CMDB{% endblock %}
 
 {% block content %}
+{% csrf_token %}
 <h1 class="title is-4">웹 설정</h1>
 
 <form class="field has-addons" method="get">
   <div class="control is-expanded">
-    <input class="input" type="text" name="q" value="{{ request.GET.q }}" placeholder="hostname 검색">
+    <input class="input" type="text" name="q" value="{{ request.GET.q }}" placeholder="hostname/도메인 검색">
   </div>
   <div class="control">
     <button class="button is-link" type="submit">검색</button>
@@ -27,7 +28,7 @@
     </thead>
     <tbody>
       {% for source in sources %}
-      <tr class="is-clickable" onclick="location.href='{% url 'dashboard-webconfig-detail' source.pk %}'" style="cursor: pointer;">
+      <tr class="webconfig-row" data-detail-url="{% url 'dashboard-webconfig-detail' source.pk %}" style="cursor: pointer;">
         <td>{{ source.asset.hostname }}</td>
         <td>{{ source.get_kind_display }}</td>
         <td>{{ source.node.name|default:"" }}</td>
@@ -39,6 +40,17 @@
       {% endfor %}
     </tbody>
   </table>
+</div>
+
+<div class="modal" id="webconfigModal">
+  <div class="modal-background"></div>
+  <div class="modal-card" style="width: 90%; max-width: 960px;">
+    <header class="modal-card-head">
+      <p class="modal-card-title">웹 설정</p>
+      <button class="delete" aria-label="close" id="webconfigModalClose"></button>
+    </header>
+    <section class="modal-card-body" id="webconfigModalBody">불러오는 중...</section>
+  </div>
 </div>
 
 <nav class="pagination" role="navigation" aria-label="pagination">
@@ -56,4 +68,63 @@
     <span class="pagination-link is-current">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
   </span>
 </nav>
+{% endblock %}
+
+{% block extra_body %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  var modal = document.getElementById('webconfigModal');
+  var modalBody = document.getElementById('webconfigModalBody');
+
+  function closeModal() {
+    modal.classList.remove('is-active');
+  }
+
+  document.querySelectorAll('.webconfig-row').forEach(function (row) {
+    row.addEventListener('click', function () {
+      modalBody.textContent = '불러오는 중...';
+      modal.classList.add('is-active');
+
+      fetch(row.dataset.detailUrl)
+        .then(function (res) { return res.text(); })
+        .then(function (html) {
+          var doc = new DOMParser().parseFromString(html, 'text/html');
+          var content = doc.getElementById('webconfig-content');
+          modalBody.innerHTML = content ? content.innerHTML : '불러오기 실패';
+        })
+        .catch(function () {
+          modalBody.textContent = '불러오기 실패';
+        });
+    });
+  });
+
+  document.getElementById('webconfigModalClose').addEventListener('click', closeModal);
+  modal.querySelector('.modal-background').addEventListener('click', closeModal);
+
+  function getCsrfToken() {
+    var input = document.querySelector('input[name=csrfmiddlewaretoken]');
+    return input ? input.value : '';
+  }
+
+  document.addEventListener('click', function (e) {
+    if (!e.target.matches('.vhost-service-edit-btn')) return;
+    var vhostId = e.target.dataset.vhostId;
+    var valueEl = document.querySelector('.vhost-service-value[data-vhost-id="' + vhostId + '"]');
+    var next = prompt('서비스명', valueEl.textContent.trim());
+    if (next === null) return;
+
+    fetch('/dashboard/webconfig/vhost/' + vhostId + '/service/', {
+      method: 'POST',
+      headers: {
+        'X-CSRFToken': getCsrfToken(),
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({ service_name: next }),
+    })
+      .then(function (res) { return res.json(); })
+      .then(function (data) { valueEl.textContent = data.service_name; })
+      .catch(function () { alert('저장 실패'); });
+  });
+});
+</script>
 {% endblock %}

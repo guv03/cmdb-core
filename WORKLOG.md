@@ -33,6 +33,11 @@
   - VHost가 중심 엔티티, SSL/SvrGroup/Server/Uri가 이름으로 참조하는 구조를 파싱 시점에 실제 FK로 연결. 도중에 발견한 모델링 이슈: `SvrGroup`/`Uri`의 `VhostName`이 콤마로 여러 vhost를 한 번에 지정하는 경우가 있어(`"vhost1,vhost1_ssl"`) 단일 FK가 아니라 ManyToMany로 수정
   - `EXT`/`ALIAS`/`LOGGING`/`ERRORDOCUMENT`처럼 검색 가치 낮은 절은 구조화 테이블 대신 JSON(`extra_sections`)에만 보관, VhostName 없는 SvrGroup/Server(정적 파일용 공용 그룹)는 vhost 상세 화면에서 자연히 제외
   - 대시보드에 "웹 설정" 탭 신규(목록/vhost 중심 상세 화면, 원본 설정은 접어서 표시). 샘플 3개 전부 push → 관계(Server→SvrGroup→VHost 역추적 포함) 정확히 맺어지는 것 DB 조회로 검증, Playwright로 실제 렌더링까지 스크린샷 확인
+  - **후속 개선**: (1) 목록에서 행 클릭 시 페이지 이동 대신 모달로 띄우도록 변경 — 기존 상세 페이지는 그대로 두고, 목록 페이지 JS가 그 페이지를 fetch해서 `#webconfig-content`만 잘라 모달에 주입하는 방식(새 엔드포인트 없이 재사용, `DOMParser`로 클라이언트에서 파싱). Playwright로 URL 이동 없이 모달만 뜨는 것 확인
+  - (2) 목록 검색을 자산 hostname뿐 아니라 vhost의 `hostname`/`hostalias`(도메인)까지 포함하도록 확장(`Q` OR + `.distinct()`로 중복 행 방지), 실제 도메인 문자열로 검색해 검증
+  - (3) vhost별 "서비스명" 수기 입력 필드 추가 검토·구현: `WebtobVhost.service_name` 필드 추가는 간단하지만, 기존 `sync_webtob`이 push마다 vhost를 통째로 지우고 재생성하는 구조라 수기값이 다음 push에 날아가는 문제를 먼저 발견 — vhost만 `(source, name)` 기준 `update_or_create`로 upsert하고 이번 push에 없는 vhost만 삭제하는 방식으로 sync 로직 변경(SvrGroup/Server/Uri는 수기 데이터 없어서 기존 통짜 재생성 유지). 편집은 vhost 카드의 "편집" 버튼 → `prompt()` → 새 엔드포인트(`/dashboard/webconfig/vhost/<id>/service/`)로 즉시 저장(승인 절차 없음, 자산 MANUAL 필드와 동일 원칙). Apache/Nginx 확장 가능성도 물어봐서 검토만 함 — 지금 구조(kind 디스패치)는 수집 파이프라인만 재사용되고 파서/모델/화면은 웹서버 종류마다 새로 만들어야 한다는 결론(WebtoB의 VHost/SvrGroup 개념이 Apache/Nginx엔 그대로 없음)
+  - (4) SSL 정보에 인증서 경로만 보이던 걸 Protocols/RequiredCiphers도 같이 표시하도록 상세 템플릿 보강
+  - **마이그레이션 적용 도중 Docker 자체가 응답 없음 상태가 되어(`docker version`까지 멈춤) 검증 중단** — (3)/(4) 변경사항은 코드 작성까지만 완료, 실제 동작 검증(마이그레이션 적용, service_name 보존 확인, SSL 표시 확인)은 다음 세션에서 Docker 재시작 후 이어서 해야 함
 
 ## 2026-07-23
 

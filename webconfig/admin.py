@@ -20,9 +20,10 @@ class WebConfigSourceAdmin(admin.ModelAdmin):
 
 @admin.register(WebtobVhost)
 class WebtobVhostAdmin(admin.ModelAdmin):
-    list_display = ["name", "source", "hostname", "port", "ssl_flag", "docroot"]
+    list_display = ["name", "source", "hostname", "port", "ssl_flag", "docroot", "service_name"]
+    list_editable = ["service_name"]
     list_filter = ["ssl_flag"]
-    search_fields = ["name", "hostname", "source__asset__hostname"]
+    search_fields = ["name", "hostname", "service_name", "source__asset__hostname"]
 
 
 @admin.register(WebtobNode)
