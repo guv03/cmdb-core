@@ -5,6 +5,10 @@
 
 1.0.6까지의 이력은 이 파일 도입 전이라 별도 기록 없음 — `WORKLOG.md`의 해당 날짜 항목 참고.
 
+## 1.0.8
+
+- gunicorn 워커 클래스를 `sync`에서 `gthread`로 변경(`--worker-class gthread --workers 2 --threads 4`). 유휴 TCP 연결에서 워커가 `sock.recv()`에 블로킹되다 WORKER TIMEOUT으로 SIGKILL당하는 간헐적 현상 완화 목적. 30명 내외 사용자 규모에 맞춘 설정(`Dockerfile`)
+
 ## 1.0.7
 
 - 변경 승인 대상 설정을 `ApprovalFieldConfig` 별도 모델에서 `FactFieldDefinition`(`requires_approval` 필드)로 통합. 동적 필드를 승인 대상으로 지정할 때 이중 등록이 필요 없어짐, 관련 admin/승인 로직·마이그레이션 포함
