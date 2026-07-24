@@ -53,12 +53,12 @@ Django + DRF 기반 CMDB. 자산 자체(신규 생성)는 AWX push 경로 하나
 
 # 이미지 버전 관리
 - 버전 기준점은 루트의 `VERSION` 파일 하나뿐이다(예: `1.0.7`). 다른 곳(WORKLOG 등)의 버전 언급은 참고용이지 기준이 아니다 — 항상 `VERSION` 파일을 먼저 확인할 것.
-- **앱 코드(런타임에 영향을 주는 파일: `*.py`, 템플릿, 정적 파일, `Dockerfile`, `requirements.txt`, `vendor/`, 마이그레이션 등)가 바뀐 push를 할 때는** 아래를 자동으로(매번 다시 물어보지 않고) 같이 처리한다 — 이 문서에 미리 승인해둔 절차.
+- **앱 코드(런타임에 영향을 주는 파일: `*.py`, 템플릿, 정적 파일, `Dockerfile`, `requirements.txt`, `vendor/`, 마이그레이션 등)가 바뀐 push를 할 때는** 아래를 같이 처리한다 — 이 문서에 미리 승인해둔 절차라 진행 여부 자체를 다시 묻지는 않지만, 5번 커밋 직전에는 "커밋 규칙"대로 항상 확인받는다.
   1. `VERSION`의 patch 버전을 1 올린다(지금까지 patch만 순차 증가시켜온 관례를 따름, 예: `1.0.6` → `1.0.7`).
   2. `docker build -t cmdb-core:<새 버전> .`으로 이미지를 빌드해 문제없이 빌드되는지 확인한다.
   3. `docker save cmdb-core:<새 버전> -o cmdb-core-<새 버전>.tar`로 추출 후 `7z a cmdb-core-<새 버전>.tar.7z cmdb-core-<새 버전>.tar`로 압축한다(7-Zip: `C:\Program Files\7-Zip\7z.exe`, PATH에 없으면 이 경로로 직접 호출).
   4. `CHANGELOG.md` 맨 위에 새 버전 섹션을 추가해 이번 릴리즈에 포함된 변경사항을 정리한다. `WORKLOG.md`가 개발 과정의 디버깅/검토 기록이라면, `CHANGELOG.md`는 "이 배포 버전에 뭐가 들어갔는지"를 배포자 관점에서 간결하게 정리하는 파일.
-  5. `VERSION`/`CHANGELOG.md`를 커밋에 포함해서 push한다.
+  5. **여기서 커밋 전 확인**: `VERSION`/`CHANGELOG.md` 변경사항을 보여주고 승인받은 뒤 커밋 + push한다.
   6. `gh release create v<새 버전> cmdb-core-<새 버전>.tar.7z --title v<새 버전> --notes "<CHANGELOG.md의 해당 버전 섹션 내용>"`으로 GitHub Release를 만들고 압축한 이미지를 첨부한다(`gh`도 PATH에 없으면 `C:\Program Files\GitHub CLI\gh.exe`로 직접 호출). `gh auth login`은 사용자가 미리 해뒀다고 가정 — 로그인 안 돼 있으면 진행 못 하니 사용자에게 알릴 것.
   7. `.tar`/`.tar.7z` 산출물은 리포지토리에 커밋하지 않는다(`.gitignore`에 이미 제외 설정, GitHub Release 첨부파일로만 배포).
   8. Release 업로드까지 끝나면 로컬(스크래치패드 등)에 남은 `.tar`/`.tar.7z` 파일은 지운다 — 원본은 GitHub Release에 있으니 필요하면 거기서 받으면 됨.
@@ -69,10 +69,11 @@ Django + DRF 기반 CMDB. 자산 자체(신규 생성)는 AWX push 경로 하나
 - 형식: `<type>: <한글 설명>` (Conventional Commits 기반, 설명만 한글)
 - type: `feat`(새 기능), `fix`(버그 수정), `docs`(문서만 변경), `refactor`(동작 변화 없는 구조 개선), `test`(테스트 추가/수정), `chore`(빌드/설정/의존성 등 잡무)
 - 예: `feat: 동적 필드 정렬 기능 추가`, `fix: hostname 정규화 누락 수정`
+- **`git commit` 실행 전에는 항상 무엇이 바뀌었는지(파일 목록/요약)와 커밋 메시지를 먼저 보여주고 사용자 확인을 받은 뒤 커밋한다.** 세션 종료 절차, 이미지 버전 관리 절차처럼 이 문서에 "자동으로 처리한다"고 적힌 흐름도 예외 없이 이 확인 단계는 거친다 — 빌드/버전업/CHANGELOG 작성 등 커밋 이전 준비 작업까지는 자동으로 진행해도 되지만, 실제 커밋(및 그 이후의 push/release)은 확인 후에 실행.
 
 # 세션 종료
 - 사용자가 작업을 종료한다는 취지로 말하면(예: "끝낼게", "여기까지", "작업 종료" 등), 아래를 순서대로 처리한다.
   1. `WORKLOG.md`에 이번 세션 작업 내용을 정리해서 추가(기존 형식 유지, 새 날짜는 위에 추가)
-  2. 커밋 규칙에 따라 변경사항(WORKLOG.md 포함) 커밋
-  3. 원격에 push
+  2. 커밋 규칙에 따라 변경사항(WORKLOG.md 포함) 커밋 — 위 "커밋 규칙"대로 커밋 전 사용자 확인 필수
+  3. 확인받으면 원격에 push
 - 커밋할 변경사항이 전혀 없으면(WORKLOG.md 갱신도 불필요한 경우) 커밋/push는 건너뛴다.
