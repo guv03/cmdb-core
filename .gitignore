@@ -9,3 +9,7 @@ __pycache__/
 staticfiles/
 media/
 .venv/
+
+# 릴리즈 산출물 (docker save + 7z 압축) - GitHub Release 첨부파일로만 배포, 리포지토리엔 안 넣음
+*.tar
+*.tar.7z
