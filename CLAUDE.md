@@ -18,6 +18,7 @@ Django + DRF 기반 CMDB. 자산 자체(신규 생성)는 AWX push 경로 하나
   - `AUTO`: raw facts의 한 키를 컬럼으로 승격. AWX push 시 `key`(raw_facts 안의 dot-path)로 자동 추출·저장된다.
   - `MANUAL`: AWX facts에 없는, 사람이 직접 관리해야 하는 값(예: 중요도). raw_facts와 무관하며 대시보드의 자산 행 "편집" 버튼으로 입력·수정한다. push 동기화 대상에서 제외되므로 AWX push가 들어와도 값이 덮어써지지 않는다.
 - 두 경우 모두 "필드 하나 = 값 하나"만 다루며, 범용 플러그인/계산식 시스템(다른 필드를 조합한 계산값 등)으로 확장하지 않는다.
+- AUTO의 `key`(dot-path)는 `extract_json_path`(`facts/dynamic_fields.py`)가 각 단계마다 dict인지만 확인하고 순회한다 — 경로 중간에 JSON 리스트가 나오면 그 다음부터 무조건 `None`이 된다(인덱싱/필터링 미지원). 예: `ansible_facts.default_ipv4.macaddress`처럼 값이 dict로만 이어지면 등록 가능하지만, `ansible_facts.<interface>.ipv6`처럼 리스트를 거쳐야 하는 값은 지금 구조로는 못 뽑는다.
 - `source`에는 `FIXED`라는 세 번째 값도 있는데, 이건 "신규 수집 항목 추가"용이 아니라 아래 변경 승인 설정 전용이다 — `HostFact`의 고정 컬럼(os_family/num_cpu 등 8개, `facts.approval.FIXED_FIELD_PATHS` 참고)을 승인 대상으로 지정할 수 있게 `FactFieldDefinition`에 메타데이터만 얹어둔 것이며 `is_visible=False`로 대시보드 동적 컬럼에는 노출되지 않는다.
 
 # 변경 승인
@@ -37,6 +38,10 @@ Django + DRF 기반 CMDB. 자산 자체(신규 생성)는 AWX push 경로 하나
 - 변경 이력(대기/승인/반려 전체)은 `/dashboard/changes/`에서 조회 + 대기 건은 승인/반려 처리까지 가능.
 - MANUAL 동적 필드는 자산 목록의 "관리" 컬럼 → "편집" 버튼(모달)으로 값을 입력/수정한다. 변경 이력(`/dashboard/changes/`)에는 남지 않는다 — 승인 대상이 아니기 때문.
 - Hostname/IP 컬럼은 가로 스크롤 시에도 고정 표시된다(`position: sticky`).
+
+# 테스트/검증
+- 자동화 테스트 스위트는 사실상 없다(`*/tests.py`는 있지만 비어있음, `manage.py test` 실행해도 0건). 변경 검증은 로컬 Docker Compose에서 curl로 실제 API를 호출하거나 `manage.py shell`로 재현해 직접 확인하는 방식이 관례.
+- `samples/facts/`에 실제 AWX facts push 페이로드 샘플을 모아둔다(`README.md`에 재push용 curl 명령 포함). 동적 필드/승인 흐름 등을 검증할 때 새로 지어내지 말고 여기 있는 걸 재사용할 것.
 
 # 배포
 - 이미지는 Harbor로 push 후 K8s Deployment

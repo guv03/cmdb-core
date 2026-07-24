@@ -18,6 +18,10 @@
   - 마이그레이션 3단계(스키마 추가 → 기존 `ApprovalFieldConfig`/`PendingChange` 데이터를 새 구조로 이관 + 나머지 6개 FIXED 컬럼도 `requires_approval=False`로 미리 시딩 → 스키마 정리)로 작성, 역방향(rollback)도 구현
   - 로컬에서 실제 push로 end-to-end 검증: 승인 대상 필드 값 변경 시 즉시 반영 안 되고 `PendingChange` 대기, 대시보드에서 승인하면 반영·`last_changed_at` 갱신, 반려하면 유지되는 것까지 확인. 이후 `ansible_facts.default_ipv4.macaddress`(AUTO 동적 필드)도 `requires_approval` 체크 한 번으로 동일하게 승인 흐름을 타는 것까지 검증(고정 컬럼 전용이 아니게 된 것 확인)
   - CLAUDE.md/`helm/cmdb-core/templates/NOTES.txt`의 `ApprovalFieldConfig` 언급을 `FactFieldDefinition` 기준으로 갱신
+- **CLAUDE.md 문서 보강**: `key`(dot-path)가 리스트를 못 타는 제약을 "신규 수집 항목 추가" 섹션에 명시, "테스트/검증" 섹션 신규 추가(자동화 테스트 사실상 없음 + 로컬 curl/shell 재현 검증이 관례라는 점, `samples/facts/` 재사용 안내)
+- **폐쇄망 K8s 500 에러 트러블슈팅(원인 미확정, 재현 안 됨)**: replica 2개 환경에서 "AWX push와 동시에 대시보드 접속 시 500"이라는 제보. 코드 리뷰로 두 가설 도출 — (1) `apply_pending_change`(`facts/approval.py`)가 `pending_change.asset.hostfact`를 `getattr` 없이 직접 접근해서 HostFact가 없는 상태면 터질 수 있음(다만 이건 pod 개수와 무관), (2) 더 유력하게는 gunicorn worker 3개 × replica 2개인데 `CONN_MAX_AGE` 미설정이라 요청마다 Oracle 커넥션을 새로 열어서, push 트랜잭션(동적 필드 개수만큼 순차 처리라 꽤 오래 걸림)과 대시보드 조회가 겹치면 폐쇄망 Oracle 계정의 세션 제한에 걸릴 가능성. 실제 `kubectl logs`의 `ORA-` 에러 코드로 확정 필요 — 재현 안 돼서 이번엔 보류
+- **Hostname/IP 고정 컬럼 동작 검증(Playwright 신규 도입)**: 로컬에 브라우저 자동화 도구가 없어서 `.venv`에 Playwright+Chromium 설치, 로그인 → 뷰포트 강제로 좁혀 스크롤 발생 → 스크롤 전/후 셀 좌표(`getBoundingClientRect`) 비교로 Hostname/IP만 고정되고 나머지 컬럼은 흘러가는 것 확인(스크린샷도 저장)
+- **가로 스크롤 시 셀 줄바꿈 버그 수정**: 컬럼이 많아지면 테이블이 옆으로 안 넓어지고 셀 안에서 줄바꿈되며 행이 세로로 늘어나던 문제. 원인은 `white-space: nowrap`이 sticky 컬럼(Hostname/IP)에만 걸려있고 나머지 일반 컬럼엔 없어서, Bulma `table-layout:auto` + `is-fullwidth`(`width:100%`) 조합에서 브라우저가 테이블을 넓히는 대신 텍스트를 줄바꿈하는 쪽을 택했던 것. `.asset-table th/td` 전체에 `white-space: nowrap` 추가로 해결(`table-container`는 이미 Bulma 기본값으로 `overflow-x` 처리돼 있어서 CSS 한 줄로 충분). 검증은 실제 동적 필드 8개를 임시 등록해 컬럼 17개까지 늘린 뒤 일반 노트북 해상도(1280px, 인위적 축소 없이)에서 자연스럽게 가로 스크롤 뜨는 것/셀이 한 줄(41px) 유지되는 것을 Playwright로 확인 후 테스트용 필드·계정은 정리
 
 ## 2026-07-23
 

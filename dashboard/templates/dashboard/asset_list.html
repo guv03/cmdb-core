@@ -4,6 +4,12 @@
 
 {% block extra_head %}
 <style>
+  /* 셀 안에서 줄바꿈되지 않게 해서, 컬럼이 늘어나면 테이블이 옆으로 넓어지며
+     table-container의 가로 스크롤이 자연스럽게 뜨도록 한다(줄바꿈으로 세로로 늘어나는 대신). */
+  .asset-table th,
+  .asset-table td {
+    white-space: nowrap;
+  }
   /* Hostname/IP 컬럼을 가로 스크롤 시에도 고정 표시 (Bulma 테이블 CSS 변수 재사용) */
   .asset-table th.sticky-col,
   .asset-table td.sticky-col {
