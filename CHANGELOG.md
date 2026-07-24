@@ -5,6 +5,10 @@
 
 1.0.6까지의 이력은 이 파일 도입 전이라 별도 기록 없음 — `WORKLOG.md`의 해당 날짜 항목 참고.
 
+## 1.0.9
+
+- 웹서버 설정(WebtoB `http.m`) 파싱·시각화 기능 신규 추가(`webconfig` 앱). AWX push → VHost 중심으로 SSL/SvrGroup/Server/Uri 관계를 실제 FK/M2M으로 연결해 저장, 대시보드 "웹 설정" 탭에서 조회
+
 ## 1.0.8
 
 - gunicorn 워커 클래스를 `sync`에서 `gthread`로 변경(`--worker-class gthread --workers 2 --threads 4`). 유휴 TCP 연결에서 워커가 `sock.recv()`에 블로킹되다 WORKER TIMEOUT으로 SIGKILL당하는 간헐적 현상 완화 목적. 30명 내외 사용자 규모에 맞춘 설정(`Dockerfile`)
