@@ -33,6 +33,7 @@ _VALUE_FIELD_BY_TYPE = {
 def get_dynamic_field_definitions():
     return (
         FactFieldDefinition.objects.filter(is_visible=True)
+        .exclude(source=FactFieldDefinition.Source.FIXED)
         .prefetch_related("choices")
         .order_by("sort_order", "id")
     )
@@ -168,12 +169,12 @@ CHANGE_HISTORY_SORT_LOOKUPS = {
 
 
 def get_change_history_queryset(request):
-    queryset = PendingChange.objects.select_related("asset", "field_config")
+    queryset = PendingChange.objects.select_related("asset", "field_definition")
 
     q = _request_param(request, "q", "search")
     if q:
         queryset = queryset.filter(
-            Q(asset__hostname__icontains=q) | Q(field_config__label__icontains=q)
+            Q(asset__hostname__icontains=q) | Q(field_definition__label__icontains=q)
         )
 
     change_status = request.GET.get("status")

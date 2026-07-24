@@ -188,10 +188,10 @@ class PendingChangeDecisionView(LoginRequiredMixin, View):
         pending_change = get_object_or_404(PendingChange, pk=pk, status=PendingChange.Status.PENDING)
         if self.action == "approve":
             apply_pending_change(pending_change, decided_by=request.user.username)
-            messages.success(request, f"'{pending_change.field_config.label}' 변경을 승인했습니다.")
+            messages.success(request, f"'{pending_change.field_definition.label}' 변경을 승인했습니다.")
         else:
             reject_pending_change(pending_change, decided_by=request.user.username)
-            messages.success(request, f"'{pending_change.field_config.label}' 변경을 반려했습니다.")
+            messages.success(request, f"'{pending_change.field_definition.label}' 변경을 반려했습니다.")
 
         next_url = request.POST.get("next") or reverse_lazy("dashboard-change-history")
         return redirect(next_url)

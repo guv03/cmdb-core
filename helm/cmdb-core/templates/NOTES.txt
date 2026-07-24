@@ -6,7 +6,7 @@ NodePort 서비스로 노출됩니다. 실제 포트 확인:
 
 접속:
   대시보드: http://<노드IP>:<NodePort>/dashboard/assets/ (로그인 필요)
-  admin:    http://<노드IP>:<NodePort>/admin/ (ApprovalFieldConfig 등 저빈도 설정용)
+  admin:    http://<노드IP>:<NodePort>/admin/ (FactFieldDefinition 등 저빈도 설정용)
   facts push API: http://<노드IP>:<NodePort>/api/facts/ (AWX가 X-API-Key 헤더로 호출)
 {{- end }}
 

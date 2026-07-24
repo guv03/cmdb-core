@@ -42,21 +42,29 @@ class FactFieldDefinition(TimeStampedModel):
     class Source(models.TextChoices):
         AUTO = "auto", "자동 (raw facts 승격)"
         MANUAL = "manual", "수기 입력"
+        FIXED = "fixed", "고정 컬럼"
 
     key = models.CharField(
         max_length=255,
         unique=True,
         help_text=(
             "AUTO: raw_facts 안의 dot-path, 예: ansible_facts.ansible_memtotal_mb / "
-            "MANUAL: raw_facts와 무관한 고유 식별자"
+            "MANUAL: raw_facts와 무관한 고유 식별자 / "
+            "FIXED: HostFact 고정 컬럼명(facts.approval.FIXED_FIELD_PATHS 참고)"
         ),
     )
     label = models.CharField(max_length=255)
     value_type = models.CharField(max_length=10, choices=ValueType.choices)
     source = models.CharField(max_length=10, choices=Source.choices, default=Source.AUTO)
-    is_visible = models.BooleanField(default=True)
+    is_visible = models.BooleanField(
+        default=True, help_text="FIXED 필드는 이미 고정 컬럼으로 표시되므로 항상 꺼둘 것"
+    )
     is_searchable = models.BooleanField(default=False)
     sort_order = models.PositiveIntegerField(default=0)
+    requires_approval = models.BooleanField(
+        default=False,
+        help_text="켜두면 이미 존재하는 자산의 값이 push로 바뀔 때 즉시 반영하지 않고 승인 대기열에 쌓는다. MANUAL 필드는 대상이 아님(대시보드 입력은 항상 즉시 반영)",
+    )
 
     class Meta:
         ordering = ["sort_order", "id"]
@@ -86,30 +94,6 @@ class FactFieldChoice(models.Model):
         return f"{self.field_definition.label}: {self.value}"
 
 
-class ApprovalFieldConfig(TimeStampedModel):
-    """이 필드의 값 변경은 자동 반영하지 않고 admin 승인을 거치게 한다."""
-
-    class SourceType(models.TextChoices):
-        FIXED = "fixed", "고정 컬럼"
-        DYNAMIC = "dynamic", "동적 필드"
-
-    source_type = models.CharField(max_length=10, choices=SourceType.choices)
-    key = models.CharField(
-        max_length=255,
-        help_text="fixed: HostFact 고정 컬럼명 / dynamic: FactFieldDefinition.key와 동일한 값",
-    )
-    label = models.CharField(max_length=255)
-    value_type = models.CharField(max_length=10, choices=FactFieldDefinition.ValueType.choices)
-
-    class Meta:
-        constraints = [
-            models.UniqueConstraint(fields=["source_type", "key"], name="unique_approval_field")
-        ]
-
-    def __str__(self):
-        return self.label
-
-
 class PendingChange(TimeStampedModel):
     class Status(models.TextChoices):
         PENDING = "pending", "대기"
@@ -117,8 +101,8 @@ class PendingChange(TimeStampedModel):
         REJECTED = "rejected", "반려"
 
     asset = models.ForeignKey(Asset, on_delete=models.CASCADE, related_name="pending_changes")
-    field_config = models.ForeignKey(
-        ApprovalFieldConfig, on_delete=models.CASCADE, related_name="pending_changes"
+    field_definition = models.ForeignKey(
+        FactFieldDefinition, on_delete=models.CASCADE, related_name="pending_changes"
     )
 
     old_value_text = models.CharField(max_length=500, null=True, blank=True)
@@ -137,7 +121,7 @@ class PendingChange(TimeStampedModel):
         ordering = ["-created_at"]
 
     def __str__(self):
-        return f"{self.asset.hostname} / {self.field_config.key}"
+        return f"{self.asset.hostname} / {self.field_definition.key}"
 
     @property
     def old_value(self):

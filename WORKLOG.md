@@ -10,6 +10,14 @@
 - **`ansible_facts.default_ipv4.macaddress` 동적 필드 신규 등록**: admin 대신 Django shell로 `FactFieldDefinition` 생성 + `backfill_fact_field` 커맨드로 소급 반영, 실제 push API(`POST /api/facts/`)로 샘플 자산(`DRNRAP01`)을 등록해 MAC 주소 값이 정상 추출되는 것까지 종단 검증
 - **로컬 개발 DB 정리**: 기존 테스트 자산 6개(형식이 뒤섞여 있던 더미 데이터, hostvars 접두사 유무가 호스트마다 달랐음)를 전부 삭제하고 사용자가 준 실제 샘플 하나만 남김. 곁가지로 발견한 죽은 `FactFieldDefinition` 2개(`ansible_facts.ansible_processor_vcpus`, `ansible_facts.ansible_distribution_version` — 접두사 버그가 고쳐지기 전 등록되어 지금 포맷에서는 항상 빈 값, 후자는 고정 컬럼 `os_version`과 완전 중복)도 함께 삭제
 - **재사용 가능한 샘플 데이터 저장**: `samples/facts/drnrap01.json`에 push 페이로드 형식으로 정리해 커밋, `samples/facts/README.md`에 재push용 curl 명령 기록
+- **변경 승인 설정을 `ApprovalFieldConfig` → `FactFieldDefinition` 통합으로 리팩터링**
+  - 문제: 승인 대상 지정이 `ApprovalFieldConfig`라는 별도 모델이라 동적(AUTO) 필드는 `FactFieldDefinition` 등록과 `ApprovalFieldConfig` 등록을 매번 두 번 해야 했고, 두 모델의 `value_type`이 서로 검증 없이 따로 입력돼 드리프트 가능성도 있었음(리뷰 중 발견)
+  - `FactFieldDefinition.Source`에 `FIXED`(고정 컬럼 8개 전용, `facts.approval.FIXED_FIELD_PATHS`와 매칭) 추가, `requires_approval` BooleanField 신설. `ApprovalFieldConfig` 모델은 완전 삭제하고 `PendingChange.field_config`(→`ApprovalFieldConfig`) FK를 `field_definition`(→`FactFieldDefinition`) 하나로 단순화 — `stage_governed_changes`가 이제 `FactFieldDefinition.objects.filter(requires_approval=True)` 한 루프만 돎
+  - admin 검증 추가: FIXED 소스는 key가 `FIXED_FIELD_PATHS`에 있는 값이어야 함, MANUAL 소스는 `requires_approval` 체크 자체를 막음(대시보드 수기입력은 항상 즉시 반영이라 의미 없는 설정이라 실수 방지 차원)
+  - `backfill_fact_field` 관리 커맨드에 FIXED/MANUAL 가드 추가(기존엔 admin 액션에만 MANUAL 가드가 있고 커맨드 자체엔 없던 구멍)
+  - 마이그레이션 3단계(스키마 추가 → 기존 `ApprovalFieldConfig`/`PendingChange` 데이터를 새 구조로 이관 + 나머지 6개 FIXED 컬럼도 `requires_approval=False`로 미리 시딩 → 스키마 정리)로 작성, 역방향(rollback)도 구현
+  - 로컬에서 실제 push로 end-to-end 검증: 승인 대상 필드 값 변경 시 즉시 반영 안 되고 `PendingChange` 대기, 대시보드에서 승인하면 반영·`last_changed_at` 갱신, 반려하면 유지되는 것까지 확인. 이후 `ansible_facts.default_ipv4.macaddress`(AUTO 동적 필드)도 `requires_approval` 체크 한 번으로 동일하게 승인 흐름을 타는 것까지 검증(고정 컬럼 전용이 아니게 된 것 확인)
+  - CLAUDE.md/`helm/cmdb-core/templates/NOTES.txt`의 `ApprovalFieldConfig` 언급을 `FactFieldDefinition` 기준으로 갱신
 
 ## 2026-07-23
 

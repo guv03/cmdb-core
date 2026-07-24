@@ -8,7 +8,7 @@ from core.authentication import AWXAPIKeyAuthentication
 from core.reconciliation import get_or_create_asset
 from facts.approval import stage_governed_changes
 from facts.dynamic_fields import sync_dynamic_fields
-from facts.models import ApprovalFieldConfig, HostFact
+from facts.models import FactFieldDefinition, HostFact
 from facts.serializers import FactsIngestSerializer
 
 
@@ -56,13 +56,13 @@ class FactsIngestView(APIView):
                 sync_dynamic_fields(new_host_fact)
             else:
                 governed_fixed_keys = set(
-                    ApprovalFieldConfig.objects.filter(
-                        source_type=ApprovalFieldConfig.SourceType.FIXED
+                    FactFieldDefinition.objects.filter(
+                        source=FactFieldDefinition.Source.FIXED, requires_approval=True
                     ).values_list("key", flat=True)
                 )
                 governed_dynamic_keys = set(
-                    ApprovalFieldConfig.objects.filter(
-                        source_type=ApprovalFieldConfig.SourceType.DYNAMIC
+                    FactFieldDefinition.objects.filter(
+                        source=FactFieldDefinition.Source.AUTO, requires_approval=True
                     ).values_list("key", flat=True)
                 )
 
