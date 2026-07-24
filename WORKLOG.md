@@ -2,6 +2,15 @@
 
 일 단위로 진행한 작업을 기록한다. 새 날짜는 위에 추가한다.
 
+## 2026-07-24
+
+- **동적 필드(AUTO)에서 raw_facts 리스트 안 값 추출 가능 여부 확인**
+  - `extract_json_path`(`facts/dynamic_fields.py`)는 각 단계마다 dict인지만 확인하고 리스트를 만나면 바로 `None`을 반환 — 리스트 인덱싱/필터링은 현재 미지원. 같은 함수를 재사용하는 `facts/approval.py`의 고정 컬럼 승인 비교 로직도 동일 제약
+  - 실사용자가 준 실제 AWX facts 샘플로 구조 확인: `ansible_facts.default_ipv4`/`default_ipv6`는 dict라서 지금 코드로 바로 등록 가능(`ansible_facts.default_ipv4.macaddress` 등), 반면 `ansible_facts.<interface>.ipv6`나 `all_ipv4_addresses`처럼 진짜 리스트인 값은 인덱스 경로 지원 없이는 추출 불가 — 현재는 미해당(필요 시 숫자 인덱스 파싱을 `extract_json_path`에 추가하는 정도의 작은 확장으로 가능하다고 결론만 내려둠, 구현은 보류)
+- **`ansible_facts.default_ipv4.macaddress` 동적 필드 신규 등록**: admin 대신 Django shell로 `FactFieldDefinition` 생성 + `backfill_fact_field` 커맨드로 소급 반영, 실제 push API(`POST /api/facts/`)로 샘플 자산(`DRNRAP01`)을 등록해 MAC 주소 값이 정상 추출되는 것까지 종단 검증
+- **로컬 개발 DB 정리**: 기존 테스트 자산 6개(형식이 뒤섞여 있던 더미 데이터, hostvars 접두사 유무가 호스트마다 달랐음)를 전부 삭제하고 사용자가 준 실제 샘플 하나만 남김. 곁가지로 발견한 죽은 `FactFieldDefinition` 2개(`ansible_facts.ansible_processor_vcpus`, `ansible_facts.ansible_distribution_version` — 접두사 버그가 고쳐지기 전 등록되어 지금 포맷에서는 항상 빈 값, 후자는 고정 컬럼 `os_version`과 완전 중복)도 함께 삭제
+- **재사용 가능한 샘플 데이터 저장**: `samples/facts/drnrap01.json`에 push 페이로드 형식으로 정리해 커밋, `samples/facts/README.md`에 재push용 curl 명령 기록
+
 ## 2026-07-23
 
 - **대시보드 컬럼 레이아웃 개선**

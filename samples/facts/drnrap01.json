@@ -1,0 +1,1264 @@
+{
+  "hostname": "DRNRAP01",
+  "ansible_facts": {
+    "virtualization_role": "guest",
+    "virtualization_type": "kvm",
+    "virtualization_tech_guest": [
+      "kvm"
+    ],
+    "virtualization_tech_host": [],
+    "ssh_host_key_rsa_public": "AAAAB3NzaC1yc2EAAAADAQABAAABgQDCiL68WTly8nstHnxy3y3TpWKspLIAdG8zrDw9YRl11rPvOtwWPGuhv0y7SAaOypwvGDtqqk5ElS7ZaQdew1YmW0opW7AVFmjq3bdxf1/OgYFsxigP+Qh6XZC8QCfaQM5VlGnlcTFRCYop0Qsb2DXsuD2ksJ/lMev+mOjMiLuF5LHcwWMWxbbaC1uPSXpsVLoDF2OdQ6AfSY8n6OxpALoqpo8xdPzci0dr1wvPz0OXAh/Z1hRI0qMGCiB60tJduAmeVbWep8K/WHzKMbHdHE6roFsnzHVB/u5B14ucbax2HO0z5wq7HcfgIRzgwlVGX+MdKflwCg3X+7V5ouV1YQkTQFQu+HTxXKhrrRVpwUcSZcM5lXi/Ba2XQCxzqNcNxi2CCBi+yhbIN1UC90hSEV+MmcvhMw6RHdhnQi1g46L9CBLKl8ZYyXITHUM1hpdiNlVqcqDTZZQQ2bkXwEUASh7b4jUG+WFV6e6O+Ml4ZWnlv85muoLk+0VpkH+OK30CF60=",
+    "ssh_host_key_rsa_public_keytype": "ssh-rsa",
+    "ssh_host_key_ecdsa_public": "AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBGe0eBjCiQXx3J/gNBdME8bzwuTHV69fMyX5E6lfP7lzERlZbnkRTkqcmu5oSgqzrkBXZv+YhL8XDAE6gQYj6Fg=",
+    "ssh_host_key_ecdsa_public_keytype": "ecdsa-sha2-nistp256",
+    "ssh_host_key_ed25519_public": "AAAAC3NzaC1lZDI1NTE5AAAAIFk0gcPFMeJGHF3bK97L4w0Q1w0I4JEaWPRR2JwOWu6y",
+    "ssh_host_key_ed25519_public_keytype": "ssh-ed25519",
+    "fibre_channel_wwn": [],
+    "distribution": "RedHat",
+    "distribution_release": "Plow",
+    "distribution_version": "9.4",
+    "distribution_major_version": "9",
+    "distribution_file_path": "/etc/redhat-release",
+    "distribution_file_variety": "RedHat",
+    "distribution_file_parsed": true,
+    "distribution_file_search_string": "Red Hat",
+    "os_family": "RedHat",
+    "env": {
+      "SHELL": "/bin/bash",
+      "PWD": "/home/slogview",
+      "LOGNAME": "slogview",
+      "XDG_SESSION_TYPE": "tty",
+      "_": "/usr/bin/python3.9",
+      "MOTD_SHOWN": "pam",
+      "HOME": "/home/slogview",
+      "LANG": "ko_KR.UTF-8",
+      "LS_COLORS": "",
+      "SSH_CONNECTION": "10.150.11.192 29196 10.150.9.165 22",
+      "XDG_SESSION_CLASS": "user",
+      "LESSOPEN": "||/usr/bin/lesspipe.sh %s",
+      "USER": "slogview",
+      "SHLVL": "1",
+      "XDG_SESSION_ID": "570",
+      "XDG_RUNTIME_DIR": "/run/user/1000",
+      "S_COLORS": "auto",
+      "SSH_CLIENT": "10.150.11.192 29196 22",
+      "which_declare": "declare -f",
+      "XDG_DATA_DIRS": "/home/slogview/.local/share/flatpak/exports/share:/var/lib/flatpak/exports/share:/usr/local/share:/usr/share",
+      "PATH": "/home/slogview/.local/bin:/home/slogview/bin:/usr/local/bin:/usr/bin:/usr/local/sbin:/usr/sbin",
+      "DBUS_SESSION_BUS_ADDRESS": "unix:path=/run/user/1000/bus",
+      "SSH_TTY": "/dev/pts/0",
+      "BASH_FUNC_which%%": "() { ( alias;\n eval ${which_declare} ) | /usr/bin/which --tty-only --read-alias --read-functions --show-tilde --show-dot $@\n}"
+    },
+    "hostnqn": "nqn.2014-08.org.nvmexpress:uuid:1338dfe0-ecad-4c7d-b77e-da44ce856008",
+    "system": "Linux",
+    "kernel": "5.14.0-427.13.1.el9_4.x86_64",
+    "kernel_version": "#1 SMP PREEMPT_DYNAMIC Wed Apr 10 10:29:16 EDT 2024",
+    "machine": "x86_64",
+    "python_version": "3.9.18",
+    "fqdn": "DRNRAP01",
+    "hostname": "DRNRAP01",
+    "nodename": "DRNRAP01",
+    "domain": "",
+    "userspace_bits": "64",
+    "architecture": "x86_64",
+    "userspace_architecture": "x86_64",
+    "machine_id": "c0c1d6c3912a4e42b4bbfb2bc4fad90a",
+    "apparmor": {
+      "status": "disabled"
+    },
+    "user_id": "slogview",
+    "user_uid": 1000,
+    "user_gid": 1000,
+    "user_gecos": "slogview",
+    "user_dir": "/home/slogview",
+    "user_shell": "/bin/bash",
+    "real_user_id": 1000,
+    "effective_user_id": 1000,
+    "real_group_id": 1000,
+    "effective_group_id": 1000,
+    "is_chroot": false,
+    "system_capabilities_enforced": "True",
+    "system_capabilities": [
+      ""
+    ],
+    "processor": [
+      "0",
+      "GenuineIntel",
+      "Intel Xeon Processor (Cascadelake)",
+      "1",
+      "GenuineIntel",
+      "Intel Xeon Processor (Cascadelake)",
+      "2",
+      "GenuineIntel",
+      "Intel Xeon Processor (Cascadelake)",
+      "3",
+      "GenuineIntel",
+      "Intel Xeon Processor (Cascadelake)",
+      "4",
+      "GenuineIntel",
+      "Intel Xeon Processor (Cascadelake)",
+      "5",
+      "GenuineIntel",
+      "Intel Xeon Processor (Cascadelake)",
+      "6",
+      "GenuineIntel",
+      "Intel Xeon Processor (Cascadelake)",
+      "7",
+      "GenuineIntel",
+      "Intel Xeon Processor (Cascadelake)"
+    ],
+    "flags": [
+      "fpu",
+      "vme",
+      "de",
+      "pse",
+      "tsc",
+      "msr",
+      "pae",
+      "mce",
+      "cx8",
+      "apic",
+      "sep",
+      "mtrr",
+      "pge",
+      "mca",
+      "cmov",
+      "pat",
+      "pse36",
+      "clflush",
+      "mmx",
+      "fxsr",
+      "sse",
+      "sse2",
+      "ht",
+      "syscall",
+      "nx",
+      "pdpe1gb",
+      "rdtscp",
+      "lm",
+      "constant_tsc",
+      "rep_good",
+      "nopl",
+      "xtopology",
+      "cpuid",
+      "tsc_known_freq",
+      "pni",
+      "pclmulqdq",
+      "ssse3",
+      "fma",
+      "cx16",
+      "pcid",
+      "sse4_1",
+      "sse4_2",
+      "x2apic",
+      "movbe",
+      "popcnt",
+      "tsc_deadline_timer",
+      "aes",
+      "xsave",
+      "avx",
+      "f16c",
+      "rdrand",
+      "hypervisor",
+      "lahf_lm",
+      "abm",
+      "3dnowprefetch",
+      "cpuid_fault",
+      "ssbd",
+      "ibrs",
+      "ibpb",
+      "ibrs_enhanced",
+      "fsgsbase",
+      "bmi1",
+      "avx2",
+      "smep",
+      "bmi2",
+      "erms",
+      "invpcid",
+      "avx512f",
+      "avx512dq",
+      "rdseed",
+      "adx",
+      "smap",
+      "clflushopt",
+      "clwb",
+      "avx512cd",
+      "avx512bw",
+      "avx512vl",
+      "xsaveopt",
+      "xsavec",
+      "xgetbv1",
+      "xsaves",
+      "arat",
+      "avx512_vnni",
+      "arch_capabilities"
+    ],
+    "processor_count": 1,
+    "processor_cores": 8,
+    "processor_threads_per_core": 1,
+    "processor_vcpus": 8,
+    "processor_nproc": 8,
+    "memtotal_mb": 15668,
+    "memfree_mb": 725,
+    "swaptotal_mb": 16383,
+    "swapfree_mb": 15654,
+    "memory_mb": {
+      "real": {
+        "total": 15668,
+        "used": 14943,
+        "free": 725
+      },
+      "nocache": {
+        "free": 6154,
+        "used": 9514
+      },
+      "swap": {
+        "total": 16383,
+        "free": 15654,
+        "used": 729,
+        "cached": 10
+      }
+    },
+    "bios_date": "04/01/2014",
+    "bios_vendor": "SeaBIOS",
+    "bios_version": "nutanix-ahv-4.20230302.3.2662.el8",
+    "board_asset_tag": "NA",
+    "board_name": "NA",
+    "board_serial": "NA",
+    "board_vendor": "NA",
+    "board_version": "NA",
+    "chassis_asset_tag": "NA",
+    "chassis_serial": "NA",
+    "chassis_vendor": "Red Hat",
+    "chassis_version": "RHEL 7.6.0 PC (i440FX + PIIX, 1996)",
+    "form_factor": "Other",
+    "product_name": "AHV",
+    "product_serial": "NA",
+    "product_uuid": "NA",
+    "product_version": "RHEL 7.6.0 PC (i440FX + PIIX, 1996)",
+    "system_vendor": "Nutanix",
+    "devices": {
+      "dm-1": {
+        "virtual": 1,
+        "links": {
+          "ids": [
+            "dm-name-rootvg01-swap",
+            "dm-uuid-LVM-lSqcianxpLYQK1X3DcZrmrVSHDuQt2cIThSVl92EsdDBf2nQWtv5aTepkOg9CFPm"
+          ],
+          "uuids": [
+            "d3b5525b-6926-487d-8da3-07c3a95f668e"
+          ],
+          "labels": [],
+          "masters": []
+        },
+        "vendor": null,
+        "model": null,
+        "sas_address": null,
+        "sas_device_handle": null,
+        "removable": "0",
+        "support_discard": "1048576",
+        "partitions": {},
+        "rotational": "1",
+        "scheduler_mode": "",
+        "sectorsize": "512",
+        "sectors": 33554432,
+        "size": "16.00 GB",
+        "host": "",
+        "holders": []
+      },
+      "sdd": {
+        "virtual": 1,
+        "links": {
+          "ids": [
+            "scsi-1NUTANIX_NFS_4_0_1526_70f70190_0ed8_4814_9a4a_4e75f5cc27af",
+            "scsi-8naa.6506b8d084ae88898be897e244e26c6c",
+            "scsi-SNUTANIX_VDISK_NFS_4_0_1526_70f70190_0ed8_4814_9a4a_4e75f5cc27af"
+          ],
+          "uuids": [],
+          "labels": [],
+          "masters": []
+        },
+        "vendor": "NUTANIX",
+        "model": "VDISK",
+        "sas_address": null,
+        "sas_device_handle": null,
+        "removable": "0",
+        "support_discard": "1048576",
+        "partitions": {
+          "sdd1": {
+            "links": {
+              "ids": [
+                "scsi-1NUTANIX_NFS_4_0_1526_70f70190_0ed8_4814_9a4a_4e75f5cc27af-part1",
+                "scsi-8naa.6506b8d084ae88898be897e244e26c6c-part1",
+                "scsi-SNUTANIX_VDISK_NFS_4_0_1526_70f70190_0ed8_4814_9a4a_4e75f5cc27af-part1"
+              ],
+              "uuids": [],
+              "labels": [
+                "DG_DATA"
+              ],
+              "masters": []
+            },
+            "start": "2048",
+            "sectorsize": 512,
+            "sectors": 104855552,
+            "size": "50.00 GB",
+            "uuid": null,
+            "holders": []
+          }
+        },
+        "rotational": "1",
+        "scheduler_mode": "none",
+        "sectorsize": "512",
+        "sectors": 104857600,
+        "size": "50.00 GB",
+        "host": "SCSI storage controller: Red Hat, Inc. Virtio SCSI",
+        "holders": []
+      },
+      "sdb": {
+        "virtual": 1,
+        "links": {
+          "ids": [
+            "scsi-1NUTANIX_NFS_4_0_1521_3fcc6762_edb7_465e_a562_fecc69041208",
+            "scsi-8naa.6506b8d0df3f84b952f2c8b80bdadb2c",
+            "scsi-SNUTANIX_VDISK_NFS_4_0_1521_3fcc6762_edb7_465e_a562_fecc69041208"
+          ],
+          "uuids": [],
+          "labels": [],
+          "masters": []
+        },
+        "vendor": "NUTANIX",
+        "model": "VDISK",
+        "sas_address": null,
+        "sas_device_handle": null,
+        "removable": "0",
+        "support_discard": "1048576",
+        "partitions": {
+          "sdb1": {
+            "links": {
+              "ids": [
+                "lvm-pv-uuid-yWHSXb-Ognv-ZTom-wtSD-UxJG-AUv7-XFBAvz",
+                "scsi-1NUTANIX_NFS_4_0_1521_3fcc6762_edb7_465e_a562_fecc69041208-part1",
+                "scsi-8naa.6506b8d0df3f84b952f2c8b80bdadb2c-part1",
+                "scsi-SNUTANIX_VDISK_NFS_4_0_1521_3fcc6762_edb7_465e_a562_fecc69041208-part1"
+              ],
+              "uuids": [],
+              "labels": [],
+              "masters": [
+                "dm-7"
+              ]
+            },
+            "start": "2048",
+            "sectorsize": 512,
+            "sectors": 209713152,
+            "size": "100.00 GB",
+            "uuid": null,
+            "holders": [
+              "datavg01-lv_data"
+            ]
+          }
+        },
+        "rotational": "1",
+        "scheduler_mode": "none",
+        "sectorsize": "512",
+        "sectors": 209715200,
+        "size": "100.00 GB",
+        "host": "SCSI storage controller: Red Hat, Inc. Virtio SCSI",
+        "holders": []
+      },
+      "dm-6": {
+        "virtual": 1,
+        "links": {
+          "ids": [
+            "dm-name-appvg01-lv_deploy",
+            "dm-uuid-LVM-93xufNK0ySAtdeBwudX3mS6BQoRF96GjdlKL0pWis5Oo6oysSEmBvWmYZEJh3WaS"
+          ],
+          "uuids": [
+            "1a24be8e-4895-448f-a222-83509a27721b"
+          ],
+          "labels": [],
+          "masters": []
+        },
+        "vendor": null,
+        "model": null,
+        "sas_address": null,
+        "sas_device_handle": null,
+        "removable": "0",
+        "support_discard": "1048576",
+        "partitions": {},
+        "rotational": "1",
+        "scheduler_mode": "",
+        "sectorsize": "512",
+        "sectors": 62914560,
+        "size": "30.00 GB",
+        "host": "",
+        "holders": []
+      },
+      "dm-4": {
+        "virtual": 1,
+        "links": {
+          "ids": [
+            "dm-name-appvg01-lv_grid",
+            "dm-uuid-LVM-93xufNK0ySAtdeBwudX3mS6BQoRF96GjWT5ymgVSbxwvIuaztPJ68t1LSQsn8OTq"
+          ],
+          "uuids": [
+            "e25fd08e-d783-4166-a812-6abe12fd261f"
+          ],
+          "labels": [],
+          "masters": []
+        },
+        "vendor": null,
+        "model": null,
+        "sas_address": null,
+        "sas_device_handle": null,
+        "removable": "0",
+        "support_discard": "1048576",
+        "partitions": {},
+        "rotational": "1",
+        "scheduler_mode": "",
+        "sectorsize": "512",
+        "sectors": 104857600,
+        "size": "50.00 GB",
+        "host": "",
+        "holders": []
+      },
+      "sr0": {
+        "virtual": 1,
+        "links": {
+          "ids": [
+            "ata-QEMU_DVD-ROM_QM00001"
+          ],
+          "uuids": [],
+          "labels": [],
+          "masters": []
+        },
+        "vendor": "QEMU",
+        "model": "QEMU DVD-ROM",
+        "sas_address": null,
+        "sas_device_handle": null,
+        "removable": "1",
+        "support_discard": "0",
+        "partitions": {},
+        "rotational": "1",
+        "scheduler_mode": "mq-deadline",
+        "sectorsize": "512",
+        "sectors": 2097151,
+        "size": "1024.00 MB",
+        "host": "IDE interface: Intel Corporation 82371SB PIIX3 IDE [Natoma/Triton II]",
+        "holders": []
+      },
+      "dm-2": {
+        "virtual": 1,
+        "links": {
+          "ids": [
+            "dm-name-appvg01-lv_app",
+            "dm-uuid-LVM-93xufNK0ySAtdeBwudX3mS6BQoRF96GjCfNFGGI2qgJM0JQ8H7U8f1MVfWmRJZ93"
+          ],
+          "uuids": [
+            "34f4ae7b-1264-4a9d-b9e8-4138288c55dd"
+          ],
+          "labels": [],
+          "masters": []
+        },
+        "vendor": null,
+        "model": null,
+        "sas_address": null,
+        "sas_device_handle": null,
+        "removable": "0",
+        "support_discard": "1048576",
+        "partitions": {},
+        "rotational": "1",
+        "scheduler_mode": "",
+        "sectorsize": "512",
+        "sectors": 62914560,
+        "size": "30.00 GB",
+        "host": "",
+        "holders": []
+      },
+      "dm-0": {
+        "virtual": 1,
+        "links": {
+          "ids": [
+            "dm-name-rootvg01-root",
+            "dm-uuid-LVM-lSqcianxpLYQK1X3DcZrmrVSHDuQt2cIXX17kBilT2B1f0u112PRzM6dSVo08ZUg"
+          ],
+          "uuids": [
+            "e4dc6e74-d028-4fd6-8757-4df2b7fb40a0"
+          ],
+          "labels": [],
+          "masters": []
+        },
+        "vendor": null,
+        "model": null,
+        "sas_address": null,
+        "sas_device_handle": null,
+        "removable": "0",
+        "support_discard": "1048576",
+        "partitions": {},
+        "rotational": "1",
+        "scheduler_mode": "",
+        "sectorsize": "512",
+        "sectors": 104857600,
+        "size": "50.00 GB",
+        "host": "",
+        "holders": []
+      },
+      "sdc": {
+        "virtual": 1,
+        "links": {
+          "ids": [
+            "scsi-1NUTANIX_NFS_4_0_1519_0c581b4b_345a_40ad_a336_955b212d3ea4",
+            "scsi-8naa.6506b8d0307dec96aac55c20724bd352",
+            "scsi-SNUTANIX_VDISK_NFS_4_0_1519_0c581b4b_345a_40ad_a336_955b212d3ea4"
+          ],
+          "uuids": [],
+          "labels": [],
+          "masters": []
+        },
+        "vendor": "NUTANIX",
+        "model": "VDISK",
+        "sas_address": null,
+        "sas_device_handle": null,
+        "removable": "0",
+        "support_discard": "1048576",
+        "partitions": {
+          "sdc2": {
+            "links": {
+              "ids": [
+                "lvm-pv-uuid-QRFG5S-WHdR-XVx9-0id1-zyXG-vxYi-0O6JbA",
+                "scsi-1NUTANIX_NFS_4_0_1519_0c581b4b_345a_40ad_a336_955b212d3ea4-part2",
+                "scsi-8naa.6506b8d0307dec96aac55c20724bd352-part2",
+                "scsi-SNUTANIX_VDISK_NFS_4_0_1519_0c581b4b_345a_40ad_a336_955b212d3ea4-part2"
+              ],
+              "uuids": [],
+              "labels": [],
+              "masters": [
+                "dm-0",
+                "dm-1"
+              ]
+            },
+            "start": "1026048",
+            "sectorsize": 512,
+            "sectors": 138428416,
+            "size": "66.01 GB",
+            "uuid": null,
+            "holders": [
+              "rootvg01-swap",
+              "rootvg01-root"
+            ]
+          },
+          "sdc1": {
+            "links": {
+              "ids": [
+                "scsi-1NUTANIX_NFS_4_0_1519_0c581b4b_345a_40ad_a336_955b212d3ea4-part1",
+                "scsi-8naa.6506b8d0307dec96aac55c20724bd352-part1",
+                "scsi-SNUTANIX_VDISK_NFS_4_0_1519_0c581b4b_345a_40ad_a336_955b212d3ea4-part1"
+              ],
+              "uuids": [
+                "734393f9-9f49-4820-a69f-2e07be678ee6"
+              ],
+              "labels": [],
+              "masters": []
+            },
+            "start": "2048",
+            "sectorsize": 512,
+            "sectors": 1024000,
+            "size": "500.00 MB",
+            "uuid": "734393f9-9f49-4820-a69f-2e07be678ee6",
+            "holders": []
+          }
+        },
+        "rotational": "1",
+        "scheduler_mode": "none",
+        "sectorsize": "512",
+        "sectors": 140509184,
+        "size": "67.00 GB",
+        "host": "SCSI storage controller: Red Hat, Inc. Virtio SCSI",
+        "holders": []
+      },
+      "dm-7": {
+        "virtual": 1,
+        "links": {
+          "ids": [
+            "dm-name-datavg01-lv_data",
+            "dm-uuid-LVM-89de6IdSGqVAUr8druiVA53qR3JnUo9uDliZKgcoJfGLS37BgxCsdkqbcxkoK3XB"
+          ],
+          "uuids": [
+            "8ceace52-a834-4259-a7b0-59064f45adf7"
+          ],
+          "labels": [],
+          "masters": []
+        },
+        "vendor": null,
+        "model": null,
+        "sas_address": null,
+        "sas_device_handle": null,
+        "removable": "0",
+        "support_discard": "1048576",
+        "partitions": {},
+        "rotational": "1",
+        "scheduler_mode": "",
+        "sectorsize": "512",
+        "sectors": 104857600,
+        "size": "50.00 GB",
+        "host": "",
+        "holders": []
+      },
+      "sda": {
+        "virtual": 1,
+        "links": {
+          "ids": [
+            "scsi-1NUTANIX_NFS_4_0_1520_80f5cd4a_8e1c_47c1_991b_29b644fa71f0",
+            "scsi-8naa.6506b8d322866ba34161da57e11f8378",
+            "scsi-SNUTANIX_VDISK_NFS_4_0_1520_80f5cd4a_8e1c_47c1_991b_29b644fa71f0"
+          ],
+          "uuids": [],
+          "labels": [],
+          "masters": []
+        },
+        "vendor": "NUTANIX",
+        "model": "VDISK",
+        "sas_address": null,
+        "sas_device_handle": null,
+        "removable": "0",
+        "support_discard": "1048576",
+        "partitions": {
+          "sda2": {
+            "links": {
+              "ids": [
+                "lvm-pv-uuid-OQPAnV-DTTR-du1s-uJhJ-9OYN-fe3B-rRkUBy",
+                "scsi-1NUTANIX_NFS_4_0_1520_80f5cd4a_8e1c_47c1_991b_29b644fa71f0-part2",
+                "scsi-8naa.6506b8d322866ba34161da57e11f8378-part2",
+                "scsi-SNUTANIX_VDISK_NFS_4_0_1520_80f5cd4a_8e1c_47c1_991b_29b644fa71f0-part2"
+              ],
+              "uuids": [],
+              "labels": [],
+              "masters": [
+                "dm-3",
+                "dm-4"
+              ]
+            },
+            "start": "209715200",
+            "sectorsize": 512,
+            "sectors": 209715200,
+            "size": "100.00 GB",
+            "uuid": null,
+            "holders": [
+              "appvg01-lv_grid",
+              "appvg01-lv_oracle"
+            ]
+          },
+          "sda1": {
+            "links": {
+              "ids": [
+                "lvm-pv-uuid-YU7iCm-FGvd-EdhJ-rdty-ybpv-vN11-acY1vu",
+                "scsi-1NUTANIX_NFS_4_0_1520_80f5cd4a_8e1c_47c1_991b_29b644fa71f0-part1",
+                "scsi-8naa.6506b8d322866ba34161da57e11f8378-part1",
+                "scsi-SNUTANIX_VDISK_NFS_4_0_1520_80f5cd4a_8e1c_47c1_991b_29b644fa71f0-part1"
+              ],
+              "uuids": [],
+              "labels": [],
+              "masters": [
+                "dm-2",
+                "dm-4",
+                "dm-5",
+                "dm-6"
+              ]
+            },
+            "start": "2048",
+            "sectorsize": 512,
+            "sectors": 209713152,
+            "size": "100.00 GB",
+            "uuid": null,
+            "holders": [
+              "appvg01-lv_deploy",
+              "appvg01-lv_grid",
+              "appvg01-lv_app",
+              "appvg01-lv_log"
+            ]
+          }
+        },
+        "rotational": "1",
+        "scheduler_mode": "none",
+        "sectorsize": "512",
+        "sectors": 419430400,
+        "size": "200.00 GB",
+        "host": "SCSI storage controller: Red Hat, Inc. Virtio SCSI",
+        "holders": []
+      },
+      "dm-5": {
+        "virtual": 1,
+        "links": {
+          "ids": [
+            "dm-name-appvg01-lv_log",
+            "dm-uuid-LVM-93xufNK0ySAtdeBwudX3mS6BQoRF96GjPKiBH2w3JBVnlfgEpQui9xMZKd7iDkSK"
+          ],
+          "uuids": [
+            "d5c92286-48f1-4efc-8083-ad940e70f5d2"
+          ],
+          "labels": [],
+          "masters": []
+        },
+        "vendor": null,
+        "model": null,
+        "sas_address": null,
+        "sas_device_handle": null,
+        "removable": "0",
+        "support_discard": "1048576",
+        "partitions": {},
+        "rotational": "1",
+        "scheduler_mode": "",
+        "sectorsize": "512",
+        "sectors": 62914560,
+        "size": "30.00 GB",
+        "host": "",
+        "holders": []
+      },
+      "dm-3": {
+        "virtual": 1,
+        "links": {
+          "ids": [
+            "dm-name-appvg01-lv_oracle",
+            "dm-uuid-LVM-93xufNK0ySAtdeBwudX3mS6BQoRF96GjxlAm077cem5O0F176FOR0h64v3oNisml"
+          ],
+          "uuids": [
+            "c19cadd0-95cd-4919-8b28-c2033915ebab"
+          ],
+          "labels": [],
+          "masters": []
+        },
+        "vendor": null,
+        "model": null,
+        "sas_address": null,
+        "sas_device_handle": null,
+        "removable": "0",
+        "support_discard": "1048576",
+        "partitions": {},
+        "rotational": "1",
+        "scheduler_mode": "",
+        "sectorsize": "512",
+        "sectors": 104857600,
+        "size": "50.00 GB",
+        "host": "",
+        "holders": []
+      }
+    },
+    "device_links": {
+      "ids": {
+        "sdd1": [
+          "scsi-1NUTANIX_NFS_4_0_1526_70f70190_0ed8_4814_9a4a_4e75f5cc27af-part1",
+          "scsi-8naa.6506b8d084ae88898be897e244e26c6c-part1",
+          "scsi-SNUTANIX_VDISK_NFS_4_0_1526_70f70190_0ed8_4814_9a4a_4e75f5cc27af-part1"
+        ],
+        "dm-1": [
+          "dm-name-rootvg01-swap",
+          "dm-uuid-LVM-lSqcianxpLYQK1X3DcZrmrVSHDuQt2cIThSVl92EsdDBf2nQWtv5aTepkOg9CFPm"
+        ],
+        "dm-5": [
+          "dm-name-appvg01-lv_log",
+          "dm-uuid-LVM-93xufNK0ySAtdeBwudX3mS6BQoRF96GjPKiBH2w3JBVnlfgEpQui9xMZKd7iDkSK"
+        ],
+        "dm-4": [
+          "dm-name-appvg01-lv_grid",
+          "dm-uuid-LVM-93xufNK0ySAtdeBwudX3mS6BQoRF96GjWT5ymgVSbxwvIuaztPJ68t1LSQsn8OTq"
+        ],
+        "dm-7": [
+          "dm-name-datavg01-lv_data",
+          "dm-uuid-LVM-89de6IdSGqVAUr8druiVA53qR3JnUo9uDliZKgcoJfGLS37BgxCsdkqbcxkoK3XB"
+        ],
+        "dm-2": [
+          "dm-name-appvg01-lv_app",
+          "dm-uuid-LVM-93xufNK0ySAtdeBwudX3mS6BQoRF96GjCfNFGGI2qgJM0JQ8H7U8f1MVfWmRJZ93"
+        ],
+        "dm-6": [
+          "dm-name-appvg01-lv_deploy",
+          "dm-uuid-LVM-93xufNK0ySAtdeBwudX3mS6BQoRF96GjdlKL0pWis5Oo6oysSEmBvWmYZEJh3WaS"
+        ],
+        "dm-3": [
+          "dm-name-appvg01-lv_oracle",
+          "dm-uuid-LVM-93xufNK0ySAtdeBwudX3mS6BQoRF96GjxlAm077cem5O0F176FOR0h64v3oNisml"
+        ],
+        "sdb1": [
+          "lvm-pv-uuid-yWHSXb-Ognv-ZTom-wtSD-UxJG-AUv7-XFBAvz",
+          "scsi-1NUTANIX_NFS_4_0_1521_3fcc6762_edb7_465e_a562_fecc69041208-part1",
+          "scsi-8naa.6506b8d0df3f84b952f2c8b80bdadb2c-part1",
+          "scsi-SNUTANIX_VDISK_NFS_4_0_1521_3fcc6762_edb7_465e_a562_fecc69041208-part1"
+        ],
+        "sdc2": [
+          "lvm-pv-uuid-QRFG5S-WHdR-XVx9-0id1-zyXG-vxYi-0O6JbA",
+          "scsi-1NUTANIX_NFS_4_0_1519_0c581b4b_345a_40ad_a336_955b212d3ea4-part2",
+          "scsi-8naa.6506b8d0307dec96aac55c20724bd352-part2",
+          "scsi-SNUTANIX_VDISK_NFS_4_0_1519_0c581b4b_345a_40ad_a336_955b212d3ea4-part2"
+        ],
+        "sda2": [
+          "lvm-pv-uuid-OQPAnV-DTTR-du1s-uJhJ-9OYN-fe3B-rRkUBy",
+          "scsi-1NUTANIX_NFS_4_0_1520_80f5cd4a_8e1c_47c1_991b_29b644fa71f0-part2",
+          "scsi-8naa.6506b8d322866ba34161da57e11f8378-part2",
+          "scsi-SNUTANIX_VDISK_NFS_4_0_1520_80f5cd4a_8e1c_47c1_991b_29b644fa71f0-part2"
+        ],
+        "sda1": [
+          "lvm-pv-uuid-YU7iCm-FGvd-EdhJ-rdty-ybpv-vN11-acY1vu",
+          "scsi-1NUTANIX_NFS_4_0_1520_80f5cd4a_8e1c_47c1_991b_29b644fa71f0-part1",
+          "scsi-8naa.6506b8d322866ba34161da57e11f8378-part1",
+          "scsi-SNUTANIX_VDISK_NFS_4_0_1520_80f5cd4a_8e1c_47c1_991b_29b644fa71f0-part1"
+        ],
+        "sr0": [
+          "ata-QEMU_DVD-ROM_QM00001"
+        ],
+        "sdc1": [
+          "scsi-1NUTANIX_NFS_4_0_1519_0c581b4b_345a_40ad_a336_955b212d3ea4-part1",
+          "scsi-8naa.6506b8d0307dec96aac55c20724bd352-part1",
+          "scsi-SNUTANIX_VDISK_NFS_4_0_1519_0c581b4b_345a_40ad_a336_955b212d3ea4-part1"
+        ],
+        "sdd": [
+          "scsi-1NUTANIX_NFS_4_0_1526_70f70190_0ed8_4814_9a4a_4e75f5cc27af",
+          "scsi-8naa.6506b8d084ae88898be897e244e26c6c",
+          "scsi-SNUTANIX_VDISK_NFS_4_0_1526_70f70190_0ed8_4814_9a4a_4e75f5cc27af"
+        ],
+        "sdb": [
+          "scsi-1NUTANIX_NFS_4_0_1521_3fcc6762_edb7_465e_a562_fecc69041208",
+          "scsi-8naa.6506b8d0df3f84b952f2c8b80bdadb2c",
+          "scsi-SNUTANIX_VDISK_NFS_4_0_1521_3fcc6762_edb7_465e_a562_fecc69041208"
+        ],
+        "sda": [
+          "scsi-1NUTANIX_NFS_4_0_1520_80f5cd4a_8e1c_47c1_991b_29b644fa71f0",
+          "scsi-8naa.6506b8d322866ba34161da57e11f8378",
+          "scsi-SNUTANIX_VDISK_NFS_4_0_1520_80f5cd4a_8e1c_47c1_991b_29b644fa71f0"
+        ],
+        "dm-0": [
+          "dm-name-rootvg01-root",
+          "dm-uuid-LVM-lSqcianxpLYQK1X3DcZrmrVSHDuQt2cIXX17kBilT2B1f0u112PRzM6dSVo08ZUg"
+        ]
+      },
+      "uuids": {
+        "dm-1": [
+          "d3b5525b-6926-487d-8da3-07c3a95f668e"
+        ],
+        "dm-5": [
+          "d5c92286-48f1-4efc-8083-ad940e70f5d2"
+        ],
+        "dm-4": [
+          "e25fd08e-d783-4166-a812-6abe12fd261f"
+        ],
+        "dm-7": [
+          "8ceace52-a834-4259-a7b0-59064f45adf7"
+        ],
+        "dm-2": [
+          "34f4ae7b-1264-4a9d-b9e8-4138288c55dd"
+        ],
+        "dm-6": [
+          "1a24be8e-4895-448f-a222-83509a27721b"
+        ],
+        "dm-3": [
+          "c19cadd0-95cd-4919-8b28-c2033915ebab"
+        ],
+        "sdc1": [
+          "734393f9-9f49-4820-a69f-2e07be678ee6"
+        ],
+        "dm-0": [
+          "e4dc6e74-d028-4fd6-8757-4df2b7fb40a0"
+        ]
+      },
+      "labels": {
+        "sdd1": [
+          "DG_DATA"
+        ]
+      },
+      "masters": {
+        "sdc2": [
+          "dm-0",
+          "dm-1"
+        ],
+        "sda1": [
+          "dm-2",
+          "dm-4",
+          "dm-5",
+          "dm-6"
+        ],
+        "sda2": [
+          "dm-3",
+          "dm-4"
+        ],
+        "sdb1": [
+          "dm-7"
+        ]
+      }
+    },
+    "uptime_seconds": 1638670,
+    "mounts": [
+      {
+        "mount": "/",
+        "device": "/dev/mapper/rootvg01-root",
+        "fstype": "xfs",
+        "options": "rw,relatime,attr2,inode64,logbufs=8,logbsize=32k,noquota",
+        "dump": 0,
+        "passno": 0,
+        "size_total": 53619982336,
+        "size_available": 46553686016,
+        "block_size": 4096,
+        "block_total": 13090816,
+        "block_available": 11365646,
+        "block_used": 1725170,
+        "inode_total": 26214400,
+        "inode_available": 26040750,
+        "inode_used": 173650,
+        "uuid": "e4dc6e74-d028-4fd6-8757-4df2b7fb40a0"
+      },
+      {
+        "mount": "/boot",
+        "device": "/dev/sdc1",
+        "fstype": "xfs",
+        "options": "rw,relatime,attr2,inode64,logbufs=8,logbsize=32k,noquota",
+        "dump": 0,
+        "passno": 0,
+        "size_total": 457179136,
+        "size_available": 150159360,
+        "block_size": 4096,
+        "block_total": 111616,
+        "block_available": 36660,
+        "block_used": 74956,
+        "inode_total": 256000,
+        "inode_available": 255642,
+        "inode_used": 358,
+        "uuid": "734393f9-9f49-4820-a69f-2e07be678ee6"
+      },
+      {
+        "mount": "/app",
+        "device": "/dev/mapper/appvg01-lv_app",
+        "fstype": "xfs",
+        "options": "rw,relatime,attr2,inode64,logbufs=8,logbsize=32k,noquota",
+        "dump": 0,
+        "passno": 0,
+        "size_total": 32145145856,
+        "size_available": 26055675904,
+        "block_size": 4096,
+        "block_total": 7847936,
+        "block_available": 6361249,
+        "block_used": 1486687,
+        "inode_total": 15728640,
+        "inode_available": 15704501,
+        "inode_used": 24139,
+        "uuid": "34f4ae7b-1264-4a9d-b9e8-4138288c55dd"
+      },
+      {
+        "mount": "/log",
+        "device": "/dev/mapper/appvg01-lv_log",
+        "fstype": "xfs",
+        "options": "rw,relatime,attr2,inode64,logbufs=8,logbsize=32k,noquota",
+        "dump": 0,
+        "passno": 0,
+        "size_total": 32145145856,
+        "size_available": 20338417664,
+        "block_size": 4096,
+        "block_total": 7847936,
+        "block_available": 4965434,
+        "block_used": 2882502,
+        "inode_total": 15728640,
+        "inode_available": 15724483,
+        "inode_used": 4157,
+        "uuid": "d5c92286-48f1-4efc-8083-ad940e70f5d2"
+      },
+      {
+        "mount": "/data",
+        "device": "/dev/mapper/datavg01-lv_data",
+        "fstype": "xfs",
+        "options": "rw,relatime,attr2,inode64,logbufs=8,logbsize=32k,noquota",
+        "dump": 0,
+        "passno": 0,
+        "size_total": 53619982336,
+        "size_available": 51550552064,
+        "block_size": 4096,
+        "block_total": 13090816,
+        "block_available": 12585584,
+        "block_used": 505232,
+        "inode_total": 26214400,
+        "inode_available": 26213781,
+        "inode_used": 619,
+        "uuid": "8ceace52-a834-4259-a7b0-59064f45adf7"
+      },
+      {
+        "mount": "/oracle",
+        "device": "/dev/mapper/appvg01-lv_oracle",
+        "fstype": "xfs",
+        "options": "rw,relatime,attr2,inode64,logbufs=8,logbsize=32k,noquota",
+        "dump": 0,
+        "passno": 0,
+        "size_total": 53619982336,
+        "size_available": 19437527040,
+        "block_size": 4096,
+        "block_total": 13090816,
+        "block_available": 4745490,
+        "block_used": 8345326,
+        "inode_total": 26214400,
+        "inode_available": 26121765,
+        "inode_used": 92635,
+        "uuid": "c19cadd0-95cd-4919-8b28-c2033915ebab"
+      },
+      {
+        "mount": "/grid",
+        "device": "/dev/mapper/appvg01-lv_grid",
+        "fstype": "xfs",
+        "options": "rw,relatime,attr2,inode64,logbufs=8,logbsize=32k,noquota",
+        "dump": 0,
+        "passno": 0,
+        "size_total": 53619982336,
+        "size_available": 39338442752,
+        "block_size": 4096,
+        "block_total": 13090816,
+        "block_available": 9604112,
+        "block_used": 3486704,
+        "inode_total": 26214400,
+        "inode_available": 26172577,
+        "inode_used": 41823,
+        "uuid": "e25fd08e-d783-4166-a812-6abe12fd261f"
+      },
+      {
+        "mount": "/deploy",
+        "device": "/dev/mapper/appvg01-lv_deploy",
+        "fstype": "xfs",
+        "options": "rw,relatime,attr2,inode64,logbufs=8,logbsize=32k,noquota",
+        "dump": 0,
+        "passno": 0,
+        "size_total": 32145145856,
+        "size_available": 26940739584,
+        "block_size": 4096,
+        "block_total": 7847936,
+        "block_available": 6577329,
+        "block_used": 1270607,
+        "inode_total": 15728640,
+        "inode_available": 15706060,
+        "inode_used": 22580,
+        "uuid": "1a24be8e-4895-448f-a222-83509a27721b"
+      },
+      {
+        "mount": "/app/sentinelone/rpm_mount",
+        "device": "/dev/mapper/rootvg01-root",
+        "fstype": "xfs",
+        "options": "ro,nodev,relatime,attr2,inode64,logbufs=8,logbsize=32k,noquota,bind",
+        "dump": 0,
+        "passno": 0,
+        "size_total": 53619982336,
+        "size_available": 46553686016,
+        "block_size": 4096,
+        "block_total": 13090816,
+        "block_available": 11365646,
+        "block_used": 1725170,
+        "inode_total": 26214400,
+        "inode_available": 26040750,
+        "inode_used": 173650,
+        "uuid": "e4dc6e74-d028-4fd6-8757-4df2b7fb40a0"
+      },
+      {
+        "mount": "/var/lib/containers/storage/overlay",
+        "device": "/dev/mapper/rootvg01-root",
+        "fstype": "xfs",
+        "options": "rw,relatime,attr2,inode64,logbufs=8,logbsize=32k,noquota,bind",
+        "dump": 0,
+        "passno": 0,
+        "size_total": 53619982336,
+        "size_available": 46553686016,
+        "block_size": 4096,
+        "block_total": 13090816,
+        "block_available": 11365646,
+        "block_used": 1725170,
+        "inode_total": 26214400,
+        "inode_available": 26040750,
+        "inode_used": 173650,
+        "uuid": "e4dc6e74-d028-4fd6-8757-4df2b7fb40a0"
+      }
+    ],
+    "cmdline": {
+      "BOOT_IMAGE": "(hd0,msdos1)/vmlinuz-5.14.0-427.13.1.el9_4.x86_64",
+      "root": "/dev/mapper/rootvg01-root",
+      "ro": true,
+      "crashkernel": "1G-4G:192M,4G-64G:256M,64G-:512M",
+      "resume": "/dev/mapper/rootvg01-swap",
+      "rd.lvm.lv": "rootvg01/swap",
+      "rhgb": true,
+      "quiet": true
+    },
+    "proc_cmdline": {
+      "BOOT_IMAGE": "(hd0,msdos1)/vmlinuz-5.14.0-427.13.1.el9_4.x86_64",
+      "root": "/dev/mapper/rootvg01-root",
+      "ro": true,
+      "crashkernel": "1G-4G:192M,4G-64G:256M,64G-:512M",
+      "resume": "/dev/mapper/rootvg01-swap",
+      "rd.lvm.lv": [
+        "rootvg01/root",
+        "rootvg01/swap"
+      ],
+      "rhgb": true,
+      "quiet": true
+    },
+    "loadavg": {
+      "1m": 1.78,
+      "5m": 1.13,
+      "15m": 1.11
+    },
+    "selinux_python_present": true,
+    "selinux": {
+      "status": "disabled"
+    },
+    "lsb": {},
+    "python": {
+      "version": {
+        "major": 3,
+        "minor": 9,
+        "micro": 18,
+        "releaselevel": "final",
+        "serial": 0
+      },
+      "version_info": [
+        3,
+        9,
+        18,
+        "final",
+        0
+      ],
+      "executable": "/usr/bin/python3.9",
+      "has_sslcontext": true,
+      "type": "cpython"
+    },
+    "systemd": {
+      "features": "+PAM +AUDIT +SELINUX -APPARMOR +IMA +SMACK +SECCOMP +GCRYPT +GNUTLS +OPENSSL +ACL +BLKID +CURL +ELFUTILS -FIDO2 +IDN2 -IDN -IPTC +KMOD +LIBCRYPTSETUP +LIBFDISK +PCRE2 -PWQUALITY +P11KIT -QRENCODE +TPM2 +BZIP2 +LZ4 +XZ +ZLIB +ZSTD -BPF_FRAMEWORK +XKBCOMMON +UTMP +SYSVINIT default-hierarchy=unified",
+      "version": 252
+    },
+    "ansible_local": {},
+    "iscsi_iqn": "",
+    "fips": false,
+    "dns": {
+      "nameservers": [
+        "10.150.10.15",
+        "10.150.17.15"
+      ]
+    },
+    "date_time": {
+      "year": "2026",
+      "month": "07",
+      "weekday": "수요일",
+      "weekday_number": "3",
+      "weeknumber": "29",
+      "day": "22",
+      "hour": "14",
+      "minute": "20",
+      "second": "53",
+      "epoch": "1784697653",
+      "epoch_int": "1784697653",
+      "date": "2026-07-22",
+      "time": "14:20:53",
+      "iso8601_micro": "2026-07-22T05:20:53.182257Z",
+      "iso8601": "2026-07-22T05:20:53Z",
+      "iso8601_basic": "20260722T142053182257",
+      "iso8601_basic_short": "20260722T142053",
+      "tz": "KST",
+      "tz_dst": "KST",
+      "tz_offset": "+0900"
+    },
+    "interfaces": [
+      "ens3",
+      "lo"
+    ],
+    "lo": {
+      "device": "lo",
+      "mtu": 65536,
+      "active": true,
+      "type": "loopback",
+      "promisc": false,
+      "ipv4": {
+        "address": "127.0.0.1",
+        "broadcast": "",
+        "netmask": "255.0.0.0",
+        "network": "127.0.0.0",
+        "prefix": "8"
+      },
+      "ipv6": [
+        {
+          "address": "::1",
+          "prefix": "128",
+          "scope": "host"
+        }
+      ],
+      "features": {
+        "rx_checksumming": "on [fixed]"
+      },
+      "timestamping": [],
+      "hw_timestamp_filters": []
+    },
+    "ens3": {
+      "device": "ens3",
+      "macaddress": "50:6b:8d:e3:de:0d",
+      "mtu": 1500,
+      "active": true,
+      "module": "virtio_net",
+      "type": "ether",
+      "pciid": "virtio0",
+      "speed": -1,
+      "promisc": false,
+      "ipv4": {
+        "address": "10.150.9.165",
+        "broadcast": "10.150.9.255",
+        "netmask": "255.255.255.0",
+        "network": "10.150.9.0",
+        "prefix": "24"
+      },
+      "ipv6": [
+        {
+          "address": "fe80::526b:8dff:fee3:de0d",
+          "prefix": "64",
+          "scope": "link"
+        }
+      ],
+      "features": {
+        "rx_checksumming": "on [fixed]"
+      },
+      "timestamping": [],
+      "hw_timestamp_filters": []
+    },
+    "default_ipv4": {
+      "gateway": "10.150.9.254",
+      "interface": "ens3",
+      "address": "10.150.9.165",
+      "broadcast": "10.150.9.255",
+      "netmask": "255.255.255.0",
+      "network": "10.150.9.0",
+      "prefix": "24",
+      "macaddress": "50:6b:8d:e3:de:0d",
+      "mtu": 1500,
+      "type": "ether",
+      "alias": "ens3"
+    },
+    "default_ipv6": {},
+    "all_ipv4_addresses": [
+      "10.150.9.165"
+    ],
+    "all_ipv6_addresses": [
+      "fe80::526b:8dff:fee3:de0d"
+    ],
+    "locally_reachable_ips": {
+      "ipv4": [
+        "10.150.9.165",
+        "127.0.0.0/8",
+        "127.0.0.1"
+      ],
+      "ipv6": [
+        "::1",
+        "fe80::526b:8dff:fee3:de0d"
+      ]
+    },
+    "pkg_mgr": "dnf",
+    "service_mgr": "systemd",
+    "gather_subset": [
+      "all"
+    ],
+    "module_setup": true,
+    "discovered_interpreter_python": "/usr/bin/python3.9",
+    "_ansible_facts_gathered": true
+  },
+  "hypervisor": {
+    "source_platform": "unknown",
+    "vm_uuid": "",
+    "cluster_name": "",
+    "power_state": "",
+    "num_cpu": "",
+    "memory_mb": ""
+  }
+}
