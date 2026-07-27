@@ -1,11 +1,21 @@
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 
-from django.db.models import CharField, DateField, DecimalField, OuterRef, Prefetch, Q, Subquery
+from django.db.models import (
+    CharField,
+    Count,
+    DateField,
+    DecimalField,
+    Max,
+    OuterRef,
+    Prefetch,
+    Q,
+    Subquery,
+)
 
 from core.models import Asset
 from facts.models import FactFieldDefinition, HostFactValue, PendingChange
-from webconfig.models import WebConfigSourceRevision, WebServiceDomain
+from webconfig.models import WebConfigSource, WebConfigSourceRevision, WebServiceDomain, WebtobVhost
 
 LEADING_FIXED_COLUMNS = [
     {"key": "hostname", "label": "Hostname", "lookup": "hostname"},
@@ -46,6 +56,23 @@ def _request_param(request, *names, default=None):
         if value:
             return value
     return default
+
+
+def build_sort_columns(request, keys, default):
+    """자산 대시보드(get_dashboard_columns)와 같은 정렬 토글 규칙(같은 컬럼 다시 누르면
+    오름/내림차순 반전)을 다른 목록 화면에서도 쓰기 위한 범용 버전. keys는 정렬 가능한 컬럼
+    key 목록, default는 기본 정렬값("-created_at"처럼 방향 포함 가능). 반환값은
+    {key: {"next_sort": ...}} 형태라 템플릿에서 columns.<key>.next_sort로 바로 쓴다."""
+    sort = _request_param(request, "sort", "ordering", default=default)
+    current_key = sort.lstrip("-")
+    current_desc = sort.startswith("-")
+
+    columns = {}
+    for key in keys:
+        is_active = key == current_key
+        next_sort = f"-{key}" if is_active and not current_desc else key
+        columns[key] = {"next_sort": next_sort}
+    return columns
 
 
 def _parse_number(value):
@@ -196,7 +223,6 @@ WEB_SERVICE_SORT_LOOKUPS = {
     "service_name": "service_name",
     "hostname": "source__asset__hostname",
     "kind": "source__kind",
-    "solution_version": "source__solution_version",
 }
 
 
@@ -220,6 +246,39 @@ def get_web_service_queryset(request):
     return queryset.order_by(f"{direction}{lookup}")
 
 
+WEBCONFIG_SORT_LOOKUPS = {
+    "hostname": "asset__hostname",
+    "kind": "kind",
+    "solution_version": "solution_version",
+    "solution_fix": "solution_fix",
+    "vhost_count": "vhost_count",
+    "last_changed_at": "last_changed_at",
+    "last_pushed_at": "last_pushed_at",
+}
+
+
+def get_webconfig_queryset(request):
+    queryset = WebConfigSource.objects.select_related("asset").annotate(
+        vhost_count=Count("vhosts", distinct=True),
+        last_changed_at=Max("revisions__detected_at"),
+    )
+
+    q = _request_param(request, "q", "search")
+    if q:
+        queryset = queryset.filter(
+            Q(asset__hostname__icontains=q)
+            | Q(vhosts__hostname__icontains=q)
+            | Q(vhosts__hostalias__icontains=q)
+        ).distinct()
+
+    sort = _request_param(request, "sort", "ordering", default="hostname")
+    direction = "-" if sort.startswith("-") else ""
+    sort_key = sort.lstrip("-")
+    lookup = WEBCONFIG_SORT_LOOKUPS.get(sort_key, "asset__hostname")
+
+    return queryset.order_by(f"{direction}{lookup}")
+
+
 def get_webconfig_history_queryset(request):
     queryset = WebConfigSourceRevision.objects.select_related("source__asset")
 
@@ -228,6 +287,77 @@ def get_webconfig_history_queryset(request):
         queryset = queryset.filter(source__asset__hostname__icontains=q)
 
     return queryset.order_by("-detected_at")
+
+
+WEBTOB_VHOST_SORT_LOOKUPS = {
+    "hostname": "source__asset__hostname",
+    "vhost_name": "name",
+    "domain": "hostname",
+    "hostalias": "hostalias",
+    "port": "port",
+    "docroot": "docroot",
+    "ssl_flag": "ssl_flag",
+    "ssl_protocols": "ssl__protocols",
+    "ssl_ciphers": "ssl__required_ciphers",
+    "logging": "logging",
+    "errorlog": "errorlog",
+    "service_name": "service_name",
+    "limit_request_body": "source__node__limit_request_body",
+}
+
+
+def get_webtob_vhost_queryset(request):
+    queryset = WebtobVhost.objects.select_related("source__asset", "source__node", "ssl").prefetch_related(
+        "svrgroups__servers", "uris__server"
+    )
+
+    q = _request_param(request, "q", "search")
+    if q:
+        queryset = queryset.filter(
+            Q(source__asset__hostname__icontains=q)
+            | Q(name__icontains=q)
+            | Q(hostname__icontains=q)
+            | Q(hostalias__icontains=q)
+            | Q(service_name__icontains=q)
+        ).distinct()
+
+    sort = _request_param(request, "sort", "ordering", default="hostname")
+    direction = "-" if sort.startswith("-") else ""
+    sort_key = sort.lstrip("-")
+    lookup = WEBTOB_VHOST_SORT_LOOKUPS.get(sort_key, "source__asset__hostname")
+
+    return queryset.order_by(f"{direction}{lookup}")
+
+
+def build_webtob_vhost_rows(vhosts):
+    """vhost 목록 화면용 - SvrGroup/Server/URI는 vhost 하나에 여러 개씩 걸릴 수 있어(관계형
+    구조) 표 한 칸에 요약 문자열로 모아준다(모달 없이 표 안에서 다 보여주기 위함)."""
+    rows = []
+    for vhost in vhosts:
+        svrgroup_parts = []
+        server_parts = []
+        for svrgroup in vhost.svrgroups.all():
+            svrgroup_parts.append(
+                f"{svrgroup.name}({svrgroup.svrtype})" if svrgroup.svrtype else svrgroup.name
+            )
+            for server in svrgroup.servers.all():
+                if server.minproc is not None or server.maxproc is not None:
+                    proc_range = f"({server.minproc if server.minproc is not None else ''}~{server.maxproc if server.maxproc is not None else ''})"
+                else:
+                    proc_range = ""
+                server_parts.append(f"{server.name}{proc_range}")
+
+        uri_parts = [uri.uri_path or uri.name for uri in vhost.uris.all()]
+
+        rows.append(
+            {
+                "vhost": vhost,
+                "svrgroup_summary": ", ".join(svrgroup_parts),
+                "server_summary": ", ".join(server_parts),
+                "uri_summary": ", ".join(uri_parts),
+            }
+        )
+    return rows
 
 
 def build_rows(assets, dynamic_field_definitions):

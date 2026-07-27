@@ -5,6 +5,14 @@
 
 1.0.6까지의 이력은 이 파일 도입 전이라 별도 기록 없음 — `WORKLOG.md`의 해당 날짜 항목 참고.
 
+## 1.0.11
+
+- 솔루션 버전/Fix를 수기 입력에서 AUTO로 전환 — AWX가 `wsadmin -version` 출력을 설정 원본에 마커로 얹어 보내면 CMDB가 자동으로 버전/Fix를 나눠 반영(`webconfig/version_extract.py`), 수기 입력 UI는 제거
+- AWX 플레이북 `awx/push_webconfig_to_cmdb.yml` 신규 추가(WebToB 설정 push + 버전 마커 첨부)
+- 웹 설정 목록/서비스 조회/변경 이력 화면에 컬럼 클릭 시 오름차순·내림차순 토글 정렬 추가(기존엔 자산 대시보드만 지원)
+- 웹설정 상세 모달에 `*NODE`절의 LimitRequestBody, 솔루션 버전/Fix 표시 추가
+- WebToB 설정 목록 화면 신규(`/dashboard/webconfig/vhosts/`) — vhost 단위로 여러 서버를 가로질러 검색·정렬(도메인/Port/DocRoot/SSL/SvrGroup/Server/URI 등 모달 상세 정보를 표 하나로)
+
 ## 1.0.10
 
 - 웹설정(WebtoB) 화면을 목록에서 모달로 열도록 전환, vhost 목록에서 도메인 검색 지원, vhost별 서비스명 수기 입력, SSL 상세(Protocols/RequiredCiphers) 표시 추가

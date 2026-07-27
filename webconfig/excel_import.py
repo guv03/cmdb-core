@@ -12,17 +12,22 @@ DOMAIN_HEADER = "domain"
 ALIASES_HEADER = "aliases"
 SERVICE_NAME_HEADER = "서비스명"
 VERSION_HEADER = "솔루션버전"
+FIX_HEADER = "Fix"
 MAX_ROWS = 2000
 
 # 도메인은 vhost 하나당 유일하지 않을 수 있어서(같은 도메인을 http/https vhost 두 개가
 # 나눠 쓰는 경우가 실제로 있음, 예: vhost1/vhost1_ssl) 매칭 키로 못 쓴다. domain/aliases는
 # 사람이 알아보기 위한 참고용 컬럼으로만 두고, 실제 매칭은 (hostname, vhost) 조합으로 한다
 # - vhost 이름은 source당 유일(WebtobVhost의 unique constraint)이라 안전하다.
+# 솔루션버전/Fix는 이제 push에서 자동 추출되는 AUTO 값이라(webconfig/version_extract.py)
+# 엑셀로 수정해도 다음 push 때 덮어써지므로, 여기서도 domain/aliases와 같은 참고용
+# 컬럼으로만 두고 업로드 시엔 무시한다.
 _KNOWN_EXTRA_HEADERS = {
     DOMAIN_HEADER: "domain",
     ALIASES_HEADER: "aliases",
     SERVICE_NAME_HEADER: "service_name",
     VERSION_HEADER: "version",
+    FIX_HEADER: "fix",
 }
 
 
@@ -41,22 +46,6 @@ class ServiceNameUpdate:
 
 
 @dataclass
-class VersionUpdate:
-    row_number: int
-    source_id: int
-    hostname: str
-    old_value: str
-    new_value: str
-
-
-@dataclass
-class VersionConflict:
-    hostname: str
-    row_numbers: list[int]
-    values: list[str]
-
-
-@dataclass
 class UnmatchedRow:
     row_number: int
     hostname: str
@@ -66,8 +55,6 @@ class UnmatchedRow:
 @dataclass
 class ServiceImportResult:
     service_name_updates: list[ServiceNameUpdate]
-    version_updates: list[VersionUpdate]
-    version_conflicts: list[VersionConflict]
     unmatched_rows: list[UnmatchedRow]
 
 
@@ -79,7 +66,15 @@ def export_service_workbook() -> HttpResponse:
     sheet = workbook.active
     sheet.title = "서비스"
     sheet.append(
-        [HOSTNAME_HEADER, VHOST_HEADER, DOMAIN_HEADER, ALIASES_HEADER, SERVICE_NAME_HEADER, VERSION_HEADER]
+        [
+            HOSTNAME_HEADER,
+            VHOST_HEADER,
+            DOMAIN_HEADER,
+            ALIASES_HEADER,
+            SERVICE_NAME_HEADER,
+            VERSION_HEADER,
+            FIX_HEADER,
+        ]
     )
 
     rows = WebServiceDomain.objects.select_related("source", "source__asset").order_by(
@@ -94,6 +89,7 @@ def export_service_workbook() -> HttpResponse:
                 row.aliases,
                 row.service_name,
                 row.source.solution_version,
+                row.source.solution_fix,
             ]
         )
 
@@ -142,7 +138,6 @@ def parse_service_workbook(uploaded_file) -> ServiceImportResult:
         raise ImportFileError("다음 컬럼을 인식할 수 없습니다: " + ", ".join(unknown_headers))
 
     service_name_col = column_roles.index("service_name") if "service_name" in column_roles else None
-    version_col = column_roles.index("version") if "version" in column_roles else None
 
     raw_rows = []
     for row_number, row in enumerate(rows_iter, start=2):
@@ -164,13 +159,9 @@ def parse_service_workbook(uploaded_file) -> ServiceImportResult:
         )
     )
     row_map = {(sd.source.asset.hostname, sd.vhost_name): sd for sd in service_domains}
-    sources_by_id = {sd.source_id: sd.source for sd in service_domains}
 
     service_name_updates: list[ServiceNameUpdate] = []
     unmatched_rows: list[UnmatchedRow] = []
-    # source_id -> 그 source에 매겨진 (row_number, new_value) 목록 - 솔루션버전은 source 단위값이라
-    # 같은 호스트의 여러 행에 값이 반복돼야 하고, 값이 갈리면 충돌로 따로 빼야 한다.
-    version_entries_by_source: dict[int, list[tuple[int, str]]] = {}
 
     for row_number, hostname, vhost_name, values in raw_rows:
         service_domain = row_map.get((hostname, vhost_name))
@@ -196,45 +187,8 @@ def parse_service_workbook(uploaded_file) -> ServiceImportResult:
                         )
                     )
 
-        if version_col is not None and version_col < len(values):
-            cell_value = values[version_col]
-            if cell_value not in (None, ""):
-                new_value = str(cell_value).strip()
-                version_entries_by_source.setdefault(service_domain.source_id, []).append(
-                    (row_number, new_value)
-                )
-
-    version_updates: list[VersionUpdate] = []
-    version_conflicts: list[VersionConflict] = []
-    for source_id, entries in version_entries_by_source.items():
-        source = sources_by_id[source_id]
-        distinct_values = sorted({value for _, value in entries})
-        if len(distinct_values) > 1:
-            version_conflicts.append(
-                VersionConflict(
-                    hostname=source.asset.hostname,
-                    row_numbers=[row_number for row_number, _ in entries],
-                    values=distinct_values,
-                )
-            )
-            continue
-
-        new_value = distinct_values[0]
-        if new_value != source.solution_version:
-            version_updates.append(
-                VersionUpdate(
-                    row_number=entries[0][0],
-                    source_id=source_id,
-                    hostname=source.asset.hostname,
-                    old_value=source.solution_version,
-                    new_value=new_value,
-                )
-            )
-
     return ServiceImportResult(
         service_name_updates=service_name_updates,
-        version_updates=version_updates,
-        version_conflicts=version_conflicts,
         unmatched_rows=unmatched_rows,
     )
 
@@ -242,7 +196,6 @@ def parse_service_workbook(uploaded_file) -> ServiceImportResult:
 def apply_service_updates(payload: list[dict]) -> tuple[int, int]:
     """미리보기에서 확정된 항목을 실제로 반영. (반영된 값 개수, 영향받은 자산 수)를 반환."""
     service_name_items = [p for p in payload if p.get("kind") == "service_name"]
-    version_items = [p for p in payload if p.get("kind") == "version"]
 
     changed_asset_ids = set()
     applied = 0
@@ -266,22 +219,6 @@ def apply_service_updates(payload: list[dict]) -> tuple[int, int]:
             service_domain.service_name = new_value
             service_domain.save(update_fields=["service_name"])
             changed_asset_ids.add(service_domain.source.asset_id)
-            applied += 1
-
-    if version_items:
-        sources = {
-            source.id: source
-            for source in WebConfigSource.objects.filter(
-                id__in=[item["source_id"] for item in version_items]
-            )
-        }
-        for item in version_items:
-            source = sources.get(item["source_id"])
-            if source is None:
-                continue
-            source.solution_version = item["new_value"]
-            source.save(update_fields=["solution_version"])
-            changed_asset_ids.add(source.asset_id)
             applied += 1
 
     return applied, len(changed_asset_ids)

@@ -16,29 +16,31 @@
 </form>
 
 <div class="table-container">
-  <table class="table is-fullwidth is-hoverable is-striped">
+  <table class="table is-fullwidth is-hoverable is-striped dash-scroll-table">
     <thead>
       <tr>
-        <th>Hostname</th>
-        <th>종류</th>
-        <th>Node</th>
-        <th>VHost 수</th>
-        <th>최근 변경일</th>
-        <th>최근 반영일</th>
+        <th class="dash-sticky-col dash-sticky-col-1"><a class="has-text-dark" href="{% querystring sort=columns.hostname.next_sort page=None %}">Hostname</a></th>
+        <th class="dash-sticky-col dash-sticky-col-2"><a class="has-text-dark" href="{% querystring sort=columns.kind.next_sort page=None %}">종류</a></th>
+        <th><a class="has-text-dark" href="{% querystring sort=columns.solution_version.next_sort page=None %}">버전</a></th>
+        <th><a class="has-text-dark" href="{% querystring sort=columns.solution_fix.next_sort page=None %}">Fix</a></th>
+        <th><a class="has-text-dark" href="{% querystring sort=columns.vhost_count.next_sort page=None %}">VHost 수</a></th>
+        <th><a class="has-text-dark" href="{% querystring sort=columns.last_changed_at.next_sort page=None %}">최근 변경일</a></th>
+        <th><a class="has-text-dark" href="{% querystring sort=columns.last_pushed_at.next_sort page=None %}">최근 반영일</a></th>
       </tr>
     </thead>
     <tbody>
       {% for source in sources %}
       <tr class="webconfig-row" data-detail-url="{% url 'dashboard-webconfig-detail' source.pk %}" style="cursor: pointer;">
-        <td>{{ source.asset.hostname }}</td>
-        <td>{{ source.get_kind_display }}</td>
-        <td>{{ source.node.name|default:"" }}</td>
+        <td class="dash-sticky-col dash-sticky-col-1">{{ source.asset.hostname }}</td>
+        <td class="dash-sticky-col dash-sticky-col-2">{{ source.get_kind_display }}</td>
+        <td>{{ source.solution_version|default:"" }}</td>
+        <td>{{ source.solution_fix|default:"" }}</td>
         <td>{{ source.vhost_count }}</td>
         <td>{{ source.last_changed_at|default:"" }}</td>
         <td>{{ source.last_pushed_at }}</td>
       </tr>
       {% empty %}
-      <tr><td colspan="6" class="has-text-grey">등록된 웹 설정이 없습니다.</td></tr>
+      <tr><td colspan="7" class="has-text-grey">등록된 웹 설정이 없습니다.</td></tr>
       {% endfor %}
     </tbody>
   </table>

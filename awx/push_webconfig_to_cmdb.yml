@@ -1,0 +1,85 @@
+---
+# AWX Job Template에서 실행하는 플레이북.
+# WebToB 웹서버 설정 파일(http.m)을 읽어 CMDB(POST /api/webconfig/)로 push한다.
+# 자산 자체는 이 플레이북으로 생성되지 않는다 — push_facts_to_cmdb.yml로 먼저 자산이
+# 등록돼 있어야 하고, CMDB는 push payload가 아니라 설정 내용의 *NODE절 항목 이름으로
+# 기존 자산을 찾는다(없으면 push 자체가 에러).
+#
+# 필요한 변수 (AWX Job Template의 Extra Variables / Survey / Credential로 주입):
+#   cmdb_base_url      : CMDB 베이스 URL (예: http://cmdb.internal:8000)
+#   cmdb_api_key        : webconfig push API 인증 키 (X-API-Key 헤더값). Credential로 주입 권장.
+#   webtob_config_path : http.m 전체 경로 (기본값 /app/webtob/config/http.m). 서버/OS
+#                          (Windows/Linux/AIX)마다 설치 위치·계정 환경이 달라서 자동 탐지
+#                          대신 값을 명시한다.
+#   webtob_account      : wsadmin -version을 실행할 계정 (기본값 webtob)
+#   wsadmin_path        : wsadmin 실행파일 전체 경로 (기본값 /app/webtob/bin/wsadmin — become으로
+#                          전환한 셸은 셸 자체를 안 거치는 command 모듈이라 .bash_profile 등에서
+#                          잡은 PATH가 안 먹히므로 전체 경로 사용)
+#
+# 위 세 변수는 서버마다 값이 다를 수 있어 플레이북의 vars: 블록에 기본값을 박아두지 않는다
+# (play vars는 인벤토리 host_vars보다 우선순위가 높아서, vars:에 넣으면 host_vars로 재정의를
+# 시도해도 무시되고 항상 play vars 쪽이 이김 — Ansible 변수 우선순위 규칙). 대신 각 태스크에서
+# "{{ 변수 | default('기본값') }}" 형태로 써서, 인벤토리 host_vars/group_vars(또는 AWX Extra
+# Variables)로 준 값이 있으면 그게 쓰이고 없으면 기본값으로 자연스럽게 대체되게 한다.
+#
+# 버전 정보(WebtoB 배포판엔 설정 파일 안에 버전이 없어 wsadmin -version으로만 확인 가능,
+# -fullversion은 이 배포판에서 에러남)는 설정 원본 맨 위에
+#   # CMDB_SOLUTION_VERSION: WebtoB 5.0 SP 0 Fix #4 Linux-K2.6_x64 FD16384 B404 epoll 2026/05/19
+# 형태의 주석 한 줄로 얹어서 같이 보낸다. 이 줄은 '#'로 시작해 WebtoB 파서가 그냥 주석으로
+# 버리므로 설정 파싱엔 전혀 영향 없고, CMDB 쪽(webconfig/version_extract.py)이 이 마커를 찾아
+# "WebtoB <버전> <나머지 전부>" 형식으로 버전/Fix를 나눠 solution_version/solution_fix에
+# 자동 반영한다(마커가 없는 push는 기존 값을 그대로 둠 — nginx/apache 등 Fix 개념이 없는
+# kind나 아직 이 role이 안 붙은 자산의 값이 사라지지 않게).
+
+- name: Read WebToB config and push to CMDB
+  hosts: all
+  gather_facts: false
+
+  vars:
+    cmdb_validate_certs: true
+
+  tasks:
+    - name: wsadmin 버전 확인
+      become: true
+      become_user: "{{ webtob_account | default('webtob') }}"
+      ansible.builtin.command: "{{ wsadmin_path | default('/app/webtob/bin/wsadmin') }} -version"
+      register: wsadmin_version
+      changed_when: false
+      failed_when: false # 버전 조회가 실패해도(권한 문제 등) 설정 push 자체는 막히지 않게
+
+    - name: WebToB 설정 파일 원본 읽기
+      become: true
+      become_user: "{{ webtob_account | default('webtob') }}"
+      ansible.builtin.slurp:
+        src: "{{ webtob_config_path | default('/app/webtob/config/http.m') }}"
+      register: webtob_config_raw
+
+    - name: 버전 마커를 얹은 push용 내용 구성
+      ansible.builtin.set_fact:
+        webtob_push_content: >-
+          {{
+            (
+              '# CMDB_SOLUTION_VERSION: ' + (wsadmin_version.stdout | default('') | trim) + "\n"
+              if wsadmin_version.rc == 0 and (wsadmin_version.stdout | default('') | trim) else ''
+            ) + (webtob_config_raw.content | b64decode)
+          }}
+
+    - name: CMDB로 웹설정 push  # noqa: no-changed-when
+      ansible.builtin.uri:
+        url: "{{ cmdb_base_url }}/api/webconfig/"
+        method: POST
+        headers:
+          X-API-Key: "{{ cmdb_api_key }}"
+        body_format: json
+        body:
+          kind: webtob
+          content: "{{ webtob_push_content }}"
+        status_code: [200, 201]
+        validate_certs: "{{ cmdb_validate_certs }}"
+      delegate_to: localhost
+      no_log: true # 응답/헤더에 X-API-Key가 로그로 남지 않도록
+      register: cmdb_push_result
+
+    - name: push 결과 출력
+      ansible.builtin.debug:
+        msg: "CMDB 웹설정 push 완료: asset_id={{ cmdb_push_result.json.asset_id }}, hostname={{ cmdb_push_result.json.hostname }}"

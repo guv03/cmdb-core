@@ -3,7 +3,6 @@ import json
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.views import LoginView
-from django.db.models import Count, Max, Q
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse_lazy
@@ -23,12 +22,16 @@ from dashboard.excel_import import (
 )
 from dashboard.queries import (
     build_rows,
+    build_sort_columns,
+    build_webtob_vhost_rows,
     get_asset_queryset,
     get_change_history_queryset,
     get_dashboard_columns,
     get_dynamic_field_definitions,
     get_web_service_queryset,
     get_webconfig_history_queryset,
+    get_webconfig_queryset,
+    get_webtob_vhost_queryset,
 )
 from dashboard.serializers import AssetSerializer
 from facts.approval import apply_pending_change, reject_pending_change
@@ -199,6 +202,9 @@ class ChangeHistoryListView(LoginRequiredMixin, ListView):
         context["current_q"] = self.request.GET.get("q", "")
         context["current_status"] = self.request.GET.get("status", "")
         context["status_choices"] = PendingChange.Status.choices
+        context["columns"] = build_sort_columns(
+            self.request, ["asset", "status", "created_at", "decided_at"], default="-created_at"
+        )
         return context
 
 
@@ -249,22 +255,24 @@ class WebConfigListView(LoginRequiredMixin, ListView):
     paginate_by = 50
 
     def get_queryset(self):
-        queryset = (
-            WebConfigSource.objects.select_related("asset", "node")
-            .annotate(
-                vhost_count=Count("vhosts", distinct=True),
-                last_changed_at=Max("revisions__detected_at"),
-            )
-            .order_by("asset__hostname")
+        return get_webconfig_queryset(self.request)
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["columns"] = build_sort_columns(
+            self.request,
+            [
+                "hostname",
+                "kind",
+                "solution_version",
+                "solution_fix",
+                "vhost_count",
+                "last_changed_at",
+                "last_pushed_at",
+            ],
+            default="hostname",
         )
-        q = self.request.GET.get("q")
-        if q:
-            queryset = queryset.filter(
-                Q(asset__hostname__icontains=q)
-                | Q(vhosts__hostname__icontains=q)
-                | Q(vhosts__hostalias__icontains=q)
-            ).distinct()
-        return queryset
+        return context
 
 
 class WebConfigDetailView(LoginRequiredMixin, DetailView):
@@ -297,6 +305,43 @@ class WebConfigHistoryListView(LoginRequiredMixin, ListView):
         return context
 
 
+class WebtobVhostListView(LoginRequiredMixin, ListView):
+    """웹 설정 목록(서버 단위)과 달리 vhost 하나 = 행 하나로 여러 서버를 가로질러 본다.
+    WebToB 전용 화면(SvrGroup/URI 등 WebToB 개념이라 kind 공통 화면으로는 안 만듦)."""
+
+    template_name = "dashboard/webtob_vhost_list.html"
+    context_object_name = "vhosts"
+    paginate_by = 50
+
+    def get_queryset(self):
+        return get_webtob_vhost_queryset(self.request)
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["rows"] = build_webtob_vhost_rows(context["vhosts"])
+        context["columns"] = build_sort_columns(
+            self.request,
+            [
+                "hostname",
+                "vhost_name",
+                "domain",
+                "hostalias",
+                "port",
+                "docroot",
+                "limit_request_body",
+                "ssl_flag",
+                "ssl_protocols",
+                "ssl_ciphers",
+                "logging",
+                "errorlog",
+                "service_name",
+            ],
+            default="hostname",
+        )
+        context["current_q"] = self.request.GET.get("q", "")
+        return context
+
+
 class WebtobVhostServiceUpdateView(LoginRequiredMixin, View):
     """vhost 카드의 "서비스명" 수기 입력. 승인 절차 없이 즉시 반영(자산 MANUAL 필드와 동일 원칙)."""
 
@@ -308,17 +353,6 @@ class WebtobVhostServiceUpdateView(LoginRequiredMixin, View):
             service_name=vhost.service_name
         )
         return JsonResponse({"service_name": vhost.service_name})
-
-
-class WebConfigSourceVersionUpdateView(LoginRequiredMixin, View):
-    """솔루션 버전 수기 입력. vhost 단위가 아니라 소스(자산+kind) 단위 값이라 여러 도메인
-    행이 같은 값을 공유한다."""
-
-    def post(self, request, pk):
-        source = get_object_or_404(WebConfigSource, pk=pk)
-        source.solution_version = request.POST.get("solution_version", "").strip()
-        source.save(update_fields=["solution_version"])
-        return JsonResponse({"solution_version": source.solution_version})
 
 
 class ServiceExportView(LoginRequiredMixin, View):
@@ -348,14 +382,11 @@ class ServiceImportView(LoginRequiredMixin, View):
         payload = [
             {"kind": "service_name", "service_domain_id": u.service_domain_id, "new_value": u.new_value}
             for u in result.service_name_updates
-        ] + [
-            {"kind": "version", "source_id": u.source_id, "new_value": u.new_value}
-            for u in result.version_updates
         ]
         context = {
             "result": result,
             "payload_json": json.dumps(payload),
-            "total_count": len(result.service_name_updates) + len(result.version_updates),
+            "total_count": len(result.service_name_updates),
         }
         return render(request, self.template_name, context)
 
@@ -383,6 +414,13 @@ class WebServiceListView(LoginRequiredMixin, ListView):
 
     def get_queryset(self):
         return get_web_service_queryset(self.request)
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["columns"] = build_sort_columns(
+            self.request, ["service_name", "domain", "port", "hostname", "kind"], default="domain"
+        )
+        return context
 
 
 class WebServiceDomainServiceUpdateView(LoginRequiredMixin, View):

@@ -6,7 +6,10 @@
 <div id="webconfig-content">
 {% csrf_token %}
 <h1 class="title is-4">{{ source.asset.hostname }} - {{ source.get_kind_display }} 설정</h1>
-<p class="subtitle is-6">최근 반영: {{ source.last_pushed_at }}</p>
+<p class="subtitle is-6">
+  {% if source.solution_version %}버전: {{ source.solution_version }}{% if source.solution_fix %} · Fix: {{ source.solution_fix }}{% endif %}<br>{% endif %}
+  최근 반영: {{ source.last_pushed_at }}
+</p>
 
 {% if source.node %}
 <div class="box">
@@ -18,6 +21,7 @@
       <tr><th>DOCROOT</th><td>{{ source.node.docroot }}</td></tr>
       <tr><th>PORT</th><td>{{ source.node.port }}</td></tr>
       <tr><th>HTH</th><td>{{ source.node.hth }}</td></tr>
+      <tr><th>LimitRequestBody</th><td>{{ source.node.limit_request_body }}</td></tr>
     </tbody>
   </table>
 </div>

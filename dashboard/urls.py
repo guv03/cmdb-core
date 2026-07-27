@@ -19,9 +19,9 @@ from dashboard.views import (
     WebConfigDetailView,
     WebConfigHistoryListView,
     WebConfigListView,
-    WebConfigSourceVersionUpdateView,
     WebServiceDomainServiceUpdateView,
     WebServiceListView,
+    WebtobVhostListView,
     WebtobVhostServiceUpdateView,
 )
 
@@ -65,16 +65,12 @@ urlpatterns = [
     ),
     path("webconfig/", WebConfigListView.as_view(), name="dashboard-webconfig-list"),
     path("webconfig/changes/", WebConfigHistoryListView.as_view(), name="dashboard-webconfig-history"),
+    path("webconfig/vhosts/", WebtobVhostListView.as_view(), name="dashboard-webtob-vhost-list"),
     path("webconfig/<int:pk>/", WebConfigDetailView.as_view(), name="dashboard-webconfig-detail"),
     path(
         "webconfig/vhost/<int:pk>/service/",
         WebtobVhostServiceUpdateView.as_view(),
         name="dashboard-webconfig-vhost-service",
-    ),
-    path(
-        "webconfig/<int:pk>/version/",
-        WebConfigSourceVersionUpdateView.as_view(),
-        name="dashboard-webconfig-version",
     ),
     path("services/", WebServiceListView.as_view(), name="dashboard-webservice-list"),
     path("services/export/", ServiceExportView.as_view(), name="dashboard-service-export"),

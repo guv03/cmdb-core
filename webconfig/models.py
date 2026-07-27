@@ -15,9 +15,13 @@ class WebConfigSource(TimeStampedModel):
     # 구조화 테이블로 안 뽑은 나머지 절(EXT/ALIAS/LOGGING/ERRORDOCUMENT 등) - 원본 펼쳐보기용, 조회 대상 아님
     extra_sections = models.JSONField(default=dict, blank=True)
     last_pushed_at = models.DateTimeField(auto_now=True)
-    # 수기 입력: 설정 파일 안에 버전 정보가 없어(webtob http.m 기준) 자동 추출이 안 되는 값.
-    # update_or_create의 defaults에 없어 push로 덮어쓰지 않음(service_name과 동일 원칙).
+    # AUTO: push된 원본에서 "# CMDB_SOLUTION_VERSION: ..." 마커를 찾아 자동 추출(webtob는
+    # wsadmin -version 출력, webconfig/version_extract.py 참고). 마커가 없는 push는 기존 값을
+    # 그대로 둔다(무조건 덮어쓰지 않음 - 아직 마커를 안 보내는 자산/kind의 값이 사라지지 않게).
     solution_version = models.CharField(max_length=50, blank=True)
+    # Fix/패치 정보. WebtoB만 해당(예: "SP 0 Fix #4 Linux-K2.6_x64 FD16384 B404 epoll 2026/05/19")
+    # - nginx/apache 등은 이 값이 없는 게 정상이라 비워둔다.
+    solution_fix = models.CharField(max_length=255, blank=True)
 
     class Meta:
         constraints = [
@@ -51,6 +55,7 @@ class WebtobNode(TimeStampedModel):
     docroot = models.CharField(max_length=255, blank=True)
     port = models.CharField(max_length=20, blank=True)
     hth = models.CharField(max_length=20, blank=True)
+    limit_request_body = models.CharField(max_length=20, blank=True)
 
     def __str__(self):
         return self.name

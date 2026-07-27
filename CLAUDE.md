@@ -39,8 +39,10 @@ Django + DRF 기반 CMDB. 자산 자체(신규 생성)는 AWX push 경로 하나
 - `EXT`/`ALIAS`/`LOGGING`/`ERRORDOCUMENT` 등 검색 가치가 낮은 절은 구조화 테이블로 안 만들고 `WebConfigSource.extra_sections`(JSON)에만 보관 — 지금은 원본 설정 펼쳐보기로만 노출, 조회 대상 아님.
 - 자산 신규 생성은 이 경로로 안 함(자산 생성은 facts push 경로 하나뿐이라는 원칙 유지) — hostname은 push payload가 아니라 **설정 내용의 `*NODE` 절 항목 이름**을 기준으로 기존 자산을 찾고, 없으면 에러(먼저 facts push로 자산이 등록돼 있어야 함).
 - 대시보드 `/dashboard/webconfig/`에서 목록(호스트/종류/vhost 수) → 상세(vhost별 카드, 원본 설정은 `<details>`로 접어둠) 확인. 샘플 데이터는 `samples/webtob/`.
+- **WebToB 설정 목록**(`/dashboard/webconfig/vhosts/`, "웹 설정" 드롭다운 하위): 위 목록/상세는 서버(자산+kind) 단위 행이라 vhost를 여러 서버에 걸쳐 가로질러 검색·정렬할 화면이 따로 필요해서 신규. `WebtobVhost` 하나 = 행 하나로, 상세 모달의 vhost 카드에 나오는 값(도메인/별칭/Port/DocRoot/SSL/Protocols/RequiredCiphers/Logging/ErrorLog/서비스명)을 전부 컬럼으로 노출한다. `SvrGroup`/`Server`/`URI`는 vhost 하나에 여러 개씩 걸리는 관계형 데이터라 표 한 칸에 못 들어가는데, 모달을 또 띄우는 대신(요청에 따라 "표 안에서 다 끝내기") `build_webtob_vhost_rows()`(`dashboard/queries.py`)가 콤마로 이어붙인 요약 문자열로 만들어 한 칸에 넣는다 — 개별 MinProc/MaxProc까지 정확히 봐야 하면 admin이나 상세 모달로. 서비스명 인라인 편집은 기존 `WebtobVhostServiceUpdateView`(`/dashboard/webconfig/vhost/<pk>/service/`)를 그대로 재사용해서 서비스 조회 화면과 값이 동기화된다. 서비스 조회(`WebServiceDomain`)는 kind 공통(도메인/서비스명 중심)으로 계속 좁게 유지하고, SvrGroup/URI 같은 WebToB 전용 개념은 이 화면에만 둔다 — kind별로 파서/모델을 안 섞는 원칙과 동일선상(나중에 nginx/apache가 붙어도 이 화면을 공유하려 하지 않음).
 - 웹설정 목록의 날짜 컬럼(`최근 변경일`/`최근 반영일`)은 자산 대시보드와 의미를 통일 — 자세한 건 아래 "대시보드" 섹션 참고.
 - **웹설정 변경 이력**(`/dashboard/webconfig/changes/`, `WebConfigSourceRevision`): facts의 `PendingChange`와 달리 승인/반려 없는 읽기 전용 감사 로그. `raw_content`가 이전 push와 실제로 다를 때만(동일 재push는 무시) 이전/이후 원본을 한 행에 같이 저장하고(`webconfig/views.py`의 `WebConfigIngestView`에서 갱신 직전에 비교), push 자체는 지금처럼 승인 없이 즉시 반영된다 — 구조(vhost/svrgroup 등 관계형 변화)를 필드 단위로 diff해서 승인 게이트를 거는 방식은 검토 후 기각(웹서버 설정은 "필드 하나=값 하나"가 아니라 관계형이라 PendingChange 구조를 그대로 못 씀, 구조화 테이블만 승인 대기로 묶으면 상세 화면과 원본 보기가 서로 다른 시점을 보여주게 돼서 화면이 헷갈림). 화면에서는 `webconfig/diff.py`의 `unified_diff_lines`로 만든 unified diff를 줄 단위로 색칠(추가=녹색/삭제=빨강, git diff 관례)해서 보여줌.
+- **솔루션 버전/Fix는 AUTO**(`WebConfigSource.solution_version`/`solution_fix`, `webconfig/version_extract.py`): 처음엔 수기 입력이었으나(설정 파일 안에 버전 정보가 없어 자동 추출 불가), WebtoB는 `wsadmin -version` 출력을 AWX가 설정 원본 맨 위에 `# CMDB_SOLUTION_VERSION: <출력>` 마커 주석으로 얹어 보내는 걸로 전환(플레이북: `awx/push_webconfig_to_cmdb.yml`). 이 마커는 `#`로 시작하는 줄이라 WebtoB 파서가 그냥 주석으로 버려서 설정 파싱엔 영향 없음. `VERSION_EXTRACTORS`(kind별 dict, `PARSERS`/`SYNC_FUNCS`와 같은 패턴)가 마커 값을 "WebtoB \<버전\> \<나머지 전부\>" 형식으로 쪼개 버전(`5.0`)/Fix(`SP 0 Fix #4 Linux-K2.6_x64 FD16384 B404 epoll 2026/05/19`, 날짜까지 전부)로 나눔. 마커가 이번 push에 없으면(아직 role 업데이트 전이거나 nginx/apache처럼 애초에 Fix 개념이 없는 kind) 기존 값을 그대로 두고 덮어쓰지 않음 — AUTO라고 무조건 비우면 롤아웃 중간에 값이 사라지는 게 이상해서. AUTO로 바뀌면서 대시보드의 수기 입력 UI(연필 아이콘, 인라인 편집)는 제거함 — 사람이 고쳐도 다음 push 때 조용히 덮어써지므로 읽기 전용으로 노출.
 
 # 대시보드
 - Django admin과 별개로 검색/정렬/페이지네이션이 되는 조회 화면을 둔다. 신규 자산은 push로 즉시, 승인 대상 필드의 값 변경은 승인 시점에 반영된다.
@@ -49,11 +51,11 @@ Django + DRF 기반 CMDB. 자산 자체(신규 생성)는 AWX push 경로 하나
 - 자산/웹설정 목록 공통으로 **최근 변경일**(실제 값이 바뀐 시점만)/**최근 반영일**(내용 변경 여부와 무관하게 마지막 push 시각, 호스트가 계속 살아있는지 확인용) 두 정렬 컬럼을 둔다 — 용어와 의미를 두 화면에서 통일(`생성일`은 정보 가치가 낮아 뺌). 자산의 `최근 변경일`은 승인된 push 변경 시점뿐 아니라 MANUAL 동적 필드를 대시보드에서 수정한 시점에도 갱신되고, `최근 반영일`은 `HostFact.last_seen_at`. 웹설정의 `최근 변경일`은 `WebConfigSourceRevision`의 최신 감지 시각, `최근 반영일`은 `WebConfigSource.last_pushed_at`.
 - 변경 이력(대기/승인/반려 전체)은 `/dashboard/changes/`에서 조회 + 대기 건은 승인/반려 처리까지 가능.
 - MANUAL 동적 필드는 자산 목록의 "관리" 컬럼 → "편집" 버튼(모달)으로 값을 입력/수정한다. 변경 이력(`/dashboard/changes/`)에는 남지 않는다 — 승인 대상이 아니기 때문.
-- Hostname/IP 컬럼은 가로 스크롤 시에도 고정 표시된다(`position: sticky`).
+- 컬럼이 많은 목록 화면은 앞 두 컬럼이 가로 스크롤 시에도 고정 표시된다(`position: sticky`) — 자세한 건 아래 "대시보드 디자인 패턴" 참고.
 - 상단 내비게이션은 "자산 대시보드"/"웹 설정"이 각각 드롭다운으로 목록·변경 이력 하위 메뉴를 묶는다(자산=`/dashboard/assets/`+`/dashboard/changes/`, 웹설정=`/dashboard/webconfig/`+`/dashboard/webconfig/changes/`). 변경 이력이 최상단 탭으로 따로 노출되지 않으니, 새 영역에 변경 이력을 추가할 땐 이 드롭다운 패턴을 그대로 따를 것.
 - **서비스 조회 엑셀 일괄 업로드**(`webconfig/excel_import.py`): 자산 MANUAL 필드 엑셀 업로드(`dashboard/excel_import.py`)와 같은 흐름(업로드→미리보기→확정)이지만 매칭 키가 다르고 대상 모델도 달라서 별도 모듈로 분리. "엑셀 다운로드"(`/dashboard/services/export/`)로 전체 데이터(검색 필터 무시)를 받아 몇 칸만 고쳐 재업로드하는 걸 기본 흐름으로 삼는다.
   - 매칭 키는 `(hostname, vhost)`다 — **도메인은 매칭 키로 못 씀**(같은 도메인을 http/https vhost 두 개가 나눠 쓰는 실제 케이스가 있어 유일하지 않음, 예: `vhost1`/`vhost1_ssl`이 둘 다 `cal.lotteins.co.kr`). `domain`/`aliases` 컬럼은 사람이 알아보기 위한 참고용으로만 내보내고 업로드 시엔 무시.
-  - 서비스명은 vhost 단위 값이라 행 하나 = vhost 하나로 반영. 솔루션버전은 source(자산) 단위 값이라 같은 호스트의 여러 행에 같은 값이 반복돼야 하는데, 값이 갈리면 반영하지 않고 "충돌"로 따로 표시(어느 쪽이 맞는지 알 수 없어 임의로 덮어쓰지 않음).
+  - 서비스명은 vhost 단위 값이라 행 하나 = vhost 하나로 반영. 솔루션버전/Fix는 AUTO 필드로 바뀌면서(위 "솔루션 버전/Fix는 AUTO" 참고) 엑셀로는 수정 불가 — domain/aliases와 같은 참고용 컬럼으로만 내보내고 업로드 시 무시.
   - 기존 값과 실제로 다른 셀만 "반영 예정"에 잡는다(자산 임포터는 이 diff 비교가 없어 안 바뀐 셀도 매번 반영 예정으로 뜨는데, "전체 내보내서 일부만 고쳐 재업로드"하는 흐름에서는 그러면 노이즈가 너무 많아짐).
 
 # 대시보드 디자인 패턴
@@ -76,10 +78,10 @@ Django + DRF 기반 CMDB. 자산 자체(신규 생성)는 AWX push 경로 하나
   - 색상 없는 plain `button`: 취소/중립 액션(모달 "취소" 버튼 등).
 - **수기 입력(MANUAL) 값은 옆에 연필 아이콘(✎)을 붙여 구분**(`dash-manual-icon`, base.html에 회색 고정으로 정의). 처음엔 빨간 점으로 구분하려 했으나 빨강은 이미 `is-danger`(오류·반려) 의미로 고정해둔 색이라 오해 소지가 있어 폐기 — 편집 가능 표시는 성공/경고/오류 팔레트와 절대 안 겹치는 중립색만 쓴다. 헤더 색으로 구분하던 이전 방식(자산 대시보드 MANUAL 컬럼 헤더만 다른 색)은 표 형태가 아닌 화면(웹설정 상세의 카드형 라벨-값 줄 등)엔 적용이 안 돼서 버렸고, 값 옆에 붙이는 방식으로 통일 — 표 헤더/표 셀/카드 라벨-값 줄 세 가지 형태 모두 동일하게 적용 가능하고, 빈 값이어도 아이콘은 보이니 그 칸이 편집 가능하다는 게 계속 드러남(터치 기기는 호버가 없어 이 점이 특히 중요).
 - **인라인 편집은 "클릭 대상 = 값이 있는 셀 자체"** 원칙(별도 "편집" 버튼 안 씀). 편집 가능한 `<td>`에는 공통 클래스 `dash-editable-cell`(base.html에 `cursor: pointer` 한 줄로 정의)을 붙여서 커서 표시를 화면마다 다시 정의하지 않는다. 저장 UI는 상황에 따라 둘 중 하나:
-  - **전용 모달**(자산 대시보드 MANUAL 필드, 서비스 조회 서비스명/버전): 그 화면이 독자적인 최상위 페이지일 때. 값 종류가 text/select/checkbox 등으로 다양하면 이쪽.
+  - **전용 모달**(자산 대시보드 MANUAL 필드, 서비스 조회 서비스명): 그 화면이 독자적인 최상위 페이지일 때. 값 종류가 text/select/checkbox 등으로 다양하면 이쪽. (서비스 조회의 솔루션버전/Fix는 AUTO로 바뀌어서 이제 편집 UI 없음)
   - **브라우저 `prompt()`**(웹설정 상세의 vhost 서비스명): 이 템플릿이 다른 목록 화면(웹 설정 목록)의 모달에 AJAX로 fetch되어 그대로 삽입되는 경우 한정 — 모달 안에 또 모달을 띄우는 중첩을 피하기 위한 예외.
 - **목록 화면 공통 골격**(자산 대시보드/변경 이력/웹 설정 목록/서비스 조회가 전부 동일 구조): `has-addons` 검색 폼 → `table-container` 안 `table is-fullwidth is-hoverable is-striped` → 정렬 가능한 헤더는 `<a href="{% querystring sort=... page=None %}">`로 오름/내림 토글 → 하단 공통 pagination `<nav>` 블록. 새 목록 화면은 이 골격을 그대로 복사해서 시작하면 톤이 저절로 맞는다.
-- Hostname/IP 컬럼 sticky 고정(`position: sticky`)은 컬럼 수가 많아 가로 스크롤이 생기는 자산 대시보드에만 해당하는 예외이고, 다른 목록 화면엔 적용하지 않는다.
+- **컬럼이 많아 가로 스크롤이 생기는 목록 화면**(자산 대시보드, 웹 설정 목록)은 공통 클래스 `dash-scroll-table`(table)/`dash-sticky-col`+`dash-sticky-col-1`/`dash-sticky-col-2`(앞 두 컬럼의 th/td, base.html에 정의)를 써서 셀 줄바꿈 방지 + 앞 두 컬럼 고정을 적용한다. 컬럼이 적어 가로 스크롤이 안 생기는 화면(변경 이력, 서비스 조회 등)엔 안 씀.
 
 # 테스트/검증
 - 자동화 테스트 스위트는 사실상 없다(`*/tests.py`는 있지만 비어있음, `manage.py test` 실행해도 0건). 변경 검증은 로컬 Docker Compose에서 curl로 실제 API를 호출하거나 `manage.py shell`로 재현해 직접 확인하는 방식이 관례.
@@ -98,12 +100,12 @@ Django + DRF 기반 CMDB. 자산 자체(신규 생성)는 AWX push 경로 하나
 - **앱 코드(런타임에 영향을 주는 파일: `*.py`, 템플릿, 정적 파일, `Dockerfile`, `requirements.txt`, `vendor/`, 마이그레이션 등)가 바뀐 push를 할 때는** 아래를 같이 처리한다 — 이 문서에 미리 승인해둔 절차라 진행 여부 자체를 다시 묻지는 않지만, 5번 커밋 직전에는 "커밋 규칙"대로 항상 확인받는다.
   1. `VERSION`의 patch 버전을 1 올린다(지금까지 patch만 순차 증가시켜온 관례를 따름, 예: `1.0.6` → `1.0.7`).
   2. `docker build -t cmdb-core:<새 버전> .`으로 이미지를 빌드해 문제없이 빌드되는지 확인한다.
-  3. `docker save cmdb-core:<새 버전> -o cmdb-core-<새 버전>.tar`로 추출 후 `7z a cmdb-core-<새 버전>.tar.7z cmdb-core-<새 버전>.tar`로 압축한다(7-Zip: `C:\Program Files\7-Zip\7z.exe`, PATH에 없으면 이 경로로 직접 호출).
+  3. `docker save cmdb-core:<새 버전> -o cmdb-core-<새 버전>.tar`로 추출 후 `7z a -tzip cmdb-core-<새 버전>.tar.zip cmdb-core-<새 버전>.tar`로 **zip으로** 압축한다(7z 포맷이 아니라 `.zip`으로 통일 — 압축 도구는 그대로 7-Zip: `C:\Program Files\7-Zip\7z.exe`, PATH에 없으면 이 경로로 직접 호출, `-tzip` 옵션으로 zip 포맷 지정).
   4. `CHANGELOG.md` 맨 위에 새 버전 섹션을 추가해 이번 릴리즈에 포함된 변경사항을 정리한다. `WORKLOG.md`가 개발 과정의 디버깅/검토 기록이라면, `CHANGELOG.md`는 "이 배포 버전에 뭐가 들어갔는지"를 배포자 관점에서 간결하게 정리하는 파일.
   5. **여기서 커밋 전 확인**: `VERSION`/`CHANGELOG.md` 변경사항을 보여주고 승인받은 뒤 커밋 + push한다.
-  6. `gh release create v<새 버전> cmdb-core-<새 버전>.tar.7z --title v<새 버전> --notes "<CHANGELOG.md의 해당 버전 섹션 내용>"`으로 GitHub Release를 만들고 압축한 이미지를 첨부한다(`gh`도 PATH에 없으면 `C:\Program Files\GitHub CLI\gh.exe`로 직접 호출). `gh auth login`은 사용자가 미리 해뒀다고 가정 — 로그인 안 돼 있으면 진행 못 하니 사용자에게 알릴 것.
-  7. `.tar`/`.tar.7z` 산출물은 리포지토리에 커밋하지 않는다(`.gitignore`에 이미 제외 설정, GitHub Release 첨부파일로만 배포).
-  8. Release 업로드까지 끝나면 로컬(스크래치패드 등)에 남은 `.tar`/`.tar.7z` 파일은 지운다 — 원본은 GitHub Release에 있으니 필요하면 거기서 받으면 됨.
+  6. `gh release create v<새 버전> cmdb-core-<새 버전>.tar.zip --title v<새 버전> --notes "<CHANGELOG.md의 해당 버전 섹션 내용>"`으로 GitHub Release를 만들고 압축한 이미지를 첨부한다(`gh`도 PATH에 없으면 `C:\Program Files\GitHub CLI\gh.exe`로 직접 호출). `gh auth login`은 사용자가 미리 해뒀다고 가정 — 로그인 안 돼 있으면 진행 못 하니 사용자에게 알릴 것.
+  7. `.tar`/`.tar.zip` 산출물은 리포지토리에 커밋하지 않는다(`.gitignore`에 이미 제외 설정, GitHub Release 첨부파일로만 배포).
+  8. Release 업로드까지 끝나면 로컬(스크래치패드 등)에 남은 `.tar`/`.tar.zip` 파일은 지운다 — 원본은 GitHub Release에 있으니 필요하면 거기서 받으면 됨.
   9. 첨부파일 용량이 계속 쌓이는 걸 막기 위해, `gh release list`로 전체 릴리즈를 확인해 **최신 3개를 제외한 나머지 릴리즈는 첨부파일만 삭제**한다(`gh release delete-asset <태그> <에셋파일명> -y`). 태그/릴리즈 노트 자체는 지우지 않음 — 이력 조회는 계속 가능해야 하므로. 실제 이미지가 필요해지면 그 버전을 소스에서 다시 빌드하면 됨.
 - `WORKLOG.md`/`CLAUDE.md`처럼 앱 실행에 영향 없는 문서만 바뀐 push는 위 과정을 생략한다.
 

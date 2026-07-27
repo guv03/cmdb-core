@@ -84,6 +84,7 @@ def sync_webtob(source: WebConfigSource, sections: dict) -> None:
             docroot=node_attrs.get("docroot", ""),
             port=node_attrs.get("port", ""),
             hth=node_attrs.get("hth", ""),
+            limit_request_body=node_attrs.get("limitrequestbody", ""),
         )
 
     ssl_by_name = {}

@@ -1,24 +1,15 @@
 {% extends "dashboard/base.html" %}
 
-{% block title %}서비스 조회 - CMDB{% endblock %}
+{% block title %}WebToB 설정 목록 - CMDB{% endblock %}
 
 {% block content %}
 {% csrf_token %}
-<div class="level">
-  <div class="level-left">
-    <h1 class="title is-4">서비스 조회</h1>
-  </div>
-  <div class="level-right">
-    <div class="buttons">
-      <a class="button is-light" href="{% url 'dashboard-service-export' %}">엑셀 다운로드</a>
-      <a class="button is-light" href="{% url 'dashboard-service-import' %}">엑셀 업로드</a>
-    </div>
-  </div>
-</div>
+<h1 class="title is-4">WebToB 설정 목록</h1>
+<p class="subtitle is-6 has-text-grey">vhost 하나가 한 행입니다 — 여러 서버를 가로질러 vhost 단위로 검색·정렬합니다. LimitRequestBody는 *NODE절 설정이 vhost에 상속되는 값입니다. SvrGroup/Server/URI는 vhost 하나에 여러 개씩 걸릴 수 있는 관계형 데이터라 정렬은 지원하지 않습니다.</p>
 
 <form class="field has-addons" method="get">
   <div class="control is-expanded">
-    <input class="input" type="text" name="q" value="{{ request.GET.q }}" placeholder="서비스명/도메인/hostname 검색">
+    <input class="input" type="text" name="q" value="{{ current_q }}" placeholder="hostname/vhost/도메인/서비스명 검색">
   </div>
   <div class="control">
     <button class="button is-link" type="submit">검색</button>
@@ -26,33 +17,55 @@
 </form>
 
 <div class="table-container">
-  <table class="table is-fullwidth is-hoverable is-striped">
+  <table class="table is-fullwidth is-hoverable is-striped dash-scroll-table">
     <thead>
       <tr>
-        <th><a class="has-text-dark" href="{% querystring sort=columns.service_name.next_sort page=None %}">서비스명</a></th>
+        <th class="dash-sticky-col dash-sticky-col-1"><a class="has-text-dark" href="{% querystring sort=columns.hostname.next_sort page=None %}">Hostname</a></th>
+        <th class="dash-sticky-col dash-sticky-col-2"><a class="has-text-dark" href="{% querystring sort=columns.vhost_name.next_sort page=None %}">vhost</a></th>
         <th><a class="has-text-dark" href="{% querystring sort=columns.domain.next_sort page=None %}">도메인</a></th>
-        <th><a class="has-text-dark" href="{% querystring sort=columns.port.next_sort page=None %}">포트</a></th>
-        <th><a class="has-text-dark" href="{% querystring sort=columns.hostname.next_sort page=None %}">Hostname</a></th>
-        <th><a class="has-text-dark" href="{% querystring sort=columns.kind.next_sort page=None %}">솔루션</a></th>
+        <th><a class="has-text-dark" href="{% querystring sort=columns.hostalias.next_sort page=None %}">HostAlias</a></th>
+        <th><a class="has-text-dark" href="{% querystring sort=columns.port.next_sort page=None %}">Port</a></th>
+        <th><a class="has-text-dark" href="{% querystring sort=columns.docroot.next_sort page=None %}">DocRoot</a></th>
+        <th><a class="has-text-dark" href="{% querystring sort=columns.limit_request_body.next_sort page=None %}">LimitRequestBody</a></th>
+        <th><a class="has-text-dark" href="{% querystring sort=columns.ssl_flag.next_sort page=None %}">SSL</a></th>
+        <th><a class="has-text-dark" href="{% querystring sort=columns.ssl_protocols.next_sort page=None %}">SSL Protocols</a></th>
+        <th><a class="has-text-dark" href="{% querystring sort=columns.ssl_ciphers.next_sort page=None %}">SSL RequiredCiphers</a></th>
+        <th><a class="has-text-dark" href="{% querystring sort=columns.logging.next_sort page=None %}">Logging</a></th>
+        <th><a class="has-text-dark" href="{% querystring sort=columns.errorlog.next_sort page=None %}">ErrorLog</a></th>
+        <th><a class="has-text-dark" href="{% querystring sort=columns.service_name.next_sort page=None %}">서비스명</a></th>
+        <th>SvrGroup</th>
+        <th>Server</th>
+        <th>URI</th>
       </tr>
     </thead>
     <tbody>
-      {% for row in service_domains %}
+      {% for row in rows %}
       <tr>
-        <td class="editable-cell dash-editable-cell" data-kind="service" data-url="/dashboard/services/{{ row.pk }}/service/"
-            data-param="service_name" data-title="{{ row.domain }} - 서비스명">
-          <span class="cell-value">{{ row.service_name|default:"" }}</span><span class="dash-manual-icon" aria-hidden="true">✎</span>
-        </td>
+        <td class="dash-sticky-col dash-sticky-col-1">{{ row.vhost.source.asset.hostname }}</td>
+        <td class="dash-sticky-col dash-sticky-col-2">{{ row.vhost.name }}</td>
+        <td>{{ row.vhost.hostname|default:"" }}</td>
+        <td>{{ row.vhost.hostalias|default:"" }}</td>
+        <td>{{ row.vhost.port|default:"" }}</td>
+        <td>{{ row.vhost.docroot|default:"" }}</td>
+        <td>{{ row.vhost.source.node.limit_request_body|default:"" }}</td>
         <td>
-          {{ row.domain }}
-          {% if row.aliases %}<br><span class="is-size-7 has-text-grey">{{ row.aliases }}</span>{% endif %}
+          {% if row.vhost.ssl_flag %}<span class="tag is-success">SSL</span>{% endif %}
+          {% if row.vhost.ssl %}{{ row.vhost.ssl.name }} ({{ row.vhost.ssl.certificate_file }}){% endif %}
         </td>
-        <td>{{ row.port|default:"" }}</td>
-        <td>{{ row.source.asset.hostname }}</td>
-        <td>{{ row.source.get_kind_display }}</td>
+        <td>{{ row.vhost.ssl.protocols|default:"" }}</td>
+        <td style="word-break: break-all;">{{ row.vhost.ssl.required_ciphers|default:"" }}</td>
+        <td>{{ row.vhost.logging|default:"" }}</td>
+        <td>{{ row.vhost.errorlog|default:"" }}</td>
+        <td class="editable-cell dash-editable-cell" data-url="/dashboard/webconfig/vhost/{{ row.vhost.pk }}/service/"
+            data-param="service_name" data-title="{{ row.vhost.source.asset.hostname }} / {{ row.vhost.name }} - 서비스명">
+          <span class="cell-value">{{ row.vhost.service_name|default:"" }}</span><span class="dash-manual-icon" aria-hidden="true">✎</span>
+        </td>
+        <td>{{ row.svrgroup_summary }}</td>
+        <td>{{ row.server_summary }}</td>
+        <td>{{ row.uri_summary }}</td>
       </tr>
       {% empty %}
-      <tr><td colspan="5" class="has-text-grey">등록된 서비스가 없습니다.</td></tr>
+      <tr><td colspan="16" class="has-text-grey">등록된 vhost가 없습니다.</td></tr>
       {% endfor %}
     </tbody>
   </table>

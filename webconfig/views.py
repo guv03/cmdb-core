@@ -10,6 +10,7 @@ from webconfig.models import WebConfigSource, WebConfigSourceRevision
 from webconfig.parsers import PARSERS
 from webconfig.serializers import WebConfigIngestSerializer
 from webconfig.sync import sync_webtob
+from webconfig.version_extract import VERSION_EXTRACTORS
 
 SYNC_FUNCS = {WebConfigSource.Kind.WEBTOB: sync_webtob}
 
@@ -64,6 +65,13 @@ class WebConfigIngestView(APIView):
         source, _ = WebConfigSource.objects.update_or_create(
             asset=asset, kind=kind, defaults={"raw_content": content}
         )
+
+        version_extractor = VERSION_EXTRACTORS.get(kind)
+        if version_extractor is not None:
+            extracted = version_extractor(content)
+            if extracted is not None:
+                source.solution_version, source.solution_fix = extracted
+                source.save(update_fields=["solution_version", "solution_fix"])
 
         sync_func = SYNC_FUNCS[kind]
         sync_func(source, sections)

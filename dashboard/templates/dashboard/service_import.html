@@ -6,9 +6,9 @@
 <h1 class="title is-4">서비스 엑셀 업로드</h1>
 
 <div class="notification is-info is-light">
-  <p><a href="{% url 'dashboard-service-export' %}">현재 데이터 엑셀로 다운로드</a> 후 서비스명/솔루션버전 칸만 고쳐서 다시 올리는 걸 추천합니다.</p>
-  <p>첫 번째/두 번째 컬럼 헤더는 <code>hostname</code>, <code>vhost</code>이어야 합니다(도메인은 같은 값을 http/https vhost 두 개가 나눠 쓰는 경우가 있어 매칭 키로 못 써서, vhost 이름으로 매칭합니다). 나머지 컬럼은 <code>domain</code>/<code>aliases</code>(둘 다 참고용, 무시됨)/<code>서비스명</code>/<code>솔루션버전</code> 중 하나와 일치해야 합니다.</p>
-  <p>솔루션버전은 자산 단위 값이라 같은 호스트의 여러 행에 같은 값이 반복돼야 합니다 — 행마다 값이 다르면 반영하지 않고 "충돌"로 표시합니다.</p>
+  <p><a href="{% url 'dashboard-service-export' %}">현재 데이터 엑셀로 다운로드</a> 후 서비스명 칸만 고쳐서 다시 올리는 걸 추천합니다.</p>
+  <p>첫 번째/두 번째 컬럼 헤더는 <code>hostname</code>, <code>vhost</code>이어야 합니다(도메인은 같은 값을 http/https vhost 두 개가 나눠 쓰는 경우가 있어 매칭 키로 못 써서, vhost 이름으로 매칭합니다). 나머지 컬럼은 <code>domain</code>/<code>aliases</code>/<code>솔루션버전</code>/<code>Fix</code>(전부 참고용, 무시됨)/<code>서비스명</code> 중 하나와 일치해야 합니다.</p>
+  <p>솔루션버전/Fix는 push에서 자동으로 채워지는 값이라 엑셀로는 수정할 수 없습니다 — 참고용으로만 내려받아집니다.</p>
 </div>
 
 {% if not result %}
@@ -30,9 +30,7 @@
 <h2 class="title is-5">검증 결과</h2>
 <div class="tags">
   <span class="tag is-success is-medium">✓ 서비스명 변경 예정 {{ result.service_name_updates|length }}건</span>
-  <span class="tag is-success is-medium">✓ 솔루션버전 변경 예정 {{ result.version_updates|length }}건</span>
   <span class="tag is-warning is-medium">● 매칭 안 됨 {{ result.unmatched_rows|length }}건</span>
-  <span class="tag is-danger is-medium">✕ 솔루션버전 충돌 {{ result.version_conflicts|length }}건</span>
 </div>
 
 {% if result.service_name_updates %}
@@ -57,27 +55,6 @@
 </div>
 {% endif %}
 
-{% if result.version_updates %}
-<h3 class="title is-6">솔루션버전 변경 예정</h3>
-<div class="table-container">
-  <table class="table is-fullwidth is-striped is-narrow">
-    <thead>
-      <tr><th>행</th><th>Hostname</th><th>현재 값</th><th>새 값</th></tr>
-    </thead>
-    <tbody>
-      {% for update in result.version_updates %}
-      <tr>
-        <td>{{ update.row_number }}</td>
-        <td>{{ update.hostname }}</td>
-        <td>{{ update.old_value }}</td>
-        <td>{{ update.new_value }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-</div>
-{% endif %}
-
 {% if result.unmatched_rows %}
 <h3 class="title is-6">매칭 안 됨 (반영 안 됨)</h3>
 <div class="table-container">
@@ -92,31 +69,12 @@
 </div>
 {% endif %}
 
-{% if result.version_conflicts %}
-<h3 class="title is-6">솔루션버전 충돌 (반영 안 됨)</h3>
-<div class="table-container">
-  <table class="table is-fullwidth is-striped is-narrow">
-    <thead><tr><th>Hostname</th><th>행</th><th>입력된 값들</th></tr></thead>
-    <tbody>
-      {% for conflict in result.version_conflicts %}
-      <tr>
-        <td>{{ conflict.hostname }}</td>
-        <td>{{ conflict.row_numbers|join:", " }}</td>
-        <td>{{ conflict.values|join:" / " }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-</div>
-{% endif %}
-
 <form method="post" action="{% url 'dashboard-service-import-confirm' %}">
   {% csrf_token %}
   <input type="hidden" name="payload" value='{{ payload_json }}'>
   <div class="field is-grouped">
     <div class="control">
-      <button type="submit" class="button is-link"
-              {% if not result.service_name_updates and not result.version_updates %}disabled{% endif %}>
+      <button type="submit" class="button is-link" {% if not result.service_name_updates %}disabled{% endif %}>
         확정 ({{ total_count }}건 반영)
       </button>
     </div>

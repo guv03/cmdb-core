@@ -15,8 +15,7 @@ from webconfig.models import (
 
 @admin.register(WebConfigSource)
 class WebConfigSourceAdmin(admin.ModelAdmin):
-    list_display = ["asset", "kind", "solution_version", "last_pushed_at"]
-    list_editable = ["solution_version"]
+    list_display = ["asset", "kind", "solution_version", "solution_fix", "last_pushed_at"]
     list_filter = ["kind"]
     search_fields = ["asset__hostname"]
 
