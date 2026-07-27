@@ -2,6 +2,7 @@ from django.contrib.auth.views import LogoutView
 from django.urls import path
 
 from dashboard.views import (
+    AssetExportView,
     AssetFactsDetailView,
     AssetListAPIView,
     AssetListView,
@@ -12,8 +13,15 @@ from dashboard.views import (
     ManualFieldImportConfirmView,
     ManualFieldImportView,
     PendingChangeDecisionView,
+    ServiceExportView,
+    ServiceImportConfirmView,
+    ServiceImportView,
     WebConfigDetailView,
+    WebConfigHistoryListView,
     WebConfigListView,
+    WebConfigSourceVersionUpdateView,
+    WebServiceDomainServiceUpdateView,
+    WebServiceListView,
     WebtobVhostServiceUpdateView,
 )
 
@@ -27,6 +35,7 @@ urlpatterns = [
         AssetManualFieldUpdateView.as_view(),
         name="dashboard-asset-manual-fields-update",
     ),
+    path("assets/export/", AssetExportView.as_view(), name="dashboard-asset-export"),
     path("assets/import/", ManualFieldImportView.as_view(), name="dashboard-asset-import"),
     path(
         "assets/import/confirm/",
@@ -55,11 +64,30 @@ urlpatterns = [
         name="dashboard-change-reject",
     ),
     path("webconfig/", WebConfigListView.as_view(), name="dashboard-webconfig-list"),
+    path("webconfig/changes/", WebConfigHistoryListView.as_view(), name="dashboard-webconfig-history"),
     path("webconfig/<int:pk>/", WebConfigDetailView.as_view(), name="dashboard-webconfig-detail"),
     path(
         "webconfig/vhost/<int:pk>/service/",
         WebtobVhostServiceUpdateView.as_view(),
         name="dashboard-webconfig-vhost-service",
+    ),
+    path(
+        "webconfig/<int:pk>/version/",
+        WebConfigSourceVersionUpdateView.as_view(),
+        name="dashboard-webconfig-version",
+    ),
+    path("services/", WebServiceListView.as_view(), name="dashboard-webservice-list"),
+    path("services/export/", ServiceExportView.as_view(), name="dashboard-service-export"),
+    path("services/import/", ServiceImportView.as_view(), name="dashboard-service-import"),
+    path(
+        "services/import/confirm/",
+        ServiceImportConfirmView.as_view(),
+        name="dashboard-service-import-confirm",
+    ),
+    path(
+        "services/<int:pk>/service/",
+        WebServiceDomainServiceUpdateView.as_view(),
+        name="dashboard-webservice-update",
     ),
 ]
 

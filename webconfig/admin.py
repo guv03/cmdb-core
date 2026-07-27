@@ -2,6 +2,8 @@ from django.contrib import admin
 
 from webconfig.models import (
     WebConfigSource,
+    WebConfigSourceRevision,
+    WebServiceDomain,
     WebtobNode,
     WebtobServer,
     WebtobSsl,
@@ -13,7 +15,8 @@ from webconfig.models import (
 
 @admin.register(WebConfigSource)
 class WebConfigSourceAdmin(admin.ModelAdmin):
-    list_display = ["asset", "kind", "last_pushed_at"]
+    list_display = ["asset", "kind", "solution_version", "last_pushed_at"]
+    list_editable = ["solution_version"]
     list_filter = ["kind"]
     search_fields = ["asset__hostname"]
 
@@ -50,7 +53,21 @@ class WebtobServerAdmin(admin.ModelAdmin):
     search_fields = ["name", "source__asset__hostname"]
 
 
+@admin.register(WebConfigSourceRevision)
+class WebConfigSourceRevisionAdmin(admin.ModelAdmin):
+    list_display = ["source", "detected_at"]
+    list_filter = ["source__kind"]
+    search_fields = ["source__asset__hostname"]
+
+
 @admin.register(WebtobUri)
 class WebtobUriAdmin(admin.ModelAdmin):
     list_display = ["name", "source", "uri_path", "server"]
     search_fields = ["name", "uri_path", "source__asset__hostname"]
+
+
+@admin.register(WebServiceDomain)
+class WebServiceDomainAdmin(admin.ModelAdmin):
+    list_display = ["domain", "aliases", "port", "service_name", "source", "vhost_name"]
+    list_filter = ["source__kind"]
+    search_fields = ["domain", "aliases", "service_name", "vhost_name", "source__asset__hostname"]

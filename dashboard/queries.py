@@ -5,6 +5,7 @@ from django.db.models import CharField, DateField, DecimalField, OuterRef, Prefe
 
 from core.models import Asset
 from facts.models import FactFieldDefinition, HostFactValue, PendingChange
+from webconfig.models import WebConfigSourceRevision, WebServiceDomain
 
 LEADING_FIXED_COLUMNS = [
     {"key": "hostname", "label": "Hostname", "lookup": "hostname"},
@@ -13,8 +14,8 @@ LEADING_FIXED_COLUMNS = [
 ]
 
 TRAILING_FIXED_COLUMNS = [
-    {"key": "created_at", "label": "생성일", "lookup": "created_at"},
     {"key": "last_changed_at", "label": "최근 변경일", "lookup": "last_changed_at"},
+    {"key": "last_seen_at", "label": "최근 반영일", "lookup": "hostfact__last_seen_at"},
 ]
 
 _FIXED_LOOKUPS = {
@@ -187,6 +188,46 @@ def get_change_history_queryset(request):
     lookup = CHANGE_HISTORY_SORT_LOOKUPS.get(sort_key, "created_at")
 
     return queryset.order_by(f"{direction}{lookup}")
+
+
+WEB_SERVICE_SORT_LOOKUPS = {
+    "domain": "domain",
+    "port": "port",
+    "service_name": "service_name",
+    "hostname": "source__asset__hostname",
+    "kind": "source__kind",
+    "solution_version": "source__solution_version",
+}
+
+
+def get_web_service_queryset(request):
+    queryset = WebServiceDomain.objects.select_related("source__asset")
+
+    q = _request_param(request, "q", "search")
+    if q:
+        queryset = queryset.filter(
+            Q(domain__icontains=q)
+            | Q(aliases__icontains=q)
+            | Q(service_name__icontains=q)
+            | Q(source__asset__hostname__icontains=q)
+        )
+
+    sort = _request_param(request, "sort", "ordering", default="domain")
+    direction = "-" if sort.startswith("-") else ""
+    sort_key = sort.lstrip("-")
+    lookup = WEB_SERVICE_SORT_LOOKUPS.get(sort_key, "domain")
+
+    return queryset.order_by(f"{direction}{lookup}")
+
+
+def get_webconfig_history_queryset(request):
+    queryset = WebConfigSourceRevision.objects.select_related("source__asset")
+
+    q = _request_param(request, "q", "search")
+    if q:
+        queryset = queryset.filter(source__asset__hostname__icontains=q)
+
+    return queryset.order_by("-detected_at")
 
 
 def build_rows(assets, dynamic_field_definitions):

@@ -2,6 +2,7 @@ from dataclasses import dataclass
 
 import openpyxl
 from django.db.models import Prefetch
+from django.http import HttpResponse
 from django.utils import timezone
 
 from core.models import Asset
@@ -59,18 +60,56 @@ def _manual_fields_by_label() -> dict[str, FactFieldDefinition]:
     return {fd.label: fd for fd in manual_fields}
 
 
-def _current_value_display(host_fact, field_definition: FactFieldDefinition) -> str:
+def _current_stored_value(host_fact, field_definition: FactFieldDefinition) -> HostFactValue | None:
     if host_fact is None:
-        return ""
-    value = next(
+        return None
+    return next(
         (v for v in host_fact.values.all() if v.field_definition_id == field_definition.id), None
     )
+
+
+def _current_value_display(host_fact, field_definition: FactFieldDefinition) -> str:
+    value = _current_stored_value(host_fact, field_definition)
     if value is None:
         return ""
     for candidate in (value.value_text, value.value_number, value.value_date):
         if candidate not in (None, ""):
             return str(candidate)
     return ""
+
+
+def export_manual_field_workbook() -> HttpResponse:
+    """전체 자산의 hostname + 수기 입력 필드 현재 값을 xlsx로 내려준다(서비스 조회의
+    엑셀 다운로드와 동일한 취지 - 몇 칸만 고쳐서 재업로드하는 흐름). 헤더가 그대로
+    parse_manual_field_workbook이 기대하는 업로드 형식이라 다운로드/업로드가 짝을 이룬다."""
+    manual_fields = list(
+        FactFieldDefinition.objects.filter(source=FactFieldDefinition.Source.MANUAL, is_visible=True).order_by(
+            "sort_order", "id"
+        )
+    )
+
+    workbook = openpyxl.Workbook()
+    sheet = workbook.active
+    sheet.title = "자산"
+    sheet.append([HOSTNAME_HEADER] + [fd.label for fd in manual_fields])
+
+    assets = (
+        Asset.objects.select_related("hostfact")
+        .prefetch_related(
+            Prefetch("hostfact__values", queryset=HostFactValue.objects.select_related("field_definition"))
+        )
+        .order_by("hostname")
+    )
+    for asset in assets:
+        host_fact = getattr(asset, "hostfact", None)
+        sheet.append([asset.hostname] + [_current_value_display(host_fact, fd) for fd in manual_fields])
+
+    response = HttpResponse(
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    response["Content-Disposition"] = 'attachment; filename="cmdb_assets.xlsx"'
+    workbook.save(response)
+    return response
 
 
 def parse_manual_field_workbook(uploaded_file) -> ImportResult:
@@ -170,6 +209,13 @@ def parse_manual_field_workbook(uploaded_file) -> ImportResult:
                         raw_value=str(cell_value),
                     )
                 )
+                continue
+
+            stored_value = _current_stored_value(host_fact, field_definition)
+            unchanged = stored_value is not None and all(
+                getattr(stored_value, key) == value for key, value in defaults.items()
+            )
+            if unchanged:
                 continue
 
             updates.append(

@@ -15,6 +15,9 @@ class WebConfigSource(TimeStampedModel):
     # 구조화 테이블로 안 뽑은 나머지 절(EXT/ALIAS/LOGGING/ERRORDOCUMENT 등) - 원본 펼쳐보기용, 조회 대상 아님
     extra_sections = models.JSONField(default=dict, blank=True)
     last_pushed_at = models.DateTimeField(auto_now=True)
+    # 수기 입력: 설정 파일 안에 버전 정보가 없어(webtob http.m 기준) 자동 추출이 안 되는 값.
+    # update_or_create의 defaults에 없어 push로 덮어쓰지 않음(service_name과 동일 원칙).
+    solution_version = models.CharField(max_length=50, blank=True)
 
     class Meta:
         constraints = [
@@ -23,6 +26,20 @@ class WebConfigSource(TimeStampedModel):
 
     def __str__(self):
         return f"{self.asset.hostname} / {self.get_kind_display()}"
+
+
+class WebConfigSourceRevision(TimeStampedModel):
+    """웹설정 원본(raw_content)이 실제로 바뀔 때만 남기는 읽기 전용 감사 이력 - facts의
+    PendingChange와 달리 승인 절차는 없다(웹설정 push는 지금처럼 즉시 반영 유지). old/new를
+    한 행에 같이 저장해서 조회 시점에 이전 리비전을 따로 찾아 짝지을 필요가 없게 한다."""
+
+    source = models.ForeignKey(WebConfigSource, on_delete=models.CASCADE, related_name="revisions")
+    old_content = models.TextField()
+    new_content = models.TextField()
+    detected_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.source} @ {self.detected_at}"
 
 
 class WebtobNode(TimeStampedModel):
@@ -122,6 +139,29 @@ class WebtobServer(TimeStampedModel):
 
     def __str__(self):
         return self.name
+
+
+class WebServiceDomain(TimeStampedModel):
+    """도메인 기준으로 서비스를 조회하기 위한 요약 테이블. vhost 하나당 한 행(kind별 sync 함수가
+    push마다 통째로 재생성). 주 도메인(hostname)만 domain에 담고 나머지 별칭은 aliases에
+    콤마로 모아둬 화면이 vhost 개수만큼만 늘어나게 한다 - 검색은 둘 다 대상으로 한다.
+    service_name은 해당 vhost의 값을 그대로 복사해두는 것이라 vhost 쪽 수기 입력이 바뀌면
+    함께 갱신해야 한다."""
+
+    source = models.ForeignKey(WebConfigSource, on_delete=models.CASCADE, related_name="service_domains")
+    vhost_name = models.CharField(max_length=100)
+    domain = models.CharField(max_length=255)
+    aliases = models.CharField(max_length=500, blank=True)
+    port = models.CharField(max_length=20, blank=True)
+    service_name = models.CharField(max_length=255, blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["source", "vhost_name"], name="unique_service_domain")
+        ]
+
+    def __str__(self):
+        return self.domain
 
 
 class WebtobUri(TimeStampedModel):

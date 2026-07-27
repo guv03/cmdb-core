@@ -69,11 +69,11 @@
           <td>{{ change.new_value|default:"" }}</td>
           <td>
             {% if change.status == "pending" %}
-            <span class="tag is-warning">{{ change.get_status_display }}</span>
+            <span class="tag is-warning">● {{ change.get_status_display }}</span>
             {% elif change.status == "approved" %}
-            <span class="tag is-success">{{ change.get_status_display }}</span>
+            <span class="tag is-success">✓ {{ change.get_status_display }}</span>
             {% else %}
-            <span class="tag is-danger">{{ change.get_status_display }}</span>
+            <span class="tag is-danger">✕ {{ change.get_status_display }}</span>
             {% endif %}
           </td>
           <td>{{ change.created_at }}</td>

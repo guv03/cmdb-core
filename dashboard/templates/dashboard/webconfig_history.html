@@ -1,48 +1,44 @@
 {% extends "dashboard/base.html" %}
 
-{% block title %}웹 설정 - CMDB{% endblock %}
+{% block title %}웹 설정 변경 이력 - CMDB{% endblock %}
 
 {% block content %}
 {% csrf_token %}
-<h1 class="title is-4">웹 설정</h1>
+<h1 class="title is-4">웹 설정 변경 이력</h1>
+<p class="subtitle is-6 has-text-grey">원본 설정이 실제로 바뀐 시점만 기록됩니다. 승인/반려는 없고, push는 지금처럼 감지 즉시 반영됩니다.</p>
 
 <form class="field has-addons" method="get">
   <div class="control is-expanded">
-    <input class="input" type="text" name="q" value="{{ request.GET.q }}" placeholder="hostname/도메인 검색">
+    <input class="input" type="text" name="q" value="{{ current_q }}" placeholder="hostname 검색">
   </div>
   <div class="control">
     <button class="button is-link" type="submit">검색</button>
   </div>
 </form>
 
-<div class="table-container">
-  <table class="table is-fullwidth is-hoverable is-striped">
-    <thead>
-      <tr>
-        <th>Hostname</th>
-        <th>종류</th>
-        <th>Node</th>
-        <th>VHost 수</th>
-        <th>최근 변경일</th>
-        <th>최근 반영일</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for source in sources %}
-      <tr class="webconfig-row" data-detail-url="{% url 'dashboard-webconfig-detail' source.pk %}" style="cursor: pointer;">
-        <td>{{ source.asset.hostname }}</td>
-        <td>{{ source.get_kind_display }}</td>
-        <td>{{ source.node.name|default:"" }}</td>
-        <td>{{ source.vhost_count }}</td>
-        <td>{{ source.last_changed_at|default:"" }}</td>
-        <td>{{ source.last_pushed_at }}</td>
-      </tr>
-      {% empty %}
-      <tr><td colspan="6" class="has-text-grey">등록된 웹 설정이 없습니다.</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
+{% for revision in revisions %}
+<div class="box">
+  <div class="level is-mobile">
+    <div class="level-left">
+      <div>
+        <p class="has-text-weight-semibold">{{ revision.source.asset.hostname }} · {{ revision.source.get_kind_display }}</p>
+        <p class="has-text-grey is-size-7">감지: {{ revision.detected_at }}</p>
+      </div>
+    </div>
+    <div class="level-right">
+      <button type="button" class="button is-light is-small webconfig-row-trigger"
+              data-detail-url="{% url 'dashboard-webconfig-detail' revision.source.pk %}">최신 설정 보기</button>
+    </div>
+  </div>
+  <details>
+    <summary class="has-text-weight-semibold" style="cursor: pointer;">변경 내용 보기</summary>
+    <pre class="dash-diff">{% for line in revision.diff_lines %}<span class="diff-{{ line.tag }}">{{ line.text }}
+</span>{% endfor %}</pre>
+  </details>
 </div>
+{% empty %}
+<p class="has-text-grey">변경 이력이 없습니다.</p>
+{% endfor %}
 
 <div class="modal" id="webconfigModal">
   <div class="modal-background"></div>
@@ -82,12 +78,12 @@ document.addEventListener('DOMContentLoaded', function () {
     modal.classList.remove('is-active');
   }
 
-  document.querySelectorAll('.webconfig-row').forEach(function (row) {
-    row.addEventListener('click', function () {
+  document.querySelectorAll('.webconfig-row-trigger').forEach(function (btn) {
+    btn.addEventListener('click', function () {
       modalBody.textContent = '불러오는 중...';
       modal.classList.add('is-active');
 
-      fetch(row.dataset.detailUrl)
+      fetch(btn.dataset.detailUrl)
         .then(function (res) { return res.text(); })
         .then(function (html) {
           var doc = new DOMParser().parseFromString(html, 'text/html');

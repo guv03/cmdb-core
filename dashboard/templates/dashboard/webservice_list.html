@@ -1,0 +1,179 @@
+{% extends "dashboard/base.html" %}
+
+{% block title %}서비스 조회 - CMDB{% endblock %}
+
+{% block content %}
+{% csrf_token %}
+<div class="level">
+  <div class="level-left">
+    <h1 class="title is-4">서비스 조회</h1>
+  </div>
+  <div class="level-right">
+    <div class="buttons">
+      <a class="button is-light" href="{% url 'dashboard-service-export' %}">엑셀 다운로드</a>
+      <a class="button is-light" href="{% url 'dashboard-service-import' %}">엑셀 업로드</a>
+    </div>
+  </div>
+</div>
+
+<form class="field has-addons" method="get">
+  <div class="control is-expanded">
+    <input class="input" type="text" name="q" value="{{ request.GET.q }}" placeholder="서비스명/도메인/hostname 검색">
+  </div>
+  <div class="control">
+    <button class="button is-link" type="submit">검색</button>
+  </div>
+</form>
+
+<div class="table-container">
+  <table class="table is-fullwidth is-hoverable is-striped">
+    <thead>
+      <tr>
+        <th><a class="has-text-dark" href="{% querystring sort='service_name' page=None %}">서비스명</a></th>
+        <th><a class="has-text-dark" href="{% querystring sort='domain' page=None %}">도메인</a></th>
+        <th><a class="has-text-dark" href="{% querystring sort='port' page=None %}">포트</a></th>
+        <th><a class="has-text-dark" href="{% querystring sort='hostname' page=None %}">Hostname</a></th>
+        <th><a class="has-text-dark" href="{% querystring sort='kind' page=None %}">솔루션</a></th>
+        <th><a class="has-text-dark" href="{% querystring sort='solution_version' page=None %}">버전</a></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in service_domains %}
+      <tr>
+        <td class="editable-cell dash-editable-cell" data-kind="service" data-url="/dashboard/services/{{ row.pk }}/service/"
+            data-param="service_name" data-title="{{ row.domain }} - 서비스명">
+          <span class="cell-value">{{ row.service_name|default:"" }}</span><span class="dash-manual-icon" aria-hidden="true">✎</span>
+        </td>
+        <td>
+          {{ row.domain }}
+          {% if row.aliases %}<br><span class="is-size-7 has-text-grey">{{ row.aliases }}</span>{% endif %}
+        </td>
+        <td>{{ row.port|default:"" }}</td>
+        <td>{{ row.source.asset.hostname }}</td>
+        <td>{{ row.source.get_kind_display }}</td>
+        <td class="editable-cell dash-editable-cell" data-kind="version" data-source-id="{{ row.source.pk }}"
+            data-url="/dashboard/webconfig/{{ row.source.pk }}/version/"
+            data-param="solution_version" data-title="{{ row.source.asset.hostname }} - 솔루션 버전">
+          <span class="cell-value">{{ row.source.solution_version|default:"" }}</span><span class="dash-manual-icon" aria-hidden="true">✎</span>
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="6" class="has-text-grey">등록된 서비스가 없습니다.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<nav class="pagination" role="navigation" aria-label="pagination">
+  {% if page_obj.has_previous %}
+    <a class="pagination-previous" href="{% querystring page=page_obj.previous_page_number %}">이전</a>
+  {% else %}
+    <a class="pagination-previous" disabled>이전</a>
+  {% endif %}
+  {% if page_obj.has_next %}
+    <a class="pagination-next" href="{% querystring page=page_obj.next_page_number %}">다음</a>
+  {% else %}
+    <a class="pagination-next" disabled>다음</a>
+  {% endif %}
+  <span class="pagination-list">
+    <span class="pagination-link is-current">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
+  </span>
+</nav>
+
+<div class="modal" id="serviceCellModal">
+  <div class="modal-background"></div>
+  <div class="modal-card" style="width: 90%; max-width: 420px;">
+    <header class="modal-card-head">
+      <p class="modal-card-title" id="serviceCellModalTitle">서비스명 편집</p>
+      <button class="delete" aria-label="close" id="serviceCellModalClose"></button>
+    </header>
+    <section class="modal-card-body">
+      <div class="field">
+        <input class="input" type="text" id="serviceCellInput">
+      </div>
+      <p class="help is-danger" id="serviceCellError" style="display: none;"></p>
+    </section>
+    <footer class="modal-card-foot">
+      <button type="button" class="button is-link" id="serviceCellSave">저장</button>
+      <button type="button" class="button" id="serviceCellCancel">취소</button>
+    </footer>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_body %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  function getCsrfToken() {
+    var input = document.querySelector('input[name=csrfmiddlewaretoken]');
+    return input ? input.value : '';
+  }
+
+  var modal = document.getElementById('serviceCellModal');
+  var modalTitle = document.getElementById('serviceCellModalTitle');
+  var input = document.getElementById('serviceCellInput');
+  var errorEl = document.getElementById('serviceCellError');
+  var saveBtn = document.getElementById('serviceCellSave');
+  var cancelBtn = document.getElementById('serviceCellCancel');
+
+  var activeCell = null;
+
+  function closeModal() {
+    modal.classList.remove('is-active');
+    activeCell = null;
+  }
+
+  function openModal(cell) {
+    activeCell = cell;
+    errorEl.style.display = 'none';
+    modalTitle.textContent = cell.dataset.title;
+    input.value = cell.querySelector('.cell-value').textContent.trim();
+    modal.classList.add('is-active');
+    input.focus();
+  }
+
+  function saveActiveCell() {
+    if (!activeCell) return;
+    var param = activeCell.dataset.param;
+
+    saveBtn.classList.add('is-loading');
+    fetch(activeCell.dataset.url, {
+      method: 'POST',
+      headers: {
+        'X-CSRFToken': getCsrfToken(),
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams([[param, input.value]]),
+    })
+      .then(function (res) { return res.json(); })
+      .then(function (data) {
+        saveBtn.classList.remove('is-loading');
+        var value = data[param];
+        if (activeCell.dataset.kind === 'version') {
+          document.querySelectorAll('.editable-cell[data-kind="version"][data-source-id="' + activeCell.dataset.sourceId + '"]')
+            .forEach(function (cell) { cell.querySelector('.cell-value').textContent = value; });
+        } else {
+          activeCell.querySelector('.cell-value').textContent = value;
+        }
+        closeModal();
+      })
+      .catch(function () {
+        saveBtn.classList.remove('is-loading');
+        errorEl.textContent = '저장 실패';
+        errorEl.style.display = 'block';
+      });
+  }
+
+  document.querySelectorAll('.editable-cell').forEach(function (cell) {
+    cell.addEventListener('click', function () {
+      openModal(cell);
+    });
+  });
+
+  saveBtn.addEventListener('click', saveActiveCell);
+  cancelBtn.addEventListener('click', closeModal);
+  document.getElementById('serviceCellModalClose').addEventListener('click', closeModal);
+  modal.querySelector('.modal-background').addEventListener('click', closeModal);
+});
+</script>
+{% endblock %}

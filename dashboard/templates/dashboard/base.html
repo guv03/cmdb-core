@@ -1,22 +1,67 @@
 {% load static %}<!DOCTYPE html>
-<html lang="ko" data-theme="dark">
+<html lang="ko" data-theme="light">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{% block title %}CMDB{% endblock %}</title>
 <link rel="stylesheet" href="{% static 'dashboard/css/bulma.min.css' %}">
 <style>
-  /* 선택된 상단 메뉴를 배경색 대신 밑줄 강조로 표시 */
-  .navbar-item.is-active {
-    background-color: transparent;
-    color: var(--bulma-link);
-    box-shadow: inset 0 -2px 0 0 var(--bulma-link);
+  /* 눈이 편한 라이트 테마: 순백 배경 + 고대비 텍스트 + 큰 글씨(연세 있으신 분들 가독성 우선) */
+  :root {
+    --bulma-family-primary: "Malgun Gothic", "Apple SD Gothic Neo", -apple-system, "Segoe UI", Roboto, sans-serif;
+    --bulma-body-size: 1.125em;
+    --bulma-text-l: 12%;
+    --bulma-link-l: 42%;
   }
+  /* 표/입력 테두리를 굵고 진하게: 저시력 사용자를 위한 구획 구분 강화 */
+  .table thead th {
+    border-bottom-width: 2px;
+  }
+  .input, .textarea, .select select {
+    border-width: 2px;
+  }
+  /* 선택된 상단 메뉴를 배경색 대신 굵게+밑줄로 표시(내비 자체 글자색을 그대로 써서 다크 내비 위에서도 대비 유지).
+     navbar-start/end의 "직계 자식"으로만 한정 - 드롭다운 안의 활성 항목(자산 목록/변경 이력 등)까지 걸리면
+     배경만 투명해지고 Bulma가 흰 글자로 계산해둔 색은 그대로 남아 흰 드롭다운 배경 위에서 안 보이게 됨. */
+  .navbar-start > .navbar-item.is-active,
+  .navbar-end > .navbar-item.is-active,
+  .navbar-link.is-active {
+    background-color: transparent;
+    font-weight: 700;
+    box-shadow: inset 0 -3px 0 0 currentColor;
+  }
+  /* 인라인 편집 가능한 셀 공통 표시: 클릭하면 편집(모달 또는 prompt) - 전 화면 공통 */
+  .dash-editable-cell {
+    cursor: pointer;
+  }
+  /* 수기 입력(변동) 값 옆에 붙이는 연필 아이콘 - 값이 비어 있어도 편집 가능함을 알 수 있게.
+     danger/warning/success 팔레트와 안 겹치도록 중립 회색으로 고정 */
+  .dash-manual-icon {
+    color: var(--bulma-grey);
+    font-size: 0.85em;
+    margin-left: 0.35em;
+  }
+  /* 웹설정 변경 이력의 unified diff 표시 - git diff와 같은 관례로 추가=녹색/삭제=빨강 */
+  .dash-diff {
+    font-family: "Consolas", "Courier New", monospace;
+    font-size: 0.85em;
+    white-space: pre-wrap;
+    word-break: break-all;
+    max-height: 60vh;
+    overflow-y: auto;
+    margin: 10px 0 0;
+    padding: 10px 12px;
+    background: var(--bulma-scheme-main-bis);
+    border-radius: 6px;
+  }
+  .dash-diff .diff-add { color: var(--bulma-success); }
+  .dash-diff .diff-remove { color: var(--bulma-danger); }
+  .dash-diff .diff-hunk, .dash-diff .diff-header { color: var(--bulma-grey); }
 </style>
 {% block extra_head %}{% endblock %}
 </head>
 <body>
-<nav class="navbar" role="navigation" aria-label="main navigation">
+<nav class="navbar is-black" role="navigation" aria-label="main navigation">
   <div class="container">
     <div class="navbar-brand">
       <a class="navbar-item" href="{% url 'dashboard-asset-list' %}"><strong>CMDB</strong></a>
@@ -28,14 +73,28 @@
     </div>
     <div id="navMenu" class="navbar-menu">
       <div class="navbar-start">
-        <a class="navbar-item {% if request.resolver_match.url_name == 'dashboard-asset-list' %}is-active{% endif %}"
-           href="{% url 'dashboard-asset-list' %}">자산 대시보드</a>
-        <a class="navbar-item {% if request.resolver_match.url_name == 'dashboard-change-history' %}is-active{% endif %}"
-           href="{% url 'dashboard-change-history' %}">변경 이력</a>
-        <a class="navbar-item {% if request.resolver_match.url_name == 'dashboard-asset-import' %}is-active{% endif %}"
-           href="{% url 'dashboard-asset-import' %}">엑셀 업로드</a>
-        <a class="navbar-item {% if 'dashboard-webconfig' in request.resolver_match.url_name %}is-active{% endif %}"
-           href="{% url 'dashboard-webconfig-list' %}">웹 설정</a>
+        <div class="navbar-item has-dropdown is-hoverable">
+          <a class="navbar-link {% if 'dashboard-asset' in request.resolver_match.url_name or request.resolver_match.url_name == 'dashboard-change-history' %}is-active{% endif %}"
+             href="{% url 'dashboard-asset-list' %}">자산 대시보드</a>
+          <div class="navbar-dropdown">
+            <a class="navbar-item {% if request.resolver_match.url_name == 'dashboard-asset-list' %}is-active{% endif %}"
+               href="{% url 'dashboard-asset-list' %}">자산 목록</a>
+            <a class="navbar-item {% if request.resolver_match.url_name == 'dashboard-change-history' %}is-active{% endif %}"
+               href="{% url 'dashboard-change-history' %}">변경 이력</a>
+          </div>
+        </div>
+        <div class="navbar-item has-dropdown is-hoverable">
+          <a class="navbar-link {% if 'dashboard-webconfig' in request.resolver_match.url_name %}is-active{% endif %}"
+             href="{% url 'dashboard-webconfig-list' %}">웹 설정</a>
+          <div class="navbar-dropdown">
+            <a class="navbar-item {% if request.resolver_match.url_name == 'dashboard-webconfig-list' %}is-active{% endif %}"
+               href="{% url 'dashboard-webconfig-list' %}">웹 설정 목록</a>
+            <a class="navbar-item {% if request.resolver_match.url_name == 'dashboard-webconfig-history' %}is-active{% endif %}"
+               href="{% url 'dashboard-webconfig-history' %}">변경 이력</a>
+          </div>
+        </div>
+        <a class="navbar-item {% if request.resolver_match.url_name == 'dashboard-webservice-list' %}is-active{% endif %}"
+           href="{% url 'dashboard-webservice-list' %}">서비스 조회</a>
       </div>
       {% if user.is_authenticated %}
       <div class="navbar-end">

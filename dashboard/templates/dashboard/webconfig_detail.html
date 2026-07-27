@@ -34,9 +34,8 @@
     <tbody>
       <tr>
         <th style="width: 12em;">서비스명</th>
-        <td>
-          <span class="vhost-service-value" data-vhost-id="{{ vhost.id }}">{{ vhost.service_name }}</span>
-          <button type="button" class="button is-small vhost-service-edit-btn" data-vhost-id="{{ vhost.id }}">편집</button>
+        <td class="vhost-service-cell dash-editable-cell" data-vhost-id="{{ vhost.id }}">
+          <span class="vhost-service-value">{{ vhost.service_name }}</span><span class="dash-manual-icon" aria-hidden="true">✎</span>
         </td>
       </tr>
       <tr><th>Hostname</th><td>{{ vhost.hostname }}</td></tr>
@@ -114,9 +113,10 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   document.addEventListener('click', function (e) {
-    if (!e.target.matches('.vhost-service-edit-btn')) return;
-    var vhostId = e.target.dataset.vhostId;
-    var valueEl = document.querySelector('.vhost-service-value[data-vhost-id="' + vhostId + '"]');
+    var cell = e.target.closest('.vhost-service-cell');
+    if (!cell) return;
+    var vhostId = cell.dataset.vhostId;
+    var valueEl = cell.querySelector('.vhost-service-value');
     var next = prompt('서비스명', valueEl.textContent.trim());
     if (next === null) return;
 

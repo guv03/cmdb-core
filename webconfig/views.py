@@ -6,7 +6,7 @@ from rest_framework.views import APIView
 from core.authentication import AWXAPIKeyAuthentication
 from core.models import Asset
 from core.reconciliation import normalize_hostname
-from webconfig.models import WebConfigSource
+from webconfig.models import WebConfigSource, WebConfigSourceRevision
 from webconfig.parsers import PARSERS
 from webconfig.serializers import WebConfigIngestSerializer
 from webconfig.sync import sync_webtob
@@ -53,6 +53,12 @@ class WebConfigIngestView(APIView):
             return Response(
                 {"error": f"등록되지 않은 자산입니다(먼저 facts push로 등록 필요): {hostname}"},
                 status=status.HTTP_404_NOT_FOUND,
+            )
+
+        existing = WebConfigSource.objects.filter(asset=asset, kind=kind).first()
+        if existing is not None and existing.raw_content != content:
+            WebConfigSourceRevision.objects.create(
+                source=existing, old_content=existing.raw_content, new_content=content
             )
 
         source, _ = WebConfigSource.objects.update_or_create(

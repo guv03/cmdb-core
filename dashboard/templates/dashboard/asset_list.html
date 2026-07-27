@@ -33,19 +33,21 @@
   .asset-table.is-hoverable.is-striped tbody tr:not(.is-selected):hover:nth-child(2n) td.sticky-col {
     background-color: var(--bulma-table-striped-row-even-hover-background-color);
   }
-  /* 수기 입력 필드는 헤더 글자색만 다르게 줘서 자동 추출 필드와 구분 */
-  .asset-table th.manual-col a {
-    color: var(--bulma-info);
-  }
-  /* 수기 입력 셀: 클릭하면 팝업으로 편집. 마우스 올렸을 때 커서만 바뀌는 정도로만 표시 */
-  .asset-table td.manual-cell {
-    cursor: pointer;
-  }
 </style>
 {% endblock %}
 
 {% block content %}
-<h1 class="title is-4">자산 대시보드</h1>
+<div class="level">
+  <div class="level-left">
+    <h1 class="title is-4">자산 대시보드</h1>
+  </div>
+  <div class="level-right">
+    <div class="buttons">
+      <a class="button is-light" href="{% url 'dashboard-asset-export' %}">엑셀 다운로드</a>
+      <a class="button is-light" href="{% url 'dashboard-asset-import' %}">엑셀 업로드</a>
+    </div>
+  </div>
+</div>
 {% csrf_token %}
 
 <form class="field has-addons" method="get">
@@ -63,8 +65,7 @@
       <tr>
         {% for column in columns %}
         <th class="{% if forloop.counter == 1 %}sticky-col sticky-col-1{% elif forloop.counter == 2 %}sticky-col sticky-col-2{% endif %}{% if column.is_manual %} manual-col{% endif %}">
-          <a class="{% if column.is_active %}has-text-link has-text-weight-bold{% endif %}"
-             href="{% querystring sort=column.next_sort page=None %}">{{ column.label }}</a>
+          <a class="has-text-dark" href="{% querystring sort=column.next_sort page=None %}">{{ column.label }}</a>
         </th>
         {% endfor %}
       </tr>
@@ -77,16 +78,16 @@
         <td>{{ row.hostfact.os_family|default:"" }}</td>
         {% for cell in row.dynamic_cells %}
         {% if cell.is_manual %}
-        <td class="manual-cell" data-asset-id="{{ row.asset.id }}" data-hostname="{{ row.asset.hostname }}"
+        <td class="manual-cell dash-editable-cell" data-asset-id="{{ row.asset.id }}" data-hostname="{{ row.asset.hostname }}"
             data-field-id="{{ cell.field_id }}" data-field-label="{{ cell.label }}" data-value-type="{{ cell.value_type }}">
-          <span class="cell-value">{{ cell.value|default:"" }}</span>
+          <span class="cell-value">{{ cell.value|default:"" }}</span><span class="dash-manual-icon" aria-hidden="true">✎</span>
         </td>
         {% else %}
         <td>{{ cell.value|default:"" }}</td>
         {% endif %}
         {% endfor %}
-        <td>{{ row.asset.created_at|default:"" }}</td>
         <td>{{ row.asset.last_changed_at|default:"" }}</td>
+        <td>{{ row.hostfact.last_seen_at|default:"" }}</td>
       </tr>
       {% empty %}
       <tr><td colspan="100" class="has-text-grey">데이터가 없습니다.</td></tr>

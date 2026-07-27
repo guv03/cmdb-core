@@ -1,10 +1,20 @@
 {% load static %}<!DOCTYPE html>
-<html lang="ko">
+<html lang="ko" data-theme="light">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>로그인 - CMDB</title>
 <link rel="stylesheet" href="{% static 'dashboard/css/bulma.min.css' %}">
+<style>
+  /* base.html을 extends하지 않는 유일한 화면이라 고대비 테마 오버라이드를 여기 따로 둠(base.html과 동일하게 유지할 것) */
+  :root {
+    --bulma-family-primary: "Malgun Gothic", "Apple SD Gothic Neo", -apple-system, "Segoe UI", Roboto, sans-serif;
+    --bulma-body-size: 1.125em;
+    --bulma-text-l: 12%;
+    --bulma-link-l: 42%;
+  }
+  .input { border-width: 2px; }
+</style>
 </head>
 <body>
 <section class="hero is-fullheight" style="background:#f5f6f8">

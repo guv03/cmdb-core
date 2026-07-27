@@ -2,6 +2,7 @@ from django.db import transaction
 
 from webconfig.models import (
     WebConfigSource,
+    WebServiceDomain,
     WebtobNode,
     WebtobServer,
     WebtobSsl,
@@ -29,6 +30,38 @@ def _resolve_vhosts(vhost_names_attr: str | None, vhost_by_name: dict) -> list:
         return []
     names = [n.strip() for n in vhost_names_attr.split(",") if n.strip()]
     return [vhost_by_name[n] for n in names if n in vhost_by_name]
+
+
+def _split_domains(vhost: WebtobVhost) -> list[str]:
+    """hostname(주 도메인)과 hostalias(콤마 구분 별칭)를 한데 모아 중복 없이 펼친다."""
+    raw = [vhost.hostname] + vhost.hostalias.split(",")
+    seen = []
+    for value in raw:
+        value = value.strip()
+        if value and value not in seen:
+            seen.append(value)
+    return seen
+
+
+def sync_service_domains(vhosts) -> None:
+    """WebServiceDomain을 vhost 목록 기준으로 통째로 재생성한다(kind 공통 유틸).
+    vhost 하나당 한 행: 첫 도메인을 주 도메인으로, 나머지는 aliases에 콤마로 모은다."""
+    rows = []
+    for vhost in vhosts:
+        domains = _split_domains(vhost)
+        if not domains:
+            continue
+        rows.append(
+            WebServiceDomain(
+                source=vhost.source,
+                vhost_name=vhost.name,
+                domain=domains[0],
+                aliases=", ".join(domains[1:]),
+                port=vhost.port,
+                service_name=vhost.service_name,
+            )
+        )
+    WebServiceDomain.objects.bulk_create(rows)
 
 
 @transaction.atomic
@@ -85,6 +118,9 @@ def sync_webtob(source: WebConfigSource, sections: dict) -> None:
 
     # 이번 push에서 더 이상 안 보이는 vhost만 정리(수기 입력 보존을 위해 통짜 삭제 대신 이 방식 사용)
     WebtobVhost.objects.filter(source=source).exclude(name__in=vhost_section.keys()).delete()
+
+    WebServiceDomain.objects.filter(source=source).delete()
+    sync_service_domains(vhost_by_name.values())
 
     svrgroup_by_name = {}
     for name, attrs in (sections.get("SVRGROUP") or {}).items():

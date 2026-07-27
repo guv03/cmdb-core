@@ -3,7 +3,7 @@ import json
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.views import LoginView
-from django.db.models import Count, Q
+from django.db.models import Count, Max, Q
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse_lazy
@@ -15,19 +15,33 @@ from rest_framework.generics import ListAPIView
 from rest_framework.permissions import IsAuthenticated
 
 from core.models import Asset
-from dashboard.excel_import import ImportFileError, apply_updates, parse_manual_field_workbook
+from dashboard.excel_import import (
+    ImportFileError,
+    apply_updates,
+    export_manual_field_workbook,
+    parse_manual_field_workbook,
+)
 from dashboard.queries import (
     build_rows,
     get_asset_queryset,
     get_change_history_queryset,
     get_dashboard_columns,
     get_dynamic_field_definitions,
+    get_web_service_queryset,
+    get_webconfig_history_queryset,
 )
 from dashboard.serializers import AssetSerializer
 from facts.approval import apply_pending_change, reject_pending_change
 from facts.dynamic_fields import coerce_fact_value, is_valid_choice
 from facts.models import FactFieldDefinition, HostFactValue, PendingChange
-from webconfig.models import WebConfigSource, WebtobVhost
+from webconfig.diff import unified_diff_lines
+from webconfig.excel_import import (
+    ImportFileError as ServiceImportFileError,
+    apply_service_updates,
+    export_service_workbook,
+    parse_service_workbook,
+)
+from webconfig.models import WebConfigSource, WebServiceDomain, WebtobVhost
 
 
 class DashboardLoginView(LoginView):
@@ -105,6 +119,11 @@ class AssetManualFieldUpdateView(LoginRequiredMixin, View):
             "",
         )
         return JsonResponse({"value": str(display_value)})
+
+
+class AssetExportView(LoginRequiredMixin, View):
+    def get(self, request):
+        return export_manual_field_workbook()
 
 
 class ManualFieldImportView(LoginRequiredMixin, View):
@@ -232,7 +251,10 @@ class WebConfigListView(LoginRequiredMixin, ListView):
     def get_queryset(self):
         queryset = (
             WebConfigSource.objects.select_related("asset", "node")
-            .annotate(vhost_count=Count("vhosts", distinct=True))
+            .annotate(
+                vhost_count=Count("vhosts", distinct=True),
+                last_changed_at=Max("revisions__detected_at"),
+            )
             .order_by("asset__hostname")
         )
         q = self.request.GET.get("q")
@@ -257,6 +279,24 @@ class WebConfigDetailView(LoginRequiredMixin, DetailView):
         )
 
 
+class WebConfigHistoryListView(LoginRequiredMixin, ListView):
+    """웹설정 원본이 실제로 바뀐 시점만 남기는 읽기 전용 이력 - 승인/반려 없음(push는 그대로 즉시 반영)."""
+
+    template_name = "dashboard/webconfig_history.html"
+    context_object_name = "revisions"
+    paginate_by = 20
+
+    def get_queryset(self):
+        return get_webconfig_history_queryset(self.request)
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        for revision in context["revisions"]:
+            revision.diff_lines = unified_diff_lines(revision.old_content, revision.new_content)
+        context["current_q"] = self.request.GET.get("q", "")
+        return context
+
+
 class WebtobVhostServiceUpdateView(LoginRequiredMixin, View):
     """vhost 카드의 "서비스명" 수기 입력. 승인 절차 없이 즉시 반영(자산 MANUAL 필드와 동일 원칙)."""
 
@@ -264,4 +304,103 @@ class WebtobVhostServiceUpdateView(LoginRequiredMixin, View):
         vhost = get_object_or_404(WebtobVhost, pk=pk)
         vhost.service_name = request.POST.get("service_name", "").strip()
         vhost.save(update_fields=["service_name"])
+        WebServiceDomain.objects.filter(source=vhost.source, vhost_name=vhost.name).update(
+            service_name=vhost.service_name
+        )
         return JsonResponse({"service_name": vhost.service_name})
+
+
+class WebConfigSourceVersionUpdateView(LoginRequiredMixin, View):
+    """솔루션 버전 수기 입력. vhost 단위가 아니라 소스(자산+kind) 단위 값이라 여러 도메인
+    행이 같은 값을 공유한다."""
+
+    def post(self, request, pk):
+        source = get_object_or_404(WebConfigSource, pk=pk)
+        source.solution_version = request.POST.get("solution_version", "").strip()
+        source.save(update_fields=["solution_version"])
+        return JsonResponse({"solution_version": source.solution_version})
+
+
+class ServiceExportView(LoginRequiredMixin, View):
+    def get(self, request):
+        return export_service_workbook()
+
+
+class ServiceImportView(LoginRequiredMixin, View):
+    template_name = "dashboard/service_import.html"
+
+    def get(self, request):
+        return render(request, self.template_name, {})
+
+    def post(self, request):
+        uploaded_file = request.FILES.get("file")
+
+        if not uploaded_file:
+            messages.error(request, "업로드할 엑셀 파일을 선택해주세요.")
+            return render(request, self.template_name, {})
+
+        try:
+            result = parse_service_workbook(uploaded_file)
+        except ServiceImportFileError as exc:
+            messages.error(request, str(exc))
+            return render(request, self.template_name, {})
+
+        payload = [
+            {"kind": "service_name", "service_domain_id": u.service_domain_id, "new_value": u.new_value}
+            for u in result.service_name_updates
+        ] + [
+            {"kind": "version", "source_id": u.source_id, "new_value": u.new_value}
+            for u in result.version_updates
+        ]
+        context = {
+            "result": result,
+            "payload_json": json.dumps(payload),
+            "total_count": len(result.service_name_updates) + len(result.version_updates),
+        }
+        return render(request, self.template_name, context)
+
+
+class ServiceImportConfirmView(LoginRequiredMixin, View):
+    def post(self, request):
+        try:
+            payload = json.loads(request.POST.get("payload", "[]"))
+        except json.JSONDecodeError:
+            payload = []
+
+        applied, asset_count = apply_service_updates(payload)
+        if applied:
+            messages.success(request, f"{asset_count}개 자산에 값 {applied}건을 반영했습니다.")
+        else:
+            messages.warning(request, "반영할 내용이 없습니다.")
+
+        return redirect("dashboard-webservice-list")
+
+
+class WebServiceListView(LoginRequiredMixin, ListView):
+    template_name = "dashboard/webservice_list.html"
+    context_object_name = "service_domains"
+    paginate_by = 50
+
+    def get_queryset(self):
+        return get_web_service_queryset(self.request)
+
+
+class WebServiceDomainServiceUpdateView(LoginRequiredMixin, View):
+    """서비스 조회 화면에서의 서비스명 인라인 편집. 원본은 kind별 vhost 쪽(webtob는 WebtobVhost)
+    이라 거기에 먼저 반영하고, 같은 vhost가 걸친 나머지 도메인 행도 함께 맞춘다(도메인별로
+    서비스명이 갈리면 안 되므로 vhost 단위로 동기화)."""
+
+    def post(self, request, pk):
+        service_domain = get_object_or_404(WebServiceDomain, pk=pk)
+        service_name = request.POST.get("service_name", "").strip()
+
+        if service_domain.source.kind == WebConfigSource.Kind.WEBTOB:
+            WebtobVhost.objects.filter(
+                source=service_domain.source, name=service_domain.vhost_name
+            ).update(service_name=service_name)
+
+        WebServiceDomain.objects.filter(
+            source=service_domain.source, vhost_name=service_domain.vhost_name
+        ).update(service_name=service_name)
+
+        return JsonResponse({"service_name": service_name})
