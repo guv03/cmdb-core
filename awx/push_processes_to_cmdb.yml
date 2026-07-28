@@ -1,0 +1,50 @@
+---
+# AWX Job Template에서 실행하는 플레이북.
+# 각 서버에서 ps -ef를 실행해 원본을 CMDB(POST /api/processes/)로 push한다.
+# 자산 자체는 이 플레이북으로 생성되지 않는다 — push_facts_to_cmdb.yml로 먼저 자산이
+# 등록돼 있어야 하고, CMDB는 hostname으로 기존 자산을 찾는다(없으면 push 자체가 에러).
+#
+# 필요한 변수 (AWX Job Template의 Extra Variables / Survey / Credential로 주입):
+#   cmdb_base_url : CMDB 베이스 URL (예: http://cmdb.internal:8000)
+#   cmdb_api_key  : processes push API 인증 키 (X-API-Key 헤더값). Credential로 주입 권장.
+#
+# 어떤 어플리케이션이 동작 중인지는 CMDB 쪽(processes 앱, Django admin의
+# ApplicationDefinition)에서 정규식 패턴으로 판단한다 - 이 플레이북은 ps -ef 원본을 그대로
+# 넘기기만 하고 어플리케이션 판정 로직은 갖지 않는다(패턴 추가/수정에 플레이북 변경이
+# 필요없게 하기 위함, webconfig의 solution_version 마커 처리와 같은 분리 원칙).
+#
+# 지금은 Linux/AIX처럼 POSIX ps -ef를 지원하는 대상만 다룬다. Windows는 ps -ef 자체가 없고
+# 별도 접근(Get-Process 등)이 필요해 이번 스코프에 없음.
+
+- name: Collect ps -ef and push to CMDB
+  hosts: all
+  gather_facts: false
+
+  vars:
+    cmdb_validate_certs: true
+
+  tasks:
+    - name: ps -ef 수집
+      ansible.builtin.command: ps -ef
+      register: ps_output
+      changed_when: false
+
+    - name: CMDB로 프로세스 목록 push  # noqa: no-changed-when
+      ansible.builtin.uri:
+        url: "{{ cmdb_base_url }}/api/processes/"
+        method: POST
+        headers:
+          X-API-Key: "{{ cmdb_api_key }}"
+        body_format: json
+        body:
+          hostname: "{{ inventory_hostname }}"
+          raw_output: "{{ ps_output.stdout }}"
+        status_code: [200, 201]
+        validate_certs: "{{ cmdb_validate_certs }}"
+      delegate_to: localhost
+      no_log: true # 응답/헤더에 X-API-Key가 로그로 남지 않도록
+      register: cmdb_push_result
+
+    - name: push 결과 출력
+      ansible.builtin.debug:
+        msg: "CMDB 프로세스 push 완료: asset_id={{ cmdb_push_result.json.asset_id }}, hostname={{ cmdb_push_result.json.hostname }}, detected={{ cmdb_push_result.json.detected }}"

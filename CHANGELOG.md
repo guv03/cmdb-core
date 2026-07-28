@@ -5,6 +5,11 @@
 
 1.0.6까지의 이력은 이 파일 도입 전이라 별도 기록 없음 — `WORKLOG.md`의 해당 날짜 항목 참고.
 
+## 1.0.14
+
+- 어플리케이션(프로세스 기반) 동작 여부 조회 화면 신규(`/dashboard/processes/`, 상단 "어플리케이션"). AWX가 각 서버에서 실행한 `ps -ef` 원본을 push하면(`processes` 앱, `POST /api/processes/`), Django admin에 등록해둔 정규식 패턴(`ApplicationDefinition`)에 매칭되는 어플리케이션을 자산별로 보여준다. admin에서 패턴을 새로 등록/수정하면 다음 push를 기다릴 필요 없이 기존에 push된 자산에도 즉시 소급 반영됨
+- 대시보드 메뉴 명칭 변경: "자산 대시보드"→"OS"(하위 "자산 목록"→"OS 목록"), "웹 설정"→"WEB"(하위 "웹 설정 목록"→"WEB 목록", "WebToB 설정 목록"→"WEBTOB 목록"), "서비스 조회"→"서비스". 화면 표시 텍스트만 변경(URL/내부 코드명은 유지)
+
 ## 1.0.13
 
 - 웹설정 상세 모달의 솔루션 Fix 값이 `...epoll 2026/05/19\n*DOMAIN`처럼 다음 섹션 내용까지 딸려 나오던 문제 수정. AWX가 버전 마커 뒤에 붙이던 개행이 실제 운영 Ansible에서 리터럴 `\n`(백슬래시+n 두 글자)으로 남는 사례가 있었는데, `webconfig/version_extract.py`의 마커 파서가 실제 개행에서만 멈추다 보니 다음 섹션까지 그대로 캡처해버린 게 원인. `version_extract.py`에 리터럴 `\n` 이후를 잘라내는 방어 코드를 추가하고, `awx/push_webconfig_to_cmdb.yml`도 Jinja 문자열 이스케이프 대신 YAML 리터럴 블록의 실제 개행을 쓰도록 변경(keep_trailing_newline 설정에 관계없이 개행이 남도록 빈 줄 하나 추가)해 근본 원인도 같이 손봄

@@ -103,28 +103,30 @@
       <div class="navbar-start">
         <div class="navbar-item has-dropdown is-hoverable">
           <a class="navbar-link {% if 'dashboard-asset' in request.resolver_match.url_name or request.resolver_match.url_name == 'dashboard-change-history' %}is-active{% endif %}"
-             href="{% url 'dashboard-asset-list' %}">자산 대시보드</a>
+             href="{% url 'dashboard-asset-list' %}">OS</a>
           <div class="navbar-dropdown">
             <a class="navbar-item {% if request.resolver_match.url_name == 'dashboard-asset-list' %}is-active{% endif %}"
-               href="{% url 'dashboard-asset-list' %}">자산 목록</a>
+               href="{% url 'dashboard-asset-list' %}">OS 목록</a>
             <a class="navbar-item {% if request.resolver_match.url_name == 'dashboard-change-history' %}is-active{% endif %}"
                href="{% url 'dashboard-change-history' %}">변경 이력</a>
           </div>
         </div>
         <div class="navbar-item has-dropdown is-hoverable">
           <a class="navbar-link {% if 'dashboard-webconfig' in request.resolver_match.url_name %}is-active{% endif %}"
-             href="{% url 'dashboard-webconfig-list' %}">웹 설정</a>
+             href="{% url 'dashboard-webconfig-list' %}">WEB</a>
           <div class="navbar-dropdown">
             <a class="navbar-item {% if request.resolver_match.url_name == 'dashboard-webconfig-list' %}is-active{% endif %}"
-               href="{% url 'dashboard-webconfig-list' %}">웹 설정 목록</a>
+               href="{% url 'dashboard-webconfig-list' %}">WEB 목록</a>
             <a class="navbar-item {% if request.resolver_match.url_name == 'dashboard-webtob-vhost-list' %}is-active{% endif %}"
-               href="{% url 'dashboard-webtob-vhost-list' %}">WebToB 설정 목록</a>
+               href="{% url 'dashboard-webtob-vhost-list' %}">WEBTOB 목록</a>
             <a class="navbar-item {% if request.resolver_match.url_name == 'dashboard-webconfig-history' %}is-active{% endif %}"
                href="{% url 'dashboard-webconfig-history' %}">변경 이력</a>
           </div>
         </div>
         <a class="navbar-item {% if request.resolver_match.url_name == 'dashboard-webservice-list' %}is-active{% endif %}"
-           href="{% url 'dashboard-webservice-list' %}">서비스 조회</a>
+           href="{% url 'dashboard-webservice-list' %}">서비스</a>
+        <a class="navbar-item {% if 'dashboard-process' in request.resolver_match.url_name %}is-active{% endif %}"
+           href="{% url 'dashboard-process-list' %}">어플리케이션</a>
       </div>
       {% if user.is_authenticated %}
       <div class="navbar-end">

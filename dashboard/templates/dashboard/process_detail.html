@@ -1,0 +1,30 @@
+{% extends "dashboard/base.html" %}
+
+{% block title %}{{ snapshot.asset.hostname }} 어플리케이션 - CMDB{% endblock %}
+
+{% block content %}
+<div id="process-content">
+<h1 class="title is-4">{{ snapshot.asset.hostname }} - 어플리케이션</h1>
+<p class="subtitle is-6">최근 반영: {{ snapshot.collected_at }}</p>
+
+<h2 class="title is-6">감지된 어플리케이션</h2>
+<table class="table is-narrow is-fullwidth">
+  <thead><tr><th>이름</th><th>매칭된 프로세스 라인</th></tr></thead>
+  <tbody>
+    {% for detected in snapshot.detected_applications.all %}
+    <tr>
+      <td><span class="tag is-light">{{ detected.definition.name }}</span></td>
+      <td style="word-break: break-all;">{{ detected.matched_line }}</td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="2" class="has-text-grey">감지된 어플리케이션이 없습니다.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<details class="box">
+  <summary class="has-text-weight-semibold" style="cursor: pointer;">원본 ps -ef 보기</summary>
+  <pre style="white-space: pre-wrap; word-break: break-all; max-height: 70vh; overflow-y: auto;">{{ snapshot.raw_output }}</pre>
+</details>
+</div>
+{% endblock %}

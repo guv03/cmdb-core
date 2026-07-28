@@ -28,6 +28,7 @@ from dashboard.queries import (
     get_change_history_queryset,
     get_dashboard_columns,
     get_dynamic_field_definitions,
+    get_process_queryset,
     get_web_service_queryset,
     get_webconfig_history_queryset,
     get_webconfig_queryset,
@@ -37,6 +38,7 @@ from dashboard.serializers import AssetSerializer
 from facts.approval import apply_pending_change, reject_pending_change
 from facts.dynamic_fields import coerce_fact_value, is_valid_choice
 from facts.models import FactFieldDefinition, HostFactValue, PendingChange
+from processes.models import ProcessSnapshot
 from webconfig.diff import unified_diff_lines
 from webconfig.excel_import import (
     ImportFileError as ServiceImportFileError,
@@ -442,3 +444,30 @@ class WebServiceDomainServiceUpdateView(LoginRequiredMixin, View):
         ).update(service_name=service_name)
 
         return JsonResponse({"service_name": service_name})
+
+
+class ProcessListView(LoginRequiredMixin, ListView):
+    """자산별 ps -ef 스냅샷과 감지된 어플리케이션 - 승인 없이 push 즉시 반영, 이력 없이
+    최신 스냅샷만 유지(processes 앱, webconfig와 같은 취지로 facts EAV 구조와 분리)."""
+
+    template_name = "dashboard/process_list.html"
+    context_object_name = "snapshots"
+    paginate_by = 50
+
+    def get_queryset(self):
+        return get_process_queryset(self.request)
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["columns"] = build_sort_columns(self.request, ["hostname", "collected_at"], default="hostname")
+        return context
+
+
+class ProcessDetailView(LoginRequiredMixin, DetailView):
+    template_name = "dashboard/process_detail.html"
+    context_object_name = "snapshot"
+
+    def get_queryset(self):
+        return ProcessSnapshot.objects.select_related("asset").prefetch_related(
+            "detected_applications__definition"
+        )

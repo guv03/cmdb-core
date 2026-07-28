@@ -20,6 +20,19 @@
   - `webconfig/version_extract.py`: 그래도 신뢰 못 하는 파이프라인(YAML/Jinja/JSON/Oracle을 끝까지 로컬에서 재현 못 함)이라 방어 코드 추가 — 마커 파싱 결과에서 리터럴 `\n` 이후는 잘라내도록 `raw_version.split("\\n", 1)[0]` 추가. 로컬 Docker Compose에서 실제 폐쇄망과 동일하게 오염된 마커(`...2026/05/19\n` 뒤에 실제 개행 없이 바로 설정 내용이 이어지는 형태)를 `/api/webconfig/`로 직접 push해 end-to-end로 재현·검증(raw_content엔 리터럴 `\n`이 그대로 남아있어도 solution_version/solution_fix는 깨끗하게 나오고 vhost 파싱도 영향 없음 확인) — 테스트 중 `docker compose exec ... shell -c "여러 줄 명령"`이 셸 레이어를 거치며 이스케이프가 계속 깨져서, 스크립트 파일을 작성해 `docker compose cp`로 컨테이너에 넣고 실행하는 방식으로 전환해 안정적으로 재현
   - 기존에 이미 오염된 값이 저장된 자산은 별도 정리 불필요 — AUTO 필드라 다음 AWX push 때 정상 값으로 자동 갱신됨
   - 이미지 버전 관리 절차대로 1.0.13 빌드·릴리즈까지 진행(AWX 플레이북은 CMDB 이미지에 안 들어가는 별도 배포 산출물이라 이미지 버전과는 무관 — 코드 저장소 커밋만으로 배포, 대상 AWX 서버에 별도 반영 필요)
+- **어플리케이션(프로세스 기반) 동작 여부 조회 화면 신규**: OS/웹설정에 이어 "각 서버에 어떤 어플리케이션이 동작 중인지" 보여주는 화면 요청. 코딩 전에 검토부터 진행
+  - 설계: 호스트 하나에 어플리케이션이 여러 개 감지될 수 있는 관계형 데이터라 `facts`의 "필드 하나=값 하나" EAV 구조와 안 맞음 — `webconfig`를 별도 앱으로 뺀 것과 같은 판단 기준으로 `processes` 앱 신규 분리. 데이터 소스는 AWX가 각 서버에서 실행한 `ps -ef` 원본, 판정은 Django admin에 정규식 패턴(`ApplicationDefinition`)을 등록해두면 매칭되는 어플리케이션을 자동 감지(`DetectedApplication`, push마다 통짜 재생성) — `FactFieldDefinition`과 같은 "코드 수정 없이 admin에서 확장" 취지
+  - 사용자 요구로 추가된 핵심 기능: **admin에서 새 정의를 등록/수정하면 push를 기다리지 않고 기존 스냅샷에도 즉시 소급 반영** — `FactFieldDefinition` 신규 등록 시 `backfill_fact_field` 커맨드를 별도 실행해야 했던 것과 달리, `ApplicationDefinitionAdmin.save_model`을 오버라이드해 저장 시점에 자동으로 재스캔(`processes/matching.py`의 `resync_definition`). 규모가 작아 동기 처리 부담 없고 CLAUDE.md의 "항상 동기 처리" 원칙과도 맞아 별도 커맨드/큐 없이 admin 저장 훅으로 처리하기로 결정
+  - 오늘 겪은 Oracle NCLOB GROUP BY/DISTINCT 사고를 반영해 처음부터 방어적으로 설계: `ps -ef` 원본(`raw_output`, TextField)은 목록 쿼리셋에서 `.defer()`로 절대 select 안 하고 상세 화면에서만 별도 조회
+  - `raw_output` 변경 이력(diff)은 안 남기기로 결정(프로세스는 PID 등이 수시로 바뀌어 매 push마다 diff를 남기면 노이즈만 커짐) — webconfig의 `WebConfigSourceRevision`과 달리 최신 스냅샷만 유지
+  - 로컬 Docker Compose에서 실제 admin 폼 제출까지 거치는 end-to-end 테스트로 검증(정의 없을 때 0건 → admin 등록 시 push 없이 즉시 소급 반영 → 패턴 수정 시 재매칭 → `is_active` 끄면 즉시 제거 → 재push 시 통짜 교체), Playwright로 목록/상세 모달 화면도 스크린샷 확인
+  - `ApplicationDefinition.match_pattern`의 admin help_text에 실제 쓸 법한 정규식 예시(PostgreSQL/JEUS/Oracle DB 인스턴스/특정 경로) 추가 — `<br>`/`<code>` 태그를 쓰는데, 이번에 겪은 "\n" 리터럴 이슈 학습을 살려 실제 HTML로 렌더링되는지(Django admin이 help_text를 `|safe`로 렌더링) 직접 화면 확인까지 마침
+- **gunicorn WORKER TIMEOUT/SIGKILL 재발 트러블슈팅**: 1.0.12/1.0.13 반영 확인 후에도 폐쇄망 로그에 07-24에 gthread로 고쳤던 것과 동일한 증상(`WORKER TIMEOUT` → `SIGKILL! Perhaps out of memory?`)이 간헐적으로 계속 발견됨
+  - 트레이스백이 `gunicorn/workers/sync.py`를 타고 있어 이상하다고 판단 — 현재 Dockerfile은 1.0.8부터 쭉 `--worker-class gthread`인데도 sync로 뜨고 있다는 뜻
+  - 파드 안에 `ps`가 없어(슬림 이미지) `/proc/1/cmdline`으로 실제 gunicorn 기동 커맨드 확인 → `--workers 3`만 있고 `--worker-class`/`--threads`가 없는, 1.0.8 이전(1.0.7) 형태의 커맨드였음. 그런데 같은 파드의 `/app/VERSION`은 `1.0.12`로 나와 "앱 코드는 최신인데 gunicorn 기동 커맨드는 옛날" 모순 발생
+  - `kubectl describe pod`로 확인해보니 컨테이너 spec에 `Command:`가 명시적으로 박혀있음(옛날 gunicorn 커맨드 그대로) — git 히스토리 전체를 뒤져도 `helm/cmdb-core/templates/deployment.yaml`은 `command`/`args`를 지정한 적이 단 한 번도 없어, 과거 어느 시점에 `kubectl edit`/`set` 등으로 이 Deployment에 수동으로 커맨드가 박힌 것으로 결론(사용자는 본인이 그런 적 없다고 함 — 누가/언제 넣었는지는 감사 로그가 없으면 확정 불가). Helm은 자기 템플릿에 없는 필드는 `helm upgrade`를 아무리 반복해도 안 건드리기 때문에, 이미지 태그(앱 코드)는 계속 최신으로 갱신돼 왔는데 이 수동 커맨드만 계속 살아남아 있었던 것
+  - `kubectl patch --type=json`으로 `command` 필드 제거 + `rollout restart` 후 정상화(gthread로 기동) 확인. CMDB 리포지토리 쪽 코드/차트 변경은 없음(운영 클러스터 쪽 드리프트 제거로 해결) — Helm이 관리하는 리소스는 `kubectl edit`/`set`으로 직접 건드리지 말고 항상 values/차트로만 바꿔야 한다는 교훈
+- **대시보드 메뉴 명칭 변경**: "자산 대시보드"가 실제로는 OS를 관리하는 화면이 된 상태라 실체에 맞게 명칭 정리 요청. "자산 대시보드"→"OS"(드롭다운 하위 "자산 목록"→"OS 목록"), "웹 설정"→"WEB"(하위 "웹 설정 목록"→"WEB 목록", "WebToB 설정 목록"→"WEBTOB 목록"), "서비스 조회"→"서비스". 내비게이션과 함께 해당 페이지 제목/모달 제목도 일관되게 맞춤(URL·내부 코드명은 유지, 화면 표시 텍스트만 변경)
 
 ## 2026-07-27
 

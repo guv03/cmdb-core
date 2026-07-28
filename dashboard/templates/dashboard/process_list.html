@@ -1,0 +1,108 @@
+{% extends "dashboard/base.html" %}
+
+{% block title %}어플리케이션 - CMDB{% endblock %}
+
+{% block content %}
+{% csrf_token %}
+<h1 class="title is-4">어플리케이션</h1>
+<p class="subtitle is-6 has-text-grey">AWX가 push한 ps -ef 스냅샷에서 등록된 패턴에 매칭된 어플리케이션을 자산별로 보여줍니다.</p>
+
+<form class="field has-addons" method="get">
+  <div class="control is-expanded">
+    <input class="input" type="text" name="q" value="{{ request.GET.q }}" placeholder="hostname/어플리케이션명 검색">
+  </div>
+  <div class="control">
+    <button class="button is-link" type="submit">검색</button>
+  </div>
+</form>
+
+<div class="table-container">
+  <table class="table is-fullwidth is-hoverable is-striped">
+    <thead>
+      <tr>
+        <th><a class="has-text-dark" href="{% querystring sort=columns.hostname.next_sort page=None %}">Hostname</a></th>
+        <th>감지된 어플리케이션</th>
+        <th><a class="has-text-dark" href="{% querystring sort=columns.collected_at.next_sort page=None %}">최근 반영일</a></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for snapshot in snapshots %}
+      <tr class="process-row" data-detail-url="{% url 'dashboard-process-detail' snapshot.pk %}" style="cursor: pointer;">
+        <td>{{ snapshot.asset.hostname }}</td>
+        <td>
+          {% for detected in snapshot.detected_applications.all %}
+          <span class="tag is-light">{{ detected.definition.name }}</span>
+          {% empty %}
+          <span class="has-text-grey">감지된 어플리케이션 없음</span>
+          {% endfor %}
+        </td>
+        <td>{{ snapshot.collected_at }}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="3" class="has-text-grey">push된 프로세스 정보가 없습니다.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="modal" id="processModal">
+  <div class="modal-background"></div>
+  <div class="modal-card" style="width: 90%; max-width: 960px;">
+    <header class="modal-card-head">
+      <p class="modal-card-title">어플리케이션 상세</p>
+      <button class="delete" aria-label="close" id="processModalClose"></button>
+    </header>
+    <section class="modal-card-body" id="processModalBody">불러오는 중...</section>
+  </div>
+</div>
+
+<nav class="pagination" role="navigation" aria-label="pagination">
+  {% if page_obj.has_previous %}
+    <a class="pagination-previous" href="{% querystring page=page_obj.previous_page_number %}">이전</a>
+  {% else %}
+    <a class="pagination-previous" disabled>이전</a>
+  {% endif %}
+  {% if page_obj.has_next %}
+    <a class="pagination-next" href="{% querystring page=page_obj.next_page_number %}">다음</a>
+  {% else %}
+    <a class="pagination-next" disabled>다음</a>
+  {% endif %}
+  <span class="pagination-list">
+    <span class="pagination-link is-current">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
+  </span>
+</nav>
+{% endblock %}
+
+{% block extra_body %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  var modal = document.getElementById('processModal');
+  var modalBody = document.getElementById('processModalBody');
+
+  function closeModal() {
+    modal.classList.remove('is-active');
+  }
+
+  document.querySelectorAll('.process-row').forEach(function (row) {
+    row.addEventListener('click', function () {
+      modalBody.textContent = '불러오는 중...';
+      modal.classList.add('is-active');
+
+      fetch(row.dataset.detailUrl)
+        .then(function (res) { return res.text(); })
+        .then(function (html) {
+          var doc = new DOMParser().parseFromString(html, 'text/html');
+          var content = doc.getElementById('process-content');
+          modalBody.innerHTML = content ? content.innerHTML : '불러오기 실패';
+        })
+        .catch(function () {
+          modalBody.textContent = '불러오기 실패';
+        });
+    });
+  });
+
+  document.getElementById('processModalClose').addEventListener('click', closeModal);
+  modal.querySelector('.modal-background').addEventListener('click', closeModal);
+});
+</script>
+{% endblock %}

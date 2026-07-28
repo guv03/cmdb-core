@@ -13,6 +13,8 @@ from dashboard.views import (
     ManualFieldImportConfirmView,
     ManualFieldImportView,
     PendingChangeDecisionView,
+    ProcessDetailView,
+    ProcessListView,
     ServiceExportView,
     ServiceImportConfirmView,
     ServiceImportView,
@@ -85,6 +87,8 @@ urlpatterns = [
         WebServiceDomainServiceUpdateView.as_view(),
         name="dashboard-webservice-update",
     ),
+    path("processes/", ProcessListView.as_view(), name="dashboard-process-list"),
+    path("processes/<int:pk>/", ProcessDetailView.as_view(), name="dashboard-process-detail"),
 ]
 
 api_urlpatterns = [

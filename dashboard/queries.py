@@ -15,6 +15,7 @@ from django.db.models import (
 
 from core.models import Asset
 from facts.models import FactFieldDefinition, HostFactValue, PendingChange
+from processes.models import ProcessSnapshot
 from webconfig.models import WebConfigSource, WebConfigSourceRevision, WebServiceDomain, WebtobVhost
 
 LEADING_FIXED_COLUMNS = [
@@ -400,3 +401,33 @@ def build_rows(assets, dynamic_field_definitions):
         rows.append({"asset": asset, "hostfact": hostfact, "dynamic_cells": dynamic_cells})
 
     return rows
+
+
+PROCESS_SORT_LOOKUPS = {
+    "hostname": "asset__hostname",
+    "collected_at": "collected_at",
+}
+
+
+def get_process_queryset(request):
+    # raw_output은 TextField(Oracle에서 NCLOB)라 목록 화면에서는 절대 select하지 않는다 -
+    # 검색 시 아래 .distinct()가 NCLOB 컬럼까지 끌고 들어가면 오늘 이 세션에 두 번 겪은
+    # ORA-00932(GROUP BY/DISTINCT NCLOB)가 재현된다. 원본은 상세 화면에서만 별도 쿼리로 가져온다.
+    queryset = (
+        ProcessSnapshot.objects.select_related("asset")
+        .defer("raw_output")
+        .prefetch_related("detected_applications__definition")
+    )
+
+    q = _request_param(request, "q", "search")
+    if q:
+        queryset = queryset.filter(
+            Q(asset__hostname__icontains=q) | Q(detected_applications__definition__name__icontains=q)
+        ).distinct()
+
+    sort = _request_param(request, "sort", "ordering", default="hostname")
+    direction = "-" if sort.startswith("-") else ""
+    sort_key = sort.lstrip("-")
+    lookup = PROCESS_SORT_LOOKUPS.get(sort_key, "asset__hostname")
+
+    return queryset.order_by(f"{direction}{lookup}")
