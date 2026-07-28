@@ -2,6 +2,17 @@
 
 일 단위로 진행한 작업을 기록한다. 새 날짜는 위에 추가한다.
 
+## 2026-07-28
+
+- **웹설정 목록 Oracle `ORA-00932`(NCLOB) 500 에러 트러블슈팅·수정**: 어제(07-27) v1.0.11을 폐쇄망에 반입한 뒤 AWX 웹설정 push는 성공했는데 대시보드 웹설정 화면 진입 시 500이 난다는 제보. 사용자가 첨부한 traceback(`ORA-00932: inconsistent datatypes: expected - got NCLOB`)으로 원인 특정
+  - `get_webconfig_queryset`(`dashboard/queries.py`, 웹설정 목록)이 `annotate(vhost_count=Count(...), last_changed_at=Max(...))`를 `.values()` 없이 써서 선택된 전체 컬럼으로 암묵적 `GROUP BY`가 걸리는데, `WebConfigSource.raw_content`(`TextField`)가 Oracle에서 NCLOB으로 매핑돼 GROUP BY 대상에 못 들어감. 이 annotate는 07-27(1.0.10) "최근 변경일" 컬럼 추가 때 들어온 코드라 1.0.11 신규 기능은 아니었지만, 로컬(Postgres)에서는 재현이 안 돼 이번에 Oracle 반입 시점에 처음 발견됨
+  - 같은 원인으로 `get_webtob_vhost_queryset`(WebToB 설정 목록)도 검색 시 `select_related("source__...")`가 끌고 온 `raw_content`/`extra_sections`가 `.distinct()`에 걸려 같은 오류가 날 수 있어 같이 수정
+  - 두 쿼리셋 모두 annotate/distinct 전에 `.defer("raw_content", "extra_sections")`로 해당 필드를 SELECT에서 제외하는 방식으로 수정(목록 템플릿은 두 필드를 안 써서 화면 영향 없음)
+  - 데이터 자체는 안전함을 확인: AWX ingest 경로(`WebConfigIngestView` → `sync_webtob`, `@transaction.atomic`)는 이 버그와 무관한 별개 코드라, 어제 push된 데이터는 그대로 두고 이미지만 재배포하면 정상화됨
+  - 로컬 Docker Compose(Postgres) 기동해 `Client().force_login()`으로 목록/검색/정렬/상세/엑셀 export 재현 테스트 — 전부 200 확인(단, Postgres에서는 애초에 NCLOB 버그가 재현되지 않으므로 이건 `defer()` 추가로 인한 회귀가 없다는 확인일 뿐, 실제 수정 검증은 폐쇄망 Oracle 반입 후 필요)
+  - 발견했지만 보류: `WEBTOB_VHOST_SORT_LOOKUPS`의 `ssl_ciphers` 정렬이 `ssl__required_ciphers`(역시 `TextField`→NCLOB)를 `ORDER BY`해서 같은 이유로 실패할 가능성 있음. 값 길이는 짧아(255자 이내) `CharField` 전환으로 해결 가능하지만 마이그레이션이 필요해 이번엔 미적용
+  - 이미지 버전 관리 절차대로 1.0.12 빌드·릴리즈까지 진행
+
 ## 2026-07-27
 
 - **도메인 기반 "서비스 조회" 화면 신규 구축**: 웹설정(WebtoB)이 vhost 기준으로만 조회 가능하던 걸, 서비스명/도메인/hostname/솔루션으로 가로질러 찾는 화면 요구가 나와 설계부터 검토

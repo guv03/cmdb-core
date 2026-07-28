@@ -258,9 +258,17 @@ WEBCONFIG_SORT_LOOKUPS = {
 
 
 def get_webconfig_queryset(request):
-    queryset = WebConfigSource.objects.select_related("asset").annotate(
-        vhost_count=Count("vhosts", distinct=True),
-        last_changed_at=Max("revisions__detected_at"),
+    # annotate()의 집계 함수는 .values() 없이 쓰면 선택된 전체 필드로 암묵적 GROUP BY를
+    # 만드는데, raw_content/extra_sections는 Oracle에서 NCLOB으로 매핑돼 GROUP BY 대상이
+    # 되면 ORA-00932가 난다(Postgres는 문제없어 로컬에서는 안 잡힘). 목록 화면은 두 필드를
+    # 안 쓰므로 annotate 전에 defer로 빼둔다.
+    queryset = (
+        WebConfigSource.objects.select_related("asset")
+        .defer("raw_content", "extra_sections")
+        .annotate(
+            vhost_count=Count("vhosts", distinct=True),
+            last_changed_at=Max("revisions__detected_at"),
+        )
     )
 
     q = _request_param(request, "q", "search")
@@ -307,8 +315,13 @@ WEBTOB_VHOST_SORT_LOOKUPS = {
 
 
 def get_webtob_vhost_queryset(request):
-    queryset = WebtobVhost.objects.select_related("source__asset", "source__node", "ssl").prefetch_related(
-        "svrgroups__servers", "uris__server"
+    # select_related("source__...")가 WebConfigSource(raw_content/extra_sections, Oracle에서
+    # NCLOB)까지 같이 가져오는데, 검색 시 아래 .distinct()가 그 NCLOB 컬럼까지 DISTINCT
+    # 대상에 넣으면 ORA-00932가 난다(get_webconfig_queryset의 GROUP BY 문제와 동일 원인).
+    queryset = (
+        WebtobVhost.objects.select_related("source__asset", "source__node", "ssl")
+        .defer("source__raw_content", "source__extra_sections")
+        .prefetch_related("svrgroups__servers", "uris__server")
     )
 
     q = _request_param(request, "q", "search")
