@@ -30,6 +30,13 @@
 # "WebtoB <버전> <나머지 전부>" 형식으로 버전/Fix를 나눠 solution_version/solution_fix에
 # 자동 반영한다(마커가 없는 push는 기존 값을 그대로 둠 — nginx/apache 등 Fix 개념이 없는
 # kind나 아직 이 role이 안 붙은 자산의 값이 사라지지 않게).
+#
+# 마커 줄과 실제 설정 내용 사이의 개행은 YAML 리터럴 블록(|, webtob_solution_marker)의 실제
+# 줄바꿈을 그대로 쓴다 — 처음엔 Jinja 문자열 이스케이프("\n")로 넣었었는데, 실제 운영
+# Ansible에서 이스케이프가 해석 안 되고 리터럴 백슬래시+n 두 글자로 그대로 남아 마커 줄과
+# 다음 섹션(예: *DOMAIN)이 한 "줄"로 붙어버린 사례가 있었다. CMDB의 마커 파서(정규식)는 실제
+# 개행에서만 멈추기 때문에 이 경우 다음 섹션 내용까지 통째로 Fix 값에 들어가버림 — 리터럴
+# 이스케이프에 의존하지 않는 지금 구조로 바꿔 이 문제를 근본적으로 피한다.
 
 - name: Read WebToB config and push to CMDB
   hosts: all
@@ -54,15 +61,30 @@
         src: "{{ webtob_config_path | default('/app/webtob/config/http.m') }}"
       register: webtob_config_raw
 
+    - name: 버전 마커 줄 구성
+      # YAML 리터럴 블록(|+)은 이스케이프 해석 없이 소스에 실제로 쳐진 줄바꿈을 그대로 보존한다.
+      # 이전엔 폴딩 블록(>-) 안에 Jinja 문자열 이스케이프("\n")를 박아넣었는데, 실제 운영
+      # Ansible에서 이게 실제 개행이 아니라 리터럴 백슬래시+n 두 글자로 남는 사례가 있었다
+      # (마커 뒤 설정 내용이 같은 "줄"로 붙어버려 CMDB의 마커 파서가 다음 섹션까지 Fix 값에
+      # 같이 삼켜버림). 뒤에 빈 줄을 하나 더 남겨 keep(+) 초핑으로 두 개의 개행을 확보한 것은
+      # Jinja2의 keep_trailing_newline 설정(꺼져 있으면 렌더링 시 맨 끝 개행 하나가 사라짐,
+      # Ansible 버전마다 기본값을 신뢰하기 어려움)이 어느 쪽이어도 최소 한 개의 실제 개행이
+      # 남도록 하기 위함 — 로컬에서 keep_trailing_newline=False/True 양쪽 다 결과에 실제
+      # 개행이 남는 것을 Jinja2로 직접 검증함.
+      ansible.builtin.set_fact:
+        webtob_solution_marker: |+
+          # CMDB_SOLUTION_VERSION: {{ wsadmin_version.stdout | trim }}
+
+      when: wsadmin_version.rc == 0 and (wsadmin_version.stdout | default('') | trim)
+
+    - name: 버전 조회 실패 시 마커 없이 진행
+      ansible.builtin.set_fact:
+        webtob_solution_marker: ""
+      when: not (wsadmin_version.rc == 0 and (wsadmin_version.stdout | default('') | trim))
+
     - name: 버전 마커를 얹은 push용 내용 구성
       ansible.builtin.set_fact:
-        webtob_push_content: >-
-          {{
-            (
-              '# CMDB_SOLUTION_VERSION: ' + (wsadmin_version.stdout | default('') | trim) + "\n"
-              if wsadmin_version.rc == 0 and (wsadmin_version.stdout | default('') | trim) else ''
-            ) + (webtob_config_raw.content | b64decode)
-          }}
+        webtob_push_content: "{{ webtob_solution_marker + (webtob_config_raw.content | b64decode) }}"
 
     - name: CMDB로 웹설정 push  # noqa: no-changed-when
       ansible.builtin.uri:

@@ -5,6 +5,11 @@
 
 1.0.6까지의 이력은 이 파일 도입 전이라 별도 기록 없음 — `WORKLOG.md`의 해당 날짜 항목 참고.
 
+## 1.0.13
+
+- 웹설정 상세 모달의 솔루션 Fix 값이 `...epoll 2026/05/19\n*DOMAIN`처럼 다음 섹션 내용까지 딸려 나오던 문제 수정. AWX가 버전 마커 뒤에 붙이던 개행이 실제 운영 Ansible에서 리터럴 `\n`(백슬래시+n 두 글자)으로 남는 사례가 있었는데, `webconfig/version_extract.py`의 마커 파서가 실제 개행에서만 멈추다 보니 다음 섹션까지 그대로 캡처해버린 게 원인. `version_extract.py`에 리터럴 `\n` 이후를 잘라내는 방어 코드를 추가하고, `awx/push_webconfig_to_cmdb.yml`도 Jinja 문자열 이스케이프 대신 YAML 리터럴 블록의 실제 개행을 쓰도록 변경(keep_trailing_newline 설정에 관계없이 개행이 남도록 빈 줄 하나 추가)해 근본 원인도 같이 손봄
+- 기존에 이미 오염된 값이 저장된 자산은 별도 정리 불필요 — AUTO 필드라 다음 AWX push 때 정상 값으로 자동 갱신됨
+
 ## 1.0.12
 
 - 웹설정 목록(`/dashboard/webconfig/`)·WebToB 설정 목록(`/dashboard/webconfig/vhosts/`) 조회 시 Oracle에서 `ORA-00932(inconsistent datatypes: got NCLOB)`로 500 에러가 나던 문제 수정. `annotate`/`distinct`에 `raw_content`/`extra_sections`(TextField/JSONField, Oracle에서 NCLOB) 컬럼이 암묵적으로 GROUP BY/DISTINCT 대상에 포함된 게 원인 — 두 쿼리셋 모두 해당 필드를 `defer()`로 제외하도록 수정. 로컬(Postgres)에서는 재현되지 않아 1.0.11 반입 후 운영(Oracle) 반입 시점에 처음 발견됨. 데이터는 영향 없음(문제는 조회 쿼리에만 있었고 AWX push 경로는 별개 코드라 안전) — 이 이미지만 재배포하면 정상화

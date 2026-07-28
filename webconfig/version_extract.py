@@ -17,6 +17,11 @@ def extract_webtob_version(content: str) -> tuple[str, str] | None:
         return None
 
     raw_version = marker_match.group(1).strip()
+    # 방어 코드: 마커 줄과 실제 설정 내용 사이의 구분자가 실제 개행이 아니라 리터럴 "\n"(백슬래시+n
+    # 두 글자)로 들어온 사례가 있었다(AWX 쪽 Jinja/YAML 이스케이프 처리 이슈, awx/push_webconfig_to_cmdb.yml
+    # 참고). 정규식(위 _MARKER_RE)은 실제 개행에서만 멈추므로 이 경우 다음 섹션 내용까지 그대로
+    # 캡처해버려 solution_fix가 오염된다 - 리터럴 "\n"이 보이면 그 이후는 버린다.
+    raw_version = raw_version.split("\\n", 1)[0].strip()
     version_match = _WEBTOB_VERSION_RE.match(raw_version)
     if version_match is None:
         return raw_version, ""

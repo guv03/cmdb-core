@@ -12,6 +12,14 @@
   - 로컬 Docker Compose(Postgres) 기동해 `Client().force_login()`으로 목록/검색/정렬/상세/엑셀 export 재현 테스트 — 전부 200 확인(단, Postgres에서는 애초에 NCLOB 버그가 재현되지 않으므로 이건 `defer()` 추가로 인한 회귀가 없다는 확인일 뿐, 실제 수정 검증은 폐쇄망 Oracle 반입 후 필요)
   - 발견했지만 보류: `WEBTOB_VHOST_SORT_LOOKUPS`의 `ssl_ciphers` 정렬이 `ssl__required_ciphers`(역시 `TextField`→NCLOB)를 `ORDER BY`해서 같은 이유로 실패할 가능성 있음. 값 길이는 짧아(255자 이내) `CharField` 전환으로 해결 가능하지만 마이그레이션이 필요해 이번엔 미적용
   - 이미지 버전 관리 절차대로 1.0.12 빌드·릴리즈까지 진행
+- **웹설정 상세 모달 솔루션 Fix 값에 다음 섹션이 딸려 나오는 문제 트러블슈팅·수정**: 1.0.12 반영 확인 후 사용자가 모달의 "버전정보/최근 반영" 줄바꿈이 화면에서 `\n` 기호로 보이고 실제 개행이 안 된다고 제보
+  - `webconfig_detail.html`/모달 주입 JS는 실제 `<br>` 태그를 쓰고 있어 코드상 리터럴 `\n`이 나올 자리가 없어 처음엔 원인 특정에 난항 — 사용자가 폐쇄망 Oracle 캐릭터셋(`KO16MSWIN949`)을 제보했지만 개행문자는 어느 charset에서든 1바이트로 동일해 이 자체가 직접 원인은 아님(다만 Django가 TextField/CharField를 Oracle에서 NCLOB/NVARCHAR2로 매핑하는 이유가 DB가 비UTF-8 charset이기 때문이라는 배경은 확인됨 — 1.0.12 트러블슈팅과 연결됨)
+  - 폐쇄망은 반입만 가능하고 코드 실행이 안 돼 사용자가 직접 `manage.py shell`로 `repr()` 찍어 확인 — `solution_fix`에 `...epoll 2026/05/19\\n*DOMAIN`처럼 리터럴 `\n`(백슬래시+n 두 글자) 뒤에 다음 섹션(`*DOMAIN`)까지 붙어있는 것 확인(첫 시도는 여러 줄 명령을 손으로 옮겨 치다 들여쓰기가 깨져 에러 — 들여쓰기가 필요 없는 한 줄짜리 리스트 컴프리헨션 명령으로 재시도해 성공)
+  - 원인: AWX 플레이북(`awx/push_webconfig_to_cmdb.yml`)이 버전 마커 뒤 구분자를 Jinja 문자열 이스케이프(`"\n"`, 중첩된 YAML 폴딩 블록 `>-` 안)로 넣었는데, 로컬 sandbox(순수 Jinja2)에서는 정상적으로 실제 개행이 되는 걸 확인했음에도 실제 운영 Ansible에서는 리터럴 텍스트로 남는 사례 발견 — Ansible 내부 템플릿 처리 차이까지는 재현 불가(로컬에 실제 Ansible 없음, 폐쇄망도 격리라 직접 검증 불가)라 원인을 단정하기보다 양쪽 다 방어하는 쪽으로 결론
+  - `awx/push_webconfig_to_cmdb.yml`: 마커 줄을 별도 `set_fact`로 뽑아 YAML 리터럴 블록(`|+`, keep 초핑)의 실제 줄바꿈을 쓰도록 변경 — 이스케이프 시퀀스에 전혀 의존하지 않음. 추가로 Jinja2의 `keep_trailing_newline`(꺼져 있으면 템플릿 맨 끝 개행 하나가 렌더링 시 사라짐, Ansible 버전별 기본값 신뢰 어려움) 설정이 뭐든 최소 한 개의 실제 개행이 남도록 블록 끝에 빈 줄을 하나 더 남김 — 로컬에서 `keep_trailing_newline=True`/`False` 양쪽 다 Jinja2로 직접 렌더링해 개행이 남는 것 검증
+  - `webconfig/version_extract.py`: 그래도 신뢰 못 하는 파이프라인(YAML/Jinja/JSON/Oracle을 끝까지 로컬에서 재현 못 함)이라 방어 코드 추가 — 마커 파싱 결과에서 리터럴 `\n` 이후는 잘라내도록 `raw_version.split("\\n", 1)[0]` 추가. 로컬 Docker Compose에서 실제 폐쇄망과 동일하게 오염된 마커(`...2026/05/19\n` 뒤에 실제 개행 없이 바로 설정 내용이 이어지는 형태)를 `/api/webconfig/`로 직접 push해 end-to-end로 재현·검증(raw_content엔 리터럴 `\n`이 그대로 남아있어도 solution_version/solution_fix는 깨끗하게 나오고 vhost 파싱도 영향 없음 확인) — 테스트 중 `docker compose exec ... shell -c "여러 줄 명령"`이 셸 레이어를 거치며 이스케이프가 계속 깨져서, 스크립트 파일을 작성해 `docker compose cp`로 컨테이너에 넣고 실행하는 방식으로 전환해 안정적으로 재현
+  - 기존에 이미 오염된 값이 저장된 자산은 별도 정리 불필요 — AUTO 필드라 다음 AWX push 때 정상 값으로 자동 갱신됨
+  - 이미지 버전 관리 절차대로 1.0.13 빌드·릴리즈까지 진행(AWX 플레이북은 CMDB 이미지에 안 들어가는 별도 배포 산출물이라 이미지 버전과는 무관 — 코드 저장소 커밋만으로 배포, 대상 AWX 서버에 별도 반영 필요)
 
 ## 2026-07-27
 
