@@ -24,6 +24,11 @@
   - 세 쿼리 모두 검색 필터가 own 필드/forward FK만 참조해 to-many 조인이 없다는 걸 확인 — 애초에 중복 행이 생길 수 없는 구조라 `defer()` 대신 불필요한 `.distinct()`를 제거하는 방식으로 수정(목록에 `proxy_summary`를 그대로 노출해야 해서 defer는 N+1을 유발하므로 이쪽이 더 나음). 쿼리셋의 `.query`를 직접 찍어 `DISTINCT`가 빠졌는지, 정말 필요한 `get_webconfig_queryset`(to-many 조인 있어 유지)엔 NCLOB 컬럼이 안 걸리는지 확인
   - CLAUDE.md "환경" 섹션에 이 클래스의 버그를 앞으로 방지하기 위한 체크리스트 메모 추가(TextField→NCLOB, select_related+distinct/annotate 조합 점검)
 - 이미지 버전 관리 절차대로 1.0.15 빌드·릴리즈까지 진행
+- **AWX 플레이북 파일명 통일**: `awx/push_webconfig_to_cmdb.yml`(WebToB)를 `push_apache_config_to_cmdb.yml`/`push_nginx_config_to_cmdb.yml`과 이름 패턴을 맞추기 위해 `push_webtob_config_to_cmdb.yml`로 rename. 참조하던 주석(CLAUDE.md, 두 신규 플레이북, `version_extract.py`)도 갱신, `CHANGELOG.md`/`WORKLOG.md`의 과거 기록은 당시 실제 파일명이라 그대로 둠. `awx/README.md`에 Apache/nginx 플레이북 설명이 통째로 빠져있던 것도 같이 보완(파일 목록 + Job Template 섹션 신규)
+- **AWX에서 nginx 설정 push 시 Python 버전 오류 트러블슈팅**: 신규 `push_nginx_config_to_cmdb.yml` 첫 실전 실행에서 `TASK [nginx 설정 파일 원본 읽기]`(`ansible.builtin.slurp`)가 `SyntaxError: future feature annotations is not defined`로 실패한다는 제보(스크린샷)
+  - 실패 지점이 커스텀 로직이 아니라 코어 모듈(`slurp`) 자체라는 점, 위쪽 로그의 `[WARNING] Unhandled error in Python interpreter discovery ... Expecting value: line 1 column 1 (char 0)`(빈 응답 → JSON 파싱 실패 → `/usr/bin/python3`로 폴백)까지 종합해 원인은 CMDB/플레이북 코드가 아니라 **대상 서버(POPSAP01)의 Python 버전이 너무 낮다**고 진단 — `from __future__ import annotations`(PEP 563)가 파싱 안 되는 것 자체는 Python 3.7 미만 증상이지만, 최신 ansible-core(`ansible-core/2.18` 문서 링크 확인)가 실제로 요구하는 관리 대상 노드 최소 버전은 그보다 높음
+  - 사용자 확인으로 진단 확정: 정상 동작하는 서버는 Python 3.9.x, 실패한 POPSAP01은 3.6.x. 이어서 3.7.x로도 테스트했으나 동일하게 실패 — **최소 3.8 이상 필요, 권장은 3.9**로 결론(3.6/3.7 전부 이 ansible-core 버전과 호환 안 됨)
+  - 조치는 CMDB 리포지토리 밖(대상 서버에 Python 3.9 설치 또는 인벤토리 `ansible_python_interpreter`로 이미 설치된 3.9 경로 지정) — 코드 변경 없음
 
 ## 2026-07-28
 
