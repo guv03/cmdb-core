@@ -12,6 +12,8 @@ from dashboard.views import (
     BulkPendingChangeDecisionView,
     ChangeHistoryListView,
     DashboardLoginView,
+    JeusContainerListView,
+    JeusContainerServiceUpdateView,
     ManualFieldImportConfirmView,
     ManualFieldImportView,
     NginxVhostListView,
@@ -22,6 +24,9 @@ from dashboard.views import (
     ServiceExportView,
     ServiceImportConfirmView,
     ServiceImportView,
+    WasConfigDetailView,
+    WasConfigHistoryListView,
+    WasConfigListView,
     WebConfigDetailView,
     WebConfigHistoryListView,
     WebConfigListView,
@@ -105,6 +110,15 @@ urlpatterns = [
     ),
     path("processes/", ProcessListView.as_view(), name="dashboard-process-list"),
     path("processes/<int:pk>/", ProcessDetailView.as_view(), name="dashboard-process-detail"),
+    path("was/", WasConfigListView.as_view(), name="dashboard-was-list"),
+    path("was/changes/", WasConfigHistoryListView.as_view(), name="dashboard-was-history"),
+    path("was/jeus8/containers/", JeusContainerListView.as_view(), name="dashboard-jeus8-container-list"),
+    path("was/<int:pk>/", WasConfigDetailView.as_view(), name="dashboard-was-detail"),
+    path(
+        "was/jeus8/container/<int:pk>/service/",
+        JeusContainerServiceUpdateView.as_view(),
+        name="dashboard-jeus8-container-service",
+    ),
 ]
 
 api_urlpatterns = [

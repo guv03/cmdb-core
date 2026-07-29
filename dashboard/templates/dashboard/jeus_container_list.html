@@ -1,0 +1,161 @@
+{% extends "dashboard/base.html" %}
+
+{% block title %}JEUS8 목록 - CMDB{% endblock %}
+
+{% block content %}
+{% csrf_token %}
+<h1 class="title is-4">JEUS8 목록</h1>
+<p class="subtitle is-6 has-text-grey">컨테이너(&lt;server&gt;) 하나가 한 행입니다 — 여러 도메인을 가로질러 컨테이너 단위로 검색·정렬합니다. Hostname은 이 컨테이너 자신의 node-name으로 연결된 자산입니다(설정을 push한 admin 호스트와 다를 수 있음) — 아직 자산으로 등록 안 된 노드는 "(미등록)"으로 표시됩니다.</p>
+
+<form class="field has-addons" method="get">
+  <div class="control is-expanded">
+    <input class="input" type="text" name="q" value="{{ current_q }}" placeholder="hostname/노드명/컨테이너명/서비스명 검색">
+  </div>
+  <div class="control">
+    <button class="button is-link" type="submit">검색</button>
+  </div>
+</form>
+
+<div class="table-container">
+  <table class="table is-fullwidth is-hoverable is-striped dash-scroll-table">
+    <thead>
+      <tr>
+        <th class="dash-sticky-col dash-sticky-col-1"><a class="has-text-dark" href="{% querystring sort=columns.hostname.next_sort page=None %}">Hostname</a></th>
+        <th class="dash-sticky-col dash-sticky-col-2"><a class="has-text-dark" href="{% querystring sort=columns.container.next_sort page=None %}">컨테이너</a></th>
+        <th><a class="has-text-dark" href="{% querystring sort=columns.node_name.next_sort page=None %}">Node</a></th>
+        <th><a class="has-text-dark" href="{% querystring sort=columns.listen_port.next_sort page=None %}">Listen Port</a></th>
+        <th><a class="has-text-dark" href="{% querystring sort=columns.ssl_port.next_sort page=None %}">SSL Port</a></th>
+        <th>배포된 앱</th>
+        <th>WebToB 연결</th>
+        <th><a class="has-text-dark" href="{% querystring sort=columns.service_name.next_sort page=None %}">서비스명</a></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+      <tr>
+        <td class="dash-sticky-col dash-sticky-col-1">{{ row.container.asset.hostname|default:"(미등록)" }}</td>
+        <td class="dash-sticky-col dash-sticky-col-2">{{ row.container.name }}</td>
+        <td>{{ row.container.node_name }}</td>
+        <td>{{ row.container.listen_port|default:"" }}</td>
+        <td>{{ row.container.ssl_port|default:"" }}</td>
+        <td>{{ row.container.deployed_apps_summary|default:"" }}</td>
+        <td>{{ row.webtob_connector_summary }}</td>
+        <td class="editable-cell dash-editable-cell" data-url="/dashboard/was/jeus8/container/{{ row.container.pk }}/service/"
+            data-param="service_name" data-title="{{ row.container.asset.hostname|default:row.container.node_name }} / {{ row.container.name }} - 서비스명">
+          <span class="cell-value">{{ row.container.service_name|default:"" }}</span><span class="dash-manual-icon" aria-hidden="true">✎</span>
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="8" class="has-text-grey">등록된 컨테이너가 없습니다.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<nav class="pagination" role="navigation" aria-label="pagination">
+  {% if page_obj.has_previous %}
+    <a class="pagination-previous" href="{% querystring page=page_obj.previous_page_number %}">이전</a>
+  {% else %}
+    <a class="pagination-previous" disabled>이전</a>
+  {% endif %}
+  {% if page_obj.has_next %}
+    <a class="pagination-next" href="{% querystring page=page_obj.next_page_number %}">다음</a>
+  {% else %}
+    <a class="pagination-next" disabled>다음</a>
+  {% endif %}
+  <span class="pagination-list">
+    <span class="pagination-link is-current">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
+  </span>
+</nav>
+
+<div class="modal" id="serviceCellModal">
+  <div class="modal-background"></div>
+  <div class="modal-card" style="width: 90%; max-width: 420px;">
+    <header class="modal-card-head">
+      <p class="modal-card-title" id="serviceCellModalTitle">서비스명 편집</p>
+      <button class="delete" aria-label="close" id="serviceCellModalClose"></button>
+    </header>
+    <section class="modal-card-body">
+      <div class="field">
+        <input class="input" type="text" id="serviceCellInput">
+      </div>
+      <p class="help is-danger" id="serviceCellError" style="display: none;"></p>
+    </section>
+    <footer class="modal-card-foot">
+      <button type="button" class="button is-link" id="serviceCellSave">저장</button>
+      <button type="button" class="button" id="serviceCellCancel">취소</button>
+    </footer>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_body %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  function getCsrfToken() {
+    var input = document.querySelector('input[name=csrfmiddlewaretoken]');
+    return input ? input.value : '';
+  }
+
+  var modal = document.getElementById('serviceCellModal');
+  var modalTitle = document.getElementById('serviceCellModalTitle');
+  var input = document.getElementById('serviceCellInput');
+  var errorEl = document.getElementById('serviceCellError');
+  var saveBtn = document.getElementById('serviceCellSave');
+  var cancelBtn = document.getElementById('serviceCellCancel');
+
+  var activeCell = null;
+
+  function closeModal() {
+    modal.classList.remove('is-active');
+    activeCell = null;
+  }
+
+  function openModal(cell) {
+    activeCell = cell;
+    errorEl.style.display = 'none';
+    modalTitle.textContent = cell.dataset.title;
+    input.value = cell.querySelector('.cell-value').textContent.trim();
+    modal.classList.add('is-active');
+    input.focus();
+  }
+
+  function saveActiveCell() {
+    if (!activeCell) return;
+    var param = activeCell.dataset.param;
+
+    saveBtn.classList.add('is-loading');
+    fetch(activeCell.dataset.url, {
+      method: 'POST',
+      headers: {
+        'X-CSRFToken': getCsrfToken(),
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams([[param, input.value]]),
+    })
+      .then(function (res) { return res.json(); })
+      .then(function (data) {
+        saveBtn.classList.remove('is-loading');
+        activeCell.querySelector('.cell-value').textContent = data[param];
+        closeModal();
+      })
+      .catch(function () {
+        saveBtn.classList.remove('is-loading');
+        errorEl.textContent = '저장 실패';
+        errorEl.style.display = 'block';
+      });
+  }
+
+  document.querySelectorAll('.editable-cell').forEach(function (cell) {
+    cell.addEventListener('click', function () {
+      openModal(cell);
+    });
+  });
+
+  saveBtn.addEventListener('click', saveActiveCell);
+  cancelBtn.addEventListener('click', closeModal);
+  document.getElementById('serviceCellModalClose').addEventListener('click', closeModal);
+  modal.querySelector('.modal-background').addEventListener('click', closeModal);
+});
+</script>
+{% endblock %}

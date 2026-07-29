@@ -29,6 +29,17 @@
   - 실패 지점이 커스텀 로직이 아니라 코어 모듈(`slurp`) 자체라는 점, 위쪽 로그의 `[WARNING] Unhandled error in Python interpreter discovery ... Expecting value: line 1 column 1 (char 0)`(빈 응답 → JSON 파싱 실패 → `/usr/bin/python3`로 폴백)까지 종합해 원인은 CMDB/플레이북 코드가 아니라 **대상 서버(POPSAP01)의 Python 버전이 너무 낮다**고 진단 — `from __future__ import annotations`(PEP 563)가 파싱 안 되는 것 자체는 Python 3.7 미만 증상이지만, 최신 ansible-core(`ansible-core/2.18` 문서 링크 확인)가 실제로 요구하는 관리 대상 노드 최소 버전은 그보다 높음
   - 사용자 확인으로 진단 확정: 정상 동작하는 서버는 Python 3.9.x, 실패한 POPSAP01은 3.6.x. 이어서 3.7.x로도 테스트했으나 동일하게 실패 — **최소 3.8 이상 필요, 권장은 3.9**로 결론(3.6/3.7 전부 이 ansible-core 버전과 호환 안 됨)
   - 조치는 CMDB 리포지토리 밖(대상 서버에 Python 3.9 설치 또는 인벤토리 `ansible_python_interpreter`로 이미 설치된 3.9 경로 지정) — 코드 변경 없음
+- **`awx/OS_SPECS.md` 신규**: 위 Python 버전 사고를 계기로 "AWX 대상 OS별 스펙"을 기록해두는 문서 요청. 처음엔 호스트별로 만들었다가 사용자 요청으로 OS 단위로 재구성 — AIX/Linux는 SSH+Python 방식이 동일해 요구사항도 동일하게 묶고(3.9 권장), Windows는 애초에 Python 개념이 없고 PowerShell/WinRM(or ansible-core 2.18+ SSH) 기반이라 완전히 별도 섹션으로 분리(WebSearch로 공식 문서 확인 후 작성 — PowerShell 5.1+/Windows Server 2016+, .NET 버전은 출처마다 달라 확정 수치 대신 실측 필요 메모만)
+- **WAS(JEUS8) 설정 파싱 추가**: 웹설정에 이어 WAS도 "공통 뷰 + 솔루션별 목록" 구조로 확장 요청, JEUS8부터(`samples/jeus8/domain.xml`). 코딩 전 검토 → Plan 모드로 진행, 확인한 핵심 설계 포인트:
+  - "컨테이너" = `<server>` 엘리먼트(사용자 확인)
+  - **가장 큰 구조적 차이**: domain.xml 하나가 여러 물리 노드의 컨테이너를 담을 수 있지만 실제 수집은 admin 서버가 떠있는 호스트에서만 이뤄짐 — 그래서 `WasConfigSource.asset`(push 주체=admin 호스트)과 `JeusContainer.asset`(컨테이너 자신의 node-name으로 조회, 소스와 다를 수 있음)을 분리. webconfig 계열은 전부 "소스=자산 하나"였는데 여기서 처음 깨짐
+  - 미등록 노드의 컨테이너는 asset=null로 저장(제외 안 함) — 하나의 push에 여러 노드가 섞여 있어 전체를 막으면 다른 정상 컨테이너까지 막히므로
+  - `webconfig`와 별도 `was` 앱 신규(`WasConfigSource`/`WasConfigSourceRevision`/`JeusContainer`), `xml.etree.ElementTree`로 파싱(네임스페이스 벗기기 전처리), 버전은 XML `version` 속성에서 명령어/마커 없이 바로 추출(WebToB/Apache/Nginx보다 단순)
+  - 검토 중 사용자가 `webtob-connector`(JEUS가 WebToB에 등록되는 설정) 존재를 지적 — `JeusWebtobConnector` 모델 추가해 `registration-id`(=WebToB `*SERVER`(SVRTYPE=JSV) 이름)와 `network-address`(hostname 또는 실제 IP, `Asset.hostname`→`primary_ip` 순으로 매칭)로 실제 `webconfig.WebtobServer`와 교차 연결. `was`가 `webconfig.models`를 import하는 앱 간 의존이 이 기능으로 처음 생김
+  - AWX 플레이북(`awx/push_jeus8_config_to_cmdb.yml`)은 admin 서버 호스트에서만 실행해야 한다는 주의사항을 상단 주석 + `awx/README.md`에 명시(워커 노드엔 domain.xml 사본이 없거나 중복 push 위험)
+  - 로컬 Docker Compose에서 실제 push(컨테이너 3개) → 기존 `drnrap01` 자산으로 admin 호스트 판별 → 컨테이너별 자산 연결 → WebToB 테스트 데이터(SvrGroup/Server/Vhost) 만들어 재push로 `webtob_server` 사후 해석 확인 → 대시보드 전 화면/검색/서비스명 인라인 편집/재push 시 보존까지 end-to-end 검증. NCLOB `.distinct()` 문제(오늘 앞서 apache/nginx에서 겪은 것과 동일 클래스)가 `JeusContainer.deployed_apps_summary`(TextField)에도 생길 뻔했는데 검색 필터에 to-many 조인이 없어 `.distinct()` 자체를 안 쓰는 방식으로 처음부터 피함 — 쿼리셋 `.query`를 직접 찍어 확인
+  - 이어서 사용자 질문("WAS 서비스명이 웹 서비스명 같이 쓰는거지?")에 아니라고 답변 → "WebToB 서비스명을 따라가게 해야 할 것 같다"는 후속 요청. 컨테이너 하나가 webtob-connector 여러 개(이중화)를 가질 수 있고 WebtobServer 하나도 SvrGroup을 거쳐 vhost가 여러 개(M2M) 걸릴 수 있어 "서비스명 하나로 안 좁혀질 수 있음"을 먼저 짚고 논의 — 사용자가 "이중화면 서비스명은 보통 같다"고 확인해줘서 설계 확정: `_resolve_webtob_service_name`이 연결된 vhost들의 service_name을 모아 **공백 아닌 값이 정확히 하나로 겹치면** push 시점에 자동 채움(AUTO-if-resolvable), 갈리거나 연결이 없으면 기존 수기 입력값 유지. WebToB 쪽 값을 나중에 고쳐도 실시간 반영은 안 하고 다음 JEUS push 때만 재해석(앱 간 실시간 트리거는 안 만듦). 실제로 WebToB vhost service_name을 1개/2개로 바꿔가며 재push해 자동 채움/보존 양쪽 다 검증
+  - CLAUDE.md에 "WAS 설정" 섹션 신규 추가
 
 ## 2026-07-28
 

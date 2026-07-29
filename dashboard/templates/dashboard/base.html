@@ -127,6 +127,18 @@
                href="{% url 'dashboard-webconfig-history' %}">변경 이력</a>
           </div>
         </div>
+        <div class="navbar-item has-dropdown is-hoverable">
+          <a class="navbar-link {% if 'dashboard-was' in request.resolver_match.url_name or 'dashboard-jeus8' in request.resolver_match.url_name %}is-active{% endif %}"
+             href="{% url 'dashboard-was-list' %}">WAS</a>
+          <div class="navbar-dropdown">
+            <a class="navbar-item {% if request.resolver_match.url_name == 'dashboard-was-list' %}is-active{% endif %}"
+               href="{% url 'dashboard-was-list' %}">WAS 목록</a>
+            <a class="navbar-item {% if request.resolver_match.url_name == 'dashboard-jeus8-container-list' %}is-active{% endif %}"
+               href="{% url 'dashboard-jeus8-container-list' %}">JEUS8 목록</a>
+            <a class="navbar-item {% if request.resolver_match.url_name == 'dashboard-was-history' %}is-active{% endif %}"
+               href="{% url 'dashboard-was-history' %}">변경 이력</a>
+          </div>
+        </div>
         <a class="navbar-item {% if request.resolver_match.url_name == 'dashboard-webservice-list' %}is-active{% endif %}"
            href="{% url 'dashboard-webservice-list' %}">서비스</a>
         <a class="navbar-item {% if 'dashboard-process' in request.resolver_match.url_name %}is-active{% endif %}"

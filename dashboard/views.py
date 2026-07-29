@@ -21,6 +21,7 @@ from dashboard.excel_import import (
     parse_manual_field_workbook,
 )
 from dashboard.queries import (
+    build_jeus_container_rows,
     build_rows,
     build_sort_columns,
     build_webtob_vhost_rows,
@@ -29,8 +30,11 @@ from dashboard.queries import (
     get_change_history_queryset,
     get_dashboard_columns,
     get_dynamic_field_definitions,
+    get_jeus_container_queryset,
     get_nginx_vhost_queryset,
     get_process_queryset,
+    get_was_config_queryset,
+    get_was_history_queryset,
     get_web_service_queryset,
     get_webconfig_history_queryset,
     get_webconfig_queryset,
@@ -48,6 +52,7 @@ from webconfig.excel_import import (
     export_service_workbook,
     parse_service_workbook,
 )
+from was.models import JeusContainer, WasConfigSource
 from webconfig.models import ApacheVhost, NginxVhost, WebConfigSource, WebServiceDomain, WebtobVhost
 
 
@@ -422,6 +427,86 @@ class NginxVhostServiceUpdateView(LoginRequiredMixin, View):
             service_name=vhost.service_name
         )
         return JsonResponse({"service_name": vhost.service_name})
+
+
+class WasConfigListView(LoginRequiredMixin, ListView):
+    """WAS 버전의 WebConfigListView - 서버(자산+kind) 단위 목록. asset은 admin 호스트를
+    가리키고, container_count는 이 소스에 딸린 컨테이너 전체 수(각 컨테이너가 다른 자산에
+    속하더라도 소스 자체의 속성이라 그대로 카운트)."""
+
+    template_name = "dashboard/was_list.html"
+    context_object_name = "sources"
+    paginate_by = 50
+
+    def get_queryset(self):
+        return get_was_config_queryset(self.request)
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["columns"] = build_sort_columns(
+            self.request,
+            ["hostname", "kind", "solution_version", "container_count", "last_changed_at", "last_pushed_at"],
+            default="hostname",
+        )
+        return context
+
+
+class WasConfigDetailView(LoginRequiredMixin, DetailView):
+    template_name = "dashboard/was_detail.html"
+    context_object_name = "source"
+
+    def get_queryset(self):
+        return WasConfigSource.objects.select_related("asset").prefetch_related(
+            "containers__asset", "containers__webtob_connectors__webtob_server__source__asset"
+        )
+
+
+class WasConfigHistoryListView(LoginRequiredMixin, ListView):
+    template_name = "dashboard/was_history.html"
+    context_object_name = "revisions"
+    paginate_by = 20
+
+    def get_queryset(self):
+        return get_was_history_queryset(self.request)
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        for revision in context["revisions"]:
+            revision.diff_lines = unified_diff_lines(revision.old_content, revision.new_content)
+        context["current_q"] = self.request.GET.get("q", "")
+        return context
+
+
+class JeusContainerListView(LoginRequiredMixin, ListView):
+    """WebtobVhostListView와 같은 취지의 JEUS8 전용 목록 - 다만 Hostname 컬럼은
+    container.asset(컨테이너 자신의 node-name으로 해석된 자산)을 쓴다. source.asset(=push를
+    보낸 admin 호스트)과 다를 수 있어서 소스 쪽 hostname을 쓰면 틀린 정보가 된다."""
+
+    template_name = "dashboard/jeus_container_list.html"
+    context_object_name = "containers"
+    paginate_by = 50
+
+    def get_queryset(self):
+        return get_jeus_container_queryset(self.request)
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["rows"] = build_jeus_container_rows(context["containers"])
+        context["columns"] = build_sort_columns(
+            self.request,
+            ["hostname", "node_name", "container", "listen_port", "ssl_port", "service_name"],
+            default="hostname",
+        )
+        context["current_q"] = self.request.GET.get("q", "")
+        return context
+
+
+class JeusContainerServiceUpdateView(LoginRequiredMixin, View):
+    def post(self, request, pk):
+        container = get_object_or_404(JeusContainer, pk=pk)
+        container.service_name = request.POST.get("service_name", "").strip()
+        container.save(update_fields=["service_name"])
+        return JsonResponse({"service_name": container.service_name})
 
 
 class ServiceExportView(LoginRequiredMixin, View):

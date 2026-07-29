@@ -1,0 +1,100 @@
+{% extends "dashboard/base.html" %}
+
+{% block title %}{{ source.asset.hostname }} WAS - CMDB{% endblock %}
+
+{% block content %}
+<div id="was-content">
+{% csrf_token %}
+<h1 class="title is-4">{{ source.asset.hostname }} - {{ source.get_kind_display }} 설정</h1>
+<p class="subtitle is-6">
+  {% if source.solution_version %}버전: {{ source.solution_version }}<br>{% endif %}
+  최근 반영: {{ source.last_pushed_at }}
+</p>
+<p class="help">이 자산은 도메인 admin 서버가 떠있는 호스트입니다 - 아래 컨테이너는 각자 다른 자산(노드)에 속할 수 있습니다.</p>
+
+<h2 class="title is-6">컨테이너</h2>
+{% for container in source.containers.all %}
+<div class="box">
+  <p class="title is-6">
+    {{ container.name }}
+    <span class="tag">{{ container.asset.hostname|default:"(미등록)" }}</span>
+  </p>
+  <table class="table is-narrow is-fullwidth">
+    <tbody>
+      <tr>
+        <th style="width: 12em;">서비스명</th>
+        <td class="container-service-cell dash-editable-cell" data-service-url="/dashboard/was/jeus8/container/{{ container.id }}/service/">
+          <span class="container-service-value">{{ container.service_name }}</span><span class="dash-manual-icon" aria-hidden="true">✎</span>
+        </td>
+      </tr>
+      <tr><th>Node</th><td>{{ container.node_name }}</td></tr>
+      <tr><th>Listen Port</th><td>{{ container.listen_port }}</td></tr>
+      <tr><th>SSL Port</th><td>{{ container.ssl_port }}</td></tr>
+      <tr><th>배포된 앱</th><td>{{ container.deployed_apps_summary|default:"" }}</td></tr>
+    </tbody>
+  </table>
+
+  {% if container.webtob_connectors.all %}
+  <p class="has-text-weight-semibold mt-3">WebToB 연결</p>
+  <table class="table is-narrow is-fullwidth">
+    <thead><tr><th>이름</th><th>Registration ID</th><th>대상</th><th>연결된 WebToB</th></tr></thead>
+    <tbody>
+      {% for connector in container.webtob_connectors.all %}
+      <tr>
+        <td>{{ connector.name }}</td>
+        <td>{{ connector.registration_id }}</td>
+        <td>{{ connector.network_address }}{% if connector.port %}:{{ connector.port }}{% endif %}</td>
+        <td>
+          {% if connector.webtob_server %}
+            {{ connector.webtob_server.source.asset.hostname }} / {{ connector.webtob_server.name }}
+          {% else %}
+            <span class="tag is-warning">WebToB 쪽 미확인</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
+{% empty %}
+<p class="has-text-grey">등록된 컨테이너가 없습니다.</p>
+{% endfor %}
+
+<details class="box">
+  <summary class="has-text-weight-semibold" style="cursor: pointer;">원본 설정 보기</summary>
+  <pre style="white-space: pre-wrap; word-break: break-all; max-height: 70vh; overflow-y: auto;">{{ source.raw_content }}</pre>
+</details>
+</div>
+{% endblock %}
+
+{% block extra_body %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  function getCsrfToken() {
+    var input = document.querySelector('input[name=csrfmiddlewaretoken]');
+    return input ? input.value : '';
+  }
+
+  document.addEventListener('click', function (e) {
+    var cell = e.target.closest('.container-service-cell');
+    if (!cell) return;
+    var valueEl = cell.querySelector('.container-service-value');
+    var next = prompt('서비스명', valueEl.textContent.trim());
+    if (next === null) return;
+
+    fetch(cell.dataset.serviceUrl, {
+      method: 'POST',
+      headers: {
+        'X-CSRFToken': getCsrfToken(),
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({ service_name: next }),
+    })
+      .then(function (res) { return res.json(); })
+      .then(function (data) { valueEl.textContent = data.service_name; })
+      .catch(function () { alert('저장 실패'); });
+  });
+});
+</script>
+{% endblock %}

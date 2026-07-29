@@ -16,6 +16,7 @@ from django.db.models import (
 from core.models import Asset
 from facts.models import FactFieldDefinition, HostFactValue, PendingChange
 from processes.models import ProcessSnapshot
+from was.models import JeusContainer, WasConfigSource, WasConfigSourceRevision
 from webconfig.models import (
     ApacheVhost,
     NginxVhost,
@@ -467,6 +468,110 @@ def build_webtob_vhost_rows(vhosts):
                 "uri_summary": ", ".join(uri_parts),
             }
         )
+    return rows
+
+
+WAS_CONFIG_SORT_LOOKUPS = {
+    "hostname": "asset__hostname",
+    "kind": "kind",
+    "solution_version": "solution_version",
+    "container_count": "container_count",
+    "last_changed_at": "last_changed_at",
+    "last_pushed_at": "last_pushed_at",
+}
+
+
+def get_was_config_queryset(request):
+    # get_webconfig_queryset과 같은 이유로 raw_content(TextField, Oracle NCLOB)를 defer.
+    queryset = (
+        WasConfigSource.objects.select_related("asset")
+        .defer("raw_content")
+        .annotate(
+            container_count=Count("containers", distinct=True),
+            last_changed_at=Max("revisions__detected_at"),
+        )
+    )
+
+    q = _request_param(request, "q", "search")
+    if q:
+        queryset = queryset.filter(
+            Q(asset__hostname__icontains=q)
+            | Q(containers__node_name__icontains=q)
+            | Q(containers__name__icontains=q)
+        ).distinct()
+
+    sort = _request_param(request, "sort", "ordering", default="hostname")
+    direction = "-" if sort.startswith("-") else ""
+    sort_key = sort.lstrip("-")
+    lookup = WAS_CONFIG_SORT_LOOKUPS.get(sort_key, "asset__hostname")
+
+    return queryset.order_by(f"{direction}{lookup}")
+
+
+def get_was_history_queryset(request):
+    queryset = WasConfigSourceRevision.objects.select_related("source__asset")
+
+    q = _request_param(request, "q", "search")
+    if q:
+        queryset = queryset.filter(source__asset__hostname__icontains=q)
+
+    return queryset.order_by("-detected_at")
+
+
+JEUS_CONTAINER_SORT_LOOKUPS = {
+    "hostname": "asset__hostname",
+    "node_name": "node_name",
+    "container": "name",
+    "listen_port": "listen_port",
+    "ssl_port": "ssl_port",
+    "service_name": "service_name",
+}
+
+
+def get_jeus_container_queryset(request):
+    # 목록에 deployed_apps_summary(TextField, Oracle NCLOB)를 그대로 노출해야 해서 defer로
+    # 뺄 수 없는데, 검색 필터가 own 필드/forward FK만 참조해 to-many 조인이 없으므로(중복
+    # 행이 생길 수 없음) .distinct()가 애초에 불필요 - 걸지 않아서 NCLOB 문제를 피한다
+    # (apache/nginx vhost 목록에서 확립한 원칙과 동일).
+    queryset = (
+        JeusContainer.objects.select_related("source__asset", "asset")
+        .defer("source__raw_content")
+        .prefetch_related("webtob_connectors__webtob_server__source__asset")
+    )
+
+    q = _request_param(request, "q", "search")
+    if q:
+        queryset = queryset.filter(
+            Q(source__asset__hostname__icontains=q)
+            | Q(asset__hostname__icontains=q)
+            | Q(node_name__icontains=q)
+            | Q(name__icontains=q)
+            | Q(service_name__icontains=q)
+        )
+
+    sort = _request_param(request, "sort", "ordering", default="hostname")
+    direction = "-" if sort.startswith("-") else ""
+    sort_key = sort.lstrip("-")
+    lookup = JEUS_CONTAINER_SORT_LOOKUPS.get(sort_key, "asset__hostname")
+
+    return queryset.order_by(f"{direction}{lookup}")
+
+
+def build_jeus_container_rows(containers):
+    """webtob-connector는 컨테이너 하나에 여러 개씩 걸릴 수 있어(관계형 구조) 표 한 칸에
+    요약 문자열로 모아준다 - build_webtob_vhost_rows와 같은 패턴."""
+    rows = []
+    for container in containers:
+        connector_parts = []
+        for connector in container.webtob_connectors.all():
+            target = f"{connector.network_address}:{connector.port}" if connector.port else connector.network_address
+            if connector.webtob_server is not None:
+                label = f"{connector.registration_id}@{connector.webtob_server.source.asset.hostname}"
+            else:
+                label = f"{connector.registration_id}(WebToB 쪽 미확인)"
+            connector_parts.append(f"{label} -> {target}")
+
+        rows.append({"container": container, "webtob_connector_summary": ", ".join(connector_parts)})
     return rows
 
 

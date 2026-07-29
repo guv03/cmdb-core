@@ -10,6 +10,10 @@
 - `push_apache_config_to_cmdb.yml` / `push_nginx_config_to_cmdb.yml` — Apache/nginx 설정 파일을
   CMDB(`POST /api/webconfig/`)로 push하는 플레이북. WebToB와 달리 설정 파일 안에 서버 자신을
   가리키는 절이 없어(`*NODE` 같은 게 없음) `inventory_hostname`을 payload에 직접 실어 보낸다.
+- `push_jeus8_config_to_cmdb.yml` — JEUS 8 도메인 설정 파일(`domain.xml`)을 CMDB
+  (`POST /api/was/`)로 push하는 플레이북. WAS는 `webconfig`와 다른 별도 앱(`was`)이다.
+  **admin 서버가 떠있는 호스트에서만 실행할 것** — domain.xml은 도메인 전체(여러 물리
+  노드)를 기술할 수 있지만 파일 자체는 admin 서버 호스트에만 있다.
 - `inventory_source_vars.example.yml` — vCenter/Nutanix 인벤토리 소스의 hostvar를
   플레이북이 기대하는 정규화된 변수명으로 매핑하는 예시(참고용, 실제 환경에 맞게 조정 필요).
 
@@ -96,7 +100,29 @@ vCenter/Nutanix dynamic inventory 플러그인이 노출하는 hostvar 이름은
   기본적으로 stderr로 나가는 출력을 우선 사용 — 조회가 실패해도 push 자체는 그대로 진행되고
   이 경우 solution_version은 기존 값 유지.
 
-### 5. 로컬 테스트
+### 5. Job Template — JEUS8 설정 push
+
+- Playbook: `awx/push_jeus8_config_to_cmdb.yml`
+- Inventory: **각 JEUS 도메인의 admin 서버가 떠있는 호스트만**(워커/매니지드 노드는 대상에
+  넣지 말 것 — domain.xml 사본이 없거나, 있어도 같은 도메인이 중복 push됨). facts push가
+  먼저 한 번은 돌아 있어야 함.
+- Credential: facts push와 동일한 `cmdb_api_key` 재사용 가능
+- Extra Variables 예시:
+  ```yaml
+  cmdb_base_url: http://cmdb.internal:8000
+  cmdb_validate_certs: true
+  ```
+- **`jeus_domain_xml_path`는 서버마다 값이 다를 수 있어서 다른 플레이북과 같은 이유로
+  Extra Variables가 아니라 인벤토리 호스트별/그룹별 변수로 등록할 것.** 기본값은
+  `/app/jeus/domains/jeus_domain/config/domain.xml`.
+- 버전 정보는 명령어 실행 없이 `domain.xml` 루트의 `version` 속성에서 CMDB가 직접 뽑는다 —
+  WebToB/Apache/Nginx와 달리 마커 주석을 얹을 필요가 없음.
+- domain.xml에 담긴 각 컨테이너(`<server>`)는 자기 `node-name`으로 별도 자산에 연결된다
+  (이 push를 보낸 admin 호스트와 다를 수 있음). 아직 자산으로 등록 안 된 노드의 컨테이너는
+  일단 자산 미연결 상태로 저장되고, 나중에 그 노드가 facts push되면 다음 JEUS push 때
+  자동으로 연결된다.
+
+### 6. 로컬 테스트
 
 CMDB를 로컬 Docker Compose로 띄운 상태에서, 임의 값으로 API를 직접 호출해 CMDB 쪽 동작을
 먼저 검증하고 싶다면 CMDB 리포지토리의 `LOCAL_ACCESS.md`를 참고 (facts/webconfig push API 섹션).

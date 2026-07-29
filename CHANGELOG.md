@@ -5,6 +5,15 @@
 
 1.0.6까지의 이력은 이 파일 도입 전이라 별도 기록 없음 — `WORKLOG.md`의 해당 날짜 항목 참고.
 
+## 1.0.16
+
+- WAS(JEUS 8) 설정 파싱 추가 — 신규 `was` 앱, `POST /api/was/`(`kind=jeus8`)가 domain.xml을 파싱해 컨테이너(`<server>`) 단위로 노출. 대시보드에 `/dashboard/was/`(공통 목록), `/dashboard/was/jeus8/containers/`(JEUS8 컨테이너 목록), `/dashboard/was/<pk>/`(상세), `/dashboard/was/changes/`(변경 이력) 신규 — 상단 내비게이션에 "WAS" 드롭다운 추가
+- domain.xml 하나가 여러 물리 노드의 컨테이너를 담을 수 있지만 실제 수집은 도메인의 admin 서버 호스트에서만 이뤄지는 구조 반영 — push를 보낸 자산(admin 호스트)과 각 컨테이너가 실제로 속한 자산(컨테이너 자신의 node-name)을 분리해서 관리. 아직 자산으로 등록 안 된 노드의 컨테이너는 제외하지 않고 자산 미연결 상태로 저장, 해당 노드가 나중에 facts push되면 다음 JEUS push 때 자동 연결
+- JEUS 컨테이너의 `webtob-connector`(WebToB 등록 정보)를 `webconfig` 앱의 WebToB 데이터와 실제로 교차 연결(`registration-id`↔WebToB `*SERVER` 이름, `network-address`↔자산 hostname/IP). 연결된 WebToB vhost의 서비스명이 하나로 겹치면(이중화 구성의 일반적인 경우) 컨테이너의 서비스명에 자동 반영, 여러 값으로 갈리거나 연결이 없으면 기존 수기 입력값 유지
+- 신규 AWX 플레이북 `awx/push_jeus8_config_to_cmdb.yml` — 각 JEUS 도메인의 admin 서버 호스트에서만 실행해야 함(워커 노드 대상 금지)
+- 솔루션 버전은 domain.xml 루트의 `version` 속성에서 명령어 실행 없이 바로 추출(WebToB/Apache/Nginx의 마커 방식과 다름)
+- (문서) `awx/OS_SPECS.md` 신규 — AWX 관리 대상 OS별 Python/PowerShell 요구사항 기록(AIX/Linux는 Python 3.9 권장, Windows는 별도 요구사항)
+
 ## 1.0.15
 
 - Apache/Nginx 웹서버 설정 파싱 추가(WebToB에 이어) — `POST /api/webconfig/`가 `kind: apache`/`kind: nginx`를 받아 `<VirtualHost>`/`server {}` 블록을 vhost 단위로 파싱, 도메인/포트 기준으로 서비스 조회(`WebServiceDomain`)에도 연계. 전용 목록 화면 신규(`/dashboard/webconfig/apache/vhosts/`, `/dashboard/webconfig/nginx/vhosts/`), 서비스명 인라인 편집·엑셀 일괄 반영도 동일하게 지원

@@ -1,0 +1,132 @@
+{% extends "dashboard/base.html" %}
+
+{% block title %}WAS - CMDB{% endblock %}
+
+{% block content %}
+{% csrf_token %}
+<h1 class="title is-4">WAS</h1>
+
+<form class="field has-addons" method="get">
+  <div class="control is-expanded">
+    <input class="input" type="text" name="q" value="{{ request.GET.q }}" placeholder="hostname/노드명/컨테이너명 검색">
+  </div>
+  <div class="control">
+    <button class="button is-link" type="submit">검색</button>
+  </div>
+</form>
+
+<div class="table-container">
+  <table class="table is-fullwidth is-hoverable is-striped dash-scroll-table">
+    <thead>
+      <tr>
+        <th class="dash-sticky-col dash-sticky-col-1"><a class="has-text-dark" href="{% querystring sort=columns.hostname.next_sort page=None %}">Hostname</a></th>
+        <th class="dash-sticky-col dash-sticky-col-2"><a class="has-text-dark" href="{% querystring sort=columns.kind.next_sort page=None %}">종류</a></th>
+        <th><a class="has-text-dark" href="{% querystring sort=columns.solution_version.next_sort page=None %}">버전</a></th>
+        <th><a class="has-text-dark" href="{% querystring sort=columns.container_count.next_sort page=None %}">컨테이너 수</a></th>
+        <th><a class="has-text-dark" href="{% querystring sort=columns.last_changed_at.next_sort page=None %}">최근 변경일</a></th>
+        <th><a class="has-text-dark" href="{% querystring sort=columns.last_pushed_at.next_sort page=None %}">최근 반영일</a></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for source in sources %}
+      <tr class="was-row" data-detail-url="{% url 'dashboard-was-detail' source.pk %}" style="cursor: pointer;">
+        <td class="dash-sticky-col dash-sticky-col-1">{{ source.asset.hostname }}</td>
+        <td class="dash-sticky-col dash-sticky-col-2">{{ source.get_kind_display }}</td>
+        <td>{{ source.solution_version|default:"" }}</td>
+        <td>{{ source.container_count }}</td>
+        <td>{{ source.last_changed_at|default:"" }}</td>
+        <td>{{ source.last_pushed_at }}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="6" class="has-text-grey">등록된 WAS 설정이 없습니다.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="modal" id="wasModal">
+  <div class="modal-background"></div>
+  <div class="modal-card" style="width: 90%; max-width: 960px;">
+    <header class="modal-card-head">
+      <p class="modal-card-title">WAS</p>
+      <button class="delete" aria-label="close" id="wasModalClose"></button>
+    </header>
+    <section class="modal-card-body" id="wasModalBody">불러오는 중...</section>
+  </div>
+</div>
+
+<nav class="pagination" role="navigation" aria-label="pagination">
+  {% if page_obj.has_previous %}
+    <a class="pagination-previous" href="{% querystring page=page_obj.previous_page_number %}">이전</a>
+  {% else %}
+    <a class="pagination-previous" disabled>이전</a>
+  {% endif %}
+  {% if page_obj.has_next %}
+    <a class="pagination-next" href="{% querystring page=page_obj.next_page_number %}">다음</a>
+  {% else %}
+    <a class="pagination-next" disabled>다음</a>
+  {% endif %}
+  <span class="pagination-list">
+    <span class="pagination-link is-current">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
+  </span>
+</nav>
+{% endblock %}
+
+{% block extra_body %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  var modal = document.getElementById('wasModal');
+  var modalBody = document.getElementById('wasModalBody');
+
+  function closeModal() {
+    modal.classList.remove('is-active');
+  }
+
+  document.querySelectorAll('.was-row').forEach(function (row) {
+    row.addEventListener('click', function () {
+      modalBody.textContent = '불러오는 중...';
+      modal.classList.add('is-active');
+
+      fetch(row.dataset.detailUrl)
+        .then(function (res) { return res.text(); })
+        .then(function (html) {
+          var doc = new DOMParser().parseFromString(html, 'text/html');
+          var content = doc.getElementById('was-content');
+          modalBody.innerHTML = content ? content.innerHTML : '불러오기 실패';
+        })
+        .catch(function () {
+          modalBody.textContent = '불러오기 실패';
+        });
+    });
+  });
+
+  document.getElementById('wasModalClose').addEventListener('click', closeModal);
+  modal.querySelector('.modal-background').addEventListener('click', closeModal);
+
+  function getCsrfToken() {
+    var input = document.querySelector('input[name=csrfmiddlewaretoken]');
+    return input ? input.value : '';
+  }
+
+  document.addEventListener('click', function (e) {
+    var cell = e.target.closest('.container-service-cell');
+    if (!cell) return;
+    var valueEl = cell.querySelector('.container-service-value');
+    var next = prompt('서비스명', valueEl.textContent.trim());
+    if (next === null) return;
+
+    fetch(cell.dataset.serviceUrl, {
+      method: 'POST',
+      headers: {
+        'X-CSRFToken': getCsrfToken(),
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({ service_name: next }),
+    })
+      .then(function (res) { return res.json(); })
+      .then(function (data) { valueEl.textContent = data.service_name; })
+      .catch(function () { alert('저장 실패'); });
+  });
+});
+</script>
+{% endblock %}
