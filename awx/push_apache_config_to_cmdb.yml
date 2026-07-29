@@ -4,7 +4,7 @@
 # 자산 자체는 이 플레이북으로 생성되지 않는다 — push_facts_to_cmdb.yml로 먼저 자산이
 # 등록돼 있어야 한다.
 #
-# WebToB(push_webconfig_to_cmdb.yml)와 달리 설정 파일 안에 서버 자신을 가리키는 절이
+# WebToB(push_webtob_config_to_cmdb.yml)와 달리 설정 파일 안에 서버 자신을 가리키는 절이
 # 없다(ServerName/ServerAlias는 vhost 도메인일 뿐, 이 서버 자신의 이름이 아님) — 그래서
 # hostname은 설정 내용에서 추출하지 않고 push_facts_to_cmdb.yml과 동일하게
 # inventory_hostname을 payload에 직접 실어 보낸다.
@@ -14,7 +14,7 @@
 # "Server built: ..." 두 줄인데 CMDB 쪽(webconfig/version_extract.py)은 첫 줄만 버전으로
 # 쓰므로 여기서도 stdout_lines[0](첫 줄)만 마커로 얹어 보낸다 - 굳이 build 날짜까지 보낼
 # 필요가 없고, 마커를 애초에 한 줄로 만들어두면 "마커 줄과 다음 내용 사이 개행이 깨지는"
-# 부류의 문제(push_webconfig_to_cmdb.yml 참고)를 원천적으로 피할 수 있다.
+# 부류의 문제(push_webtob_config_to_cmdb.yml 참고)를 원천적으로 피할 수 있다.
 #
 # 필요한 변수 (AWX Job Template의 Extra Variables / Survey / Credential로 주입):
 #   cmdb_base_url       : CMDB 베이스 URL (예: http://cmdb.internal:8000)
@@ -23,7 +23,7 @@
 #                          서버마다 실제 배치 경로가 다를 수 있어 인벤토리 host_vars로 재정의.
 #   apachectl_path       : apachectl 실행파일 전체 경로(기본값 apachectl, PATH에서 탐색).
 #
-# 위 변수는 play vars에 기본값을 박아두지 않는다(push_webconfig_to_cmdb.yml과 동일 이유 —
+# 위 변수는 play vars에 기본값을 박아두지 않는다(push_webtob_config_to_cmdb.yml과 동일 이유 —
 # play vars가 host_vars보다 우선순위가 높아 host_vars로 재정의를 시도해도 무시되기 때문).
 # 대신 태스크에서 "{{ 변수 | default('기본값') }}" 형태로 사용한다.
 
@@ -48,7 +48,7 @@
 
     - name: 버전 마커 줄 구성
       # YAML 리터럴 블록(|+)은 이스케이프 해석 없이 실제 줄바꿈을 그대로 보존한다
-      # (push_webconfig_to_cmdb.yml에서 겪은 리터럴 "\n" 이스케이프 문제 방지 - 자세한
+      # (push_webtob_config_to_cmdb.yml에서 겪은 리터럴 "\n" 이스케이프 문제 방지 - 자세한
       # 이유는 그 파일 주석 참고).
       ansible.builtin.set_fact:
         apache_solution_marker: |+

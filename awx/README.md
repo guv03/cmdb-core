@@ -5,8 +5,11 @@
 - `push_facts_to_cmdb.yml` — ansible facts + 하이퍼바이저 메타데이터를 CMDB(`POST /api/facts/`)로
   push하는 메인 플레이북. CMDB는 vCenter/Nutanix API를 직접 호출하지 않으므로 이 플레이북이
   CMDB로 자산 데이터가 들어가는 유일한 경로다. AWX Job Template에 그대로 연결해서 쓴다.
-- `push_webconfig_to_cmdb.yml` — WebToB 설정 파일(`http.m`)을 CMDB(`POST /api/webconfig/`)로
+- `push_webtob_config_to_cmdb.yml` — WebToB 설정 파일(`http.m`)을 CMDB(`POST /api/webconfig/`)로
   push하는 플레이북. 자산 자체는 생성하지 않음(위 facts 플레이북으로 먼저 등록돼 있어야 함).
+- `push_apache_config_to_cmdb.yml` / `push_nginx_config_to_cmdb.yml` — Apache/nginx 설정 파일을
+  CMDB(`POST /api/webconfig/`)로 push하는 플레이북. WebToB와 달리 설정 파일 안에 서버 자신을
+  가리키는 절이 없어(`*NODE` 같은 게 없음) `inventory_hostname`을 payload에 직접 실어 보낸다.
 - `inventory_source_vars.example.yml` — vCenter/Nutanix 인벤토리 소스의 hostvar를
   플레이북이 기대하는 정규화된 변수명으로 매핑하는 예시(참고용, 실제 환경에 맞게 조정 필요).
 
@@ -45,7 +48,7 @@ vCenter/Nutanix dynamic inventory 플러그인이 노출하는 hostvar 이름은
 
 ### 3. Job Template — WebToB 설정 push
 
-- Playbook: `awx/push_webconfig_to_cmdb.yml`
+- Playbook: `awx/push_webtob_config_to_cmdb.yml`
 - Inventory: WebToB가 설치된 호스트 그룹(facts push와 같은 자산이어야 함 — hostname으로
   기존 자산을 찾으므로 순서상 facts push가 먼저 한 번은 돌아 있어야 함)
 - Credential: facts push와 동일한 `cmdb_api_key` 재사용 가능
@@ -73,7 +76,27 @@ vCenter/Nutanix dynamic inventory 플러그인이 노출하는 hostvar 이름은
 - `wsadmin -version` 조회가 실패해도(권한 문제 등) 설정 push 자체는 그대로 진행된다
   (`failed_when: false`) — 이 경우 CMDB 쪽 solution_version/solution_fix는 기존 값 유지.
 
-### 4. 로컬 테스트
+### 4. Job Template — Apache/nginx 설정 push
+
+- Playbook: `awx/push_apache_config_to_cmdb.yml` / `awx/push_nginx_config_to_cmdb.yml`
+- Inventory: Apache/nginx가 설치된 호스트 그룹(facts push와 같은 자산이어야 함 — WebToB와
+  동일하게 facts push가 먼저 한 번은 돌아 있어야 함)
+- Credential: facts push와 동일한 `cmdb_api_key` 재사용 가능
+- Extra Variables 예시:
+  ```yaml
+  cmdb_base_url: http://cmdb.internal:8000
+  cmdb_validate_certs: true
+  ```
+- **`apache_config_path`/`apachectl_path`(또는 `nginx_config_path`/`nginx_path`)는 서버마다
+  값이 다를 수 있어서 WebToB와 같은 이유로 Extra Variables가 아니라 인벤토리 호스트별/그룹별
+  변수로 등록할 것.** 기본값은 각각 `/etc/httpd/conf.d/httpd-ssl.conf`(`apachectl`),
+  `/etc/nginx/nginx.conf`(`nginx`) — 실제 설치 경로가 다르면 재정의 필요.
+- `apachectl -version`/`nginx -v` 출력을 설정 원본 맨 위에 `# CMDB_SOLUTION_VERSION: ...`
+  주석으로 얹어서 같이 보낸다(WebToB와 같은 방식). Apache는 출력 두 줄 중 첫 줄만, nginx는
+  기본적으로 stderr로 나가는 출력을 우선 사용 — 조회가 실패해도 push 자체는 그대로 진행되고
+  이 경우 solution_version은 기존 값 유지.
+
+### 5. 로컬 테스트
 
 CMDB를 로컬 Docker Compose로 띄운 상태에서, 임의 값으로 API를 직접 호출해 CMDB 쪽 동작을
 먼저 검증하고 싶다면 CMDB 리포지토리의 `LOCAL_ACCESS.md`를 참고 (facts/webconfig push API 섹션).

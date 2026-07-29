@@ -20,7 +20,7 @@
 #                          서버마다 실제 배치 경로가 다를 수 있어 인벤토리 host_vars로 재정의.
 #   nginx_path          : nginx 실행파일 전체 경로(기본값 nginx, PATH에서 탐색).
 #
-# 위 변수는 play vars에 기본값을 박아두지 않는다(push_webconfig_to_cmdb.yml과 동일 이유).
+# 위 변수는 play vars에 기본값을 박아두지 않는다(push_webtob_config_to_cmdb.yml과 동일 이유).
 
 - name: Read nginx config and push to CMDB
   hosts: all
@@ -54,7 +54,7 @@
 
     - name: 버전 마커 줄 구성
       # YAML 리터럴 블록(|+)은 이스케이프 해석 없이 실제 줄바꿈을 그대로 보존한다
-      # (push_webconfig_to_cmdb.yml에서 겪은 리터럴 "\n" 이스케이프 문제 방지).
+      # (push_webtob_config_to_cmdb.yml에서 겪은 리터럴 "\n" 이스케이프 문제 방지).
       ansible.builtin.set_fact:
         nginx_solution_marker: |+
           # CMDB_SOLUTION_VERSION: {{ nginx_version_line | trim }}
