@@ -11,6 +11,7 @@
   최근 반영: {{ source.last_pushed_at }}
 </p>
 
+{% if source.kind == "webtob" %}
 {% if source.node %}
 <div class="box">
   <h2 class="title is-6">Node</h2>
@@ -38,7 +39,7 @@
     <tbody>
       <tr>
         <th style="width: 12em;">서비스명</th>
-        <td class="vhost-service-cell dash-editable-cell" data-vhost-id="{{ vhost.id }}">
+        <td class="vhost-service-cell dash-editable-cell" data-service-url="/dashboard/webconfig/vhost/{{ vhost.id }}/service/">
           <span class="vhost-service-value">{{ vhost.service_name }}</span><span class="dash-manual-icon" aria-hidden="true">✎</span>
         </td>
       </tr>
@@ -101,6 +102,74 @@
 <p class="has-text-grey">등록된 VHost가 없습니다.</p>
 {% endfor %}
 
+{% elif source.kind == "apache" %}
+<h2 class="title is-6">VHost</h2>
+{% for vhost in source.apache_vhosts.all %}
+<div class="box">
+  <p class="title is-6">
+    {{ vhost.hostname|default:"(도메인 없음)" }}{% if vhost.port %}:{{ vhost.port }}{% endif %}
+    {% if vhost.ssl_flag %}<span class="tag is-success">SSL</span>{% endif %}
+  </p>
+  <table class="table is-narrow is-fullwidth">
+    <tbody>
+      <tr>
+        <th style="width: 12em;">서비스명</th>
+        <td class="vhost-service-cell dash-editable-cell" data-service-url="/dashboard/webconfig/apache/vhost/{{ vhost.id }}/service/">
+          <span class="vhost-service-value">{{ vhost.service_name }}</span><span class="dash-manual-icon" aria-hidden="true">✎</span>
+        </td>
+      </tr>
+      <tr><th>Domain</th><td>{{ vhost.hostname }}</td></tr>
+      <tr><th>ServerAlias</th><td>{{ vhost.hostalias }}</td></tr>
+      <tr><th>Port</th><td>{{ vhost.port }}</td></tr>
+      <tr><th>DocRoot</th><td>{{ vhost.docroot }}</td></tr>
+      {% if vhost.ssl_flag %}
+      <tr><th>SSL 인증서</th><td>{{ vhost.ssl_certificate_file }}</td></tr>
+      <tr><th>SSL Key</th><td>{{ vhost.ssl_certificate_key_file }}</td></tr>
+      {% endif %}
+      <tr><th>Logging / ErrorLog</th><td>{{ vhost.logging }} / {{ vhost.errorlog }}</td></tr>
+      <tr><th>Proxy 대상</th><td>{{ vhost.proxy_summary|default:"" }}</td></tr>
+    </tbody>
+  </table>
+</div>
+{% empty %}
+<p class="has-text-grey">등록된 VHost가 없습니다.</p>
+{% endfor %}
+
+{% elif source.kind == "nginx" %}
+<h2 class="title is-6">VHost</h2>
+{% for vhost in source.nginx_vhosts.all %}
+<div class="box">
+  <p class="title is-6">
+    {{ vhost.hostname|default:"(도메인 없음)" }}{% if vhost.port %}:{{ vhost.port }}{% endif %}
+    {% if vhost.ssl_flag %}<span class="tag is-success">SSL</span>{% endif %}
+  </p>
+  <table class="table is-narrow is-fullwidth">
+    <tbody>
+      <tr>
+        <th style="width: 12em;">서비스명</th>
+        <td class="vhost-service-cell dash-editable-cell" data-service-url="/dashboard/webconfig/nginx/vhost/{{ vhost.id }}/service/">
+          <span class="vhost-service-value">{{ vhost.service_name }}</span><span class="dash-manual-icon" aria-hidden="true">✎</span>
+        </td>
+      </tr>
+      <tr><th>Domain</th><td>{{ vhost.hostname }}</td></tr>
+      <tr><th>Alias</th><td>{{ vhost.hostalias }}</td></tr>
+      <tr><th>Port</th><td>{{ vhost.port }}</td></tr>
+      <tr><th>Listen</th><td>{{ vhost.listen }}</td></tr>
+      <tr><th>Root</th><td>{{ vhost.docroot }}</td></tr>
+      {% if vhost.ssl_flag %}
+      <tr><th>SSL 인증서</th><td>{{ vhost.ssl_certificate_file }}</td></tr>
+      <tr><th>SSL Key</th><td>{{ vhost.ssl_certificate_key_file }}</td></tr>
+      {% endif %}
+      <tr><th>Logging / ErrorLog</th><td>{{ vhost.logging }} / {{ vhost.errorlog }}</td></tr>
+      <tr><th>Proxy 대상</th><td>{{ vhost.proxy_summary|default:"" }}</td></tr>
+    </tbody>
+  </table>
+</div>
+{% empty %}
+<p class="has-text-grey">등록된 VHost가 없습니다.</p>
+{% endfor %}
+{% endif %}
+
 <details class="box">
   <summary class="has-text-weight-semibold" style="cursor: pointer;">원본 설정 보기</summary>
   <pre style="white-space: pre-wrap; word-break: break-all; max-height: 70vh; overflow-y: auto;">{{ source.raw_content }}</pre>
@@ -119,12 +188,11 @@ document.addEventListener('DOMContentLoaded', function () {
   document.addEventListener('click', function (e) {
     var cell = e.target.closest('.vhost-service-cell');
     if (!cell) return;
-    var vhostId = cell.dataset.vhostId;
     var valueEl = cell.querySelector('.vhost-service-value');
     var next = prompt('서비스명', valueEl.textContent.trim());
     if (next === null) return;
 
-    fetch('/dashboard/webconfig/vhost/' + vhostId + '/service/', {
+    fetch(cell.dataset.serviceUrl, {
       method: 'POST',
       headers: {
         'X-CSRFToken': getCsrfToken(),

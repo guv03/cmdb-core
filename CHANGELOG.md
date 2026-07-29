@@ -5,6 +5,14 @@
 
 1.0.6까지의 이력은 이 파일 도입 전이라 별도 기록 없음 — `WORKLOG.md`의 해당 날짜 항목 참고.
 
+## 1.0.15
+
+- Apache/Nginx 웹서버 설정 파싱 추가(WebToB에 이어) — `POST /api/webconfig/`가 `kind: apache`/`kind: nginx`를 받아 `<VirtualHost>`/`server {}` 블록을 vhost 단위로 파싱, 도메인/포트 기준으로 서비스 조회(`WebServiceDomain`)에도 연계. 전용 목록 화면 신규(`/dashboard/webconfig/apache/vhosts/`, `/dashboard/webconfig/nginx/vhosts/`), 서비스명 인라인 편집·엑셀 일괄 반영도 동일하게 지원
+- Apache/Nginx 설정 파일에는 서버 자신을 가리키는 절이 없어(WebToB의 `*NODE`와 달리) AWX가 `inventory_hostname`을 payload에 별도로 실어 보내도록 변경 — 신규 플레이북 `awx/push_apache_config_to_cmdb.yml`/`push_nginx_config_to_cmdb.yml` 추가
+- Apache/Nginx 솔루션 버전도 AUTO 추출 지원(`apachectl -version`/`nginx -v` 출력을 마커로 첨부). Fix 개념은 WebToB 전용이라 두 kind 모두 항상 빈 값
+- 웹설정 목록(`/dashboard/webconfig/`)의 VHost 수 컬럼이 WebToB 기준 하나에만 의존해 Apache/Nginx 소스는 항상 0으로 보이던 것 수정, 검색도 세 kind 모두 대상에 포함
+- Oracle `ORA-00932`(NCLOB) 재발 방지: 신규 화면(Apache/Nginx vhost 목록)과 기존 WebToB 설정 목록 둘 다 검색 시 `TextField`(NCLOB) 컬럼이 `.distinct()`에 걸릴 수 있던 걸 발견해 함께 수정(불필요한 `.distinct()` 제거 — 해당 화면들의 검색 필터는 애초에 to-many 조인이 없어 중복 행이 생길 수 없는 구조)
+
 ## 1.0.14
 
 - 어플리케이션(프로세스 기반) 동작 여부 조회 화면 신규(`/dashboard/processes/`, 상단 "어플리케이션"). AWX가 각 서버에서 실행한 `ps -ef` 원본을 push하면(`processes` 앱, `POST /api/processes/`), Django admin에 등록해둔 정규식 패턴(`ApplicationDefinition`)에 매칭되는 어플리케이션을 자산별로 보여준다. admin에서 패턴을 새로 등록/수정하면 다음 push를 기다릴 필요 없이 기존에 push된 자산에도 즉시 소급 반영됨

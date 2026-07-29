@@ -2,6 +2,29 @@
 
 일 단위로 진행한 작업을 기록한다. 새 날짜는 위에 추가한다.
 
+## 2026-07-29
+
+- **Apache/Nginx 웹설정 파싱 추가**: `samples/apache/httpd-ssl.conf`, `samples/nginx/nginx.conf` 샘플을 받아 WebToB와 같은 방식으로 파싱해 대시보드에 노출, 도메인/포트 기준으로 서비스 조회(`WebServiceDomain`)에도 연계. 코딩 전에 검토부터 진행(Plan 모드) — 세 가지 확인 필요 사항을 사용자에게 질문:
+  - vhost 단위 전용 목록은 WebToB처럼 kind별로 화면을 분리 유지하기로 결정(공통 컬럼 통합 화면은 이미 있는 `/dashboard/webconfig/`가 그 역할) — CLAUDE.md에 "나중에 nginx/apache가 붙어도 이 화면을 공유하지 않는다"고 미리 못박아둔 문구와 상충되지 않게 확인 후 진행
+  - 자산(hostname) 판별: 설정 파일 안에 서버 자신을 가리키는 절이 없어(WebToB의 `*NODE`와 달리) AWX가 `inventory_hostname`을 payload에 별도 필드로 전송하는 방식으로 결정(facts push와 동일 패턴)
+  - ProxyPass/proxy_pass 대상은 WebToB의 SvrGroup/Server/Uri 같은 관계형 모델링 없이 vhost에 요약 문자열 컬럼(`proxy_summary`) 하나로 결정
+  - `ApacheVhost`/`NginxVhost` 모델 신규(필드명을 `WebtobVhost`와 맞춰 `sync_service_domains()`를 수정 없이 재사용). `parse_apache`(정규식 기반 `<VirtualHost>` 블록 추출)/`parse_nginx`(중괄호 깊이 추적 토크나이저로 `server {}` 블록 추출, 주석 안에 있는 `{`/`}`가 블록 경계를 깨는 문제가 있어 파싱 전 라인 단위 주석 제거를 먼저 적용해 해결) 신규 파서, `sync_apache`/`sync_nginx`는 이름(`hostname:port` 합성)으로 upsert해 수기 입력한 서비스명 보존
+  - Ingest API(`WebConfigIngestSerializer`)에 `hostname` 필드 추가, `awx/push_apache_config_to_cmdb.yml`/`push_nginx_config_to_cmdb.yml` 신규(설정 파일 slurp + `inventory_hostname` 전송)
+  - 공통 목록(`/dashboard/webconfig/`)의 `vhost_count`가 `WebtobVhost`의 `related_name="vhosts"` Count 하나에만 의존해서 apache/nginx 소스는 항상 0으로 나오는 걸 미리 발견 — 세 kind의 Count(distinct)를 더하는 방식으로 수정, 검색 필터도 세 kind 모두 포함하도록 확장
+  - Apache/Nginx 전용 vhost 목록 화면(`/dashboard/webconfig/apache/vhosts/`, `/dashboard/webconfig/nginx/vhosts/`) 신규 — WebToB 화면과 동일 골격(전용 모달 서비스명 편집, sticky 컬럼)
+  - 로컬 Docker Compose에서 실제 push(샘플 파일 그대로) → vhost 파싱(Apache 11개/Nginx 7개) → `WebServiceDomain` 연계 → 대시보드 목록/상세/검색/정렬/서비스명 인라인 편집 → 재push 시 서비스명 보존 → 엑셀 export/import 반영까지 end-to-end 검증
+- **솔루션 버전 AUTO 추출을 Apache/Nginx까지 확장**: WebToB처럼 이 둘도 설정 파일 안에 버전 정보가 없어 명령어(`apachectl -version`/`nginx -v`)로만 확인 가능하다는 사용자 지적으로 추가 구현
+  - `webconfig/version_extract.py`에 `extract_apache_version`/`extract_nginx_version` 추가 — 기존 `# CMDB_SOLUTION_VERSION:` 마커 방식 재사용, Apache/Nginx는 Fix 개념이 없어 버전만 채우고 Fix는 항상 빈 문자열
+  - Apache는 `apachectl -version` 출력이 "Server version"/"Server built" 두 줄인데 두 번째 줄(빌드 날짜)은 안 쓰므로 플레이북이 첫 줄만 마커에 담아 전송 — 마커를 한 줄로 유지해 1.0.13에서 겪은 "마커와 다음 내용 사이 개행이 리터럴 `\n`으로 깨지는" 문제를 원천적으로 피함
+  - Nginx는 버전을 stdout이 아니라 stderr로 출력하는 게 기본 동작이라 플레이북이 `stderr_lines`를 우선 확인하고 없으면 `stdout_lines`로 폴백
+  - 마커를 얹은 상태로 실제 push해 `solution_version`이 정확히 채워지고 vhost 파싱/서비스명 보존에 영향 없는 것까지 검증
+- **Oracle NCLOB `.distinct()` 문제 재발 방지 검토**: 사용자가 "기존에 폐쇄망 반입해서 에러난 경우가 있었다"며 위 신규 기능의 폐쇄망 안전성 검토 요청
+  - 검토 결과 신규 코드에 동일 클래스 버그 발견: `get_apache_vhost_queryset`/`get_nginx_vhost_queryset`가 검색 시 `.distinct()`를 거는데 `proxy_summary`(`TextField`→Oracle NCLOB)가 걸려있어 `ORA-00932` 가능성 — 로컬은 Postgres라 재현 안 돼 사전 검증에서 못 잡았음
+  - 부수적으로 기존 코드의 미해결 동일 버그도 발견: `get_webtob_vhost_queryset`이 `select_related("ssl")`로 끌고 오는 `WebtobSsl.required_ciphers`(`TextField`)도 검색 시 `.distinct()`에 걸림 — 1.0.12에서 `raw_content`/`extra_sections`는 고쳤지만 이 필드는 놓쳤던 것(`WORKLOG.md`의 1.0.12 "발견했지만 보류" 항목과 연결되는 문제)
+  - 세 쿼리 모두 검색 필터가 own 필드/forward FK만 참조해 to-many 조인이 없다는 걸 확인 — 애초에 중복 행이 생길 수 없는 구조라 `defer()` 대신 불필요한 `.distinct()`를 제거하는 방식으로 수정(목록에 `proxy_summary`를 그대로 노출해야 해서 defer는 N+1을 유발하므로 이쪽이 더 나음). 쿼리셋의 `.query`를 직접 찍어 `DISTINCT`가 빠졌는지, 정말 필요한 `get_webconfig_queryset`(to-many 조인 있어 유지)엔 NCLOB 컬럼이 안 걸리는지 확인
+  - CLAUDE.md "환경" 섹션에 이 클래스의 버그를 앞으로 방지하기 위한 체크리스트 메모 추가(TextField→NCLOB, select_related+distinct/annotate 조합 점검)
+- 이미지 버전 관리 절차대로 1.0.15 빌드·릴리즈까지 진행
+
 ## 2026-07-28
 
 - **웹설정 목록 Oracle `ORA-00932`(NCLOB) 500 에러 트러블슈팅·수정**: 어제(07-27) v1.0.11을 폐쇄망에 반입한 뒤 AWX 웹설정 push는 성공했는데 대시보드 웹설정 화면 진입 시 500이 난다는 제보. 사용자가 첨부한 traceback(`ORA-00932: inconsistent datatypes: expected - got NCLOB`)으로 원인 특정

@@ -24,10 +24,12 @@ from dashboard.queries import (
     build_rows,
     build_sort_columns,
     build_webtob_vhost_rows,
+    get_apache_vhost_queryset,
     get_asset_queryset,
     get_change_history_queryset,
     get_dashboard_columns,
     get_dynamic_field_definitions,
+    get_nginx_vhost_queryset,
     get_process_queryset,
     get_web_service_queryset,
     get_webconfig_history_queryset,
@@ -46,7 +48,7 @@ from webconfig.excel_import import (
     export_service_workbook,
     parse_service_workbook,
 )
-from webconfig.models import WebConfigSource, WebServiceDomain, WebtobVhost
+from webconfig.models import ApacheVhost, NginxVhost, WebConfigSource, WebServiceDomain, WebtobVhost
 
 
 class DashboardLoginView(LoginView):
@@ -286,6 +288,8 @@ class WebConfigDetailView(LoginRequiredMixin, DetailView):
             "vhosts__ssl",
             "vhosts__svrgroups__servers",
             "vhosts__uris__server",
+            "apache_vhosts",
+            "nginx_vhosts",
         )
 
 
@@ -349,6 +353,69 @@ class WebtobVhostServiceUpdateView(LoginRequiredMixin, View):
 
     def post(self, request, pk):
         vhost = get_object_or_404(WebtobVhost, pk=pk)
+        vhost.service_name = request.POST.get("service_name", "").strip()
+        vhost.save(update_fields=["service_name"])
+        WebServiceDomain.objects.filter(source=vhost.source, vhost_name=vhost.name).update(
+            service_name=vhost.service_name
+        )
+        return JsonResponse({"service_name": vhost.service_name})
+
+
+class ApacheVhostListView(LoginRequiredMixin, ListView):
+    """WebtobVhostListView와 같은 취지의 Apache 전용 목록 - SvrGroup/URI 개념이 없어
+    build_webtob_vhost_rows 같은 요약 단계 없이 vhost를 그대로 렌더링한다."""
+
+    template_name = "dashboard/apache_vhost_list.html"
+    context_object_name = "vhosts"
+    paginate_by = 50
+
+    def get_queryset(self):
+        return get_apache_vhost_queryset(self.request)
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["columns"] = build_sort_columns(
+            self.request,
+            ["hostname", "domain", "hostalias", "port", "docroot", "ssl_flag", "logging", "errorlog", "service_name"],
+            default="hostname",
+        )
+        context["current_q"] = self.request.GET.get("q", "")
+        return context
+
+
+class ApacheVhostServiceUpdateView(LoginRequiredMixin, View):
+    def post(self, request, pk):
+        vhost = get_object_or_404(ApacheVhost, pk=pk)
+        vhost.service_name = request.POST.get("service_name", "").strip()
+        vhost.save(update_fields=["service_name"])
+        WebServiceDomain.objects.filter(source=vhost.source, vhost_name=vhost.name).update(
+            service_name=vhost.service_name
+        )
+        return JsonResponse({"service_name": vhost.service_name})
+
+
+class NginxVhostListView(LoginRequiredMixin, ListView):
+    template_name = "dashboard/nginx_vhost_list.html"
+    context_object_name = "vhosts"
+    paginate_by = 50
+
+    def get_queryset(self):
+        return get_nginx_vhost_queryset(self.request)
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["columns"] = build_sort_columns(
+            self.request,
+            ["hostname", "domain", "hostalias", "port", "docroot", "ssl_flag", "logging", "errorlog", "service_name"],
+            default="hostname",
+        )
+        context["current_q"] = self.request.GET.get("q", "")
+        return context
+
+
+class NginxVhostServiceUpdateView(LoginRequiredMixin, View):
+    def post(self, request, pk):
+        vhost = get_object_or_404(NginxVhost, pk=pk)
         vhost.service_name = request.POST.get("service_name", "").strip()
         vhost.save(update_fields=["service_name"])
         WebServiceDomain.objects.filter(source=vhost.source, vhost_name=vhost.name).update(

@@ -1,6 +1,8 @@
 from django.contrib import admin
 
 from webconfig.models import (
+    ApacheVhost,
+    NginxVhost,
     WebConfigSource,
     WebConfigSourceRevision,
     WebServiceDomain,
@@ -63,6 +65,22 @@ class WebConfigSourceRevisionAdmin(admin.ModelAdmin):
 class WebtobUriAdmin(admin.ModelAdmin):
     list_display = ["name", "source", "uri_path", "server"]
     search_fields = ["name", "uri_path", "source__asset__hostname"]
+
+
+@admin.register(ApacheVhost)
+class ApacheVhostAdmin(admin.ModelAdmin):
+    list_display = ["name", "source", "hostname", "port", "ssl_flag", "service_name"]
+    list_editable = ["service_name"]
+    list_filter = ["ssl_flag"]
+    search_fields = ["name", "hostname", "service_name", "source__asset__hostname"]
+
+
+@admin.register(NginxVhost)
+class NginxVhostAdmin(admin.ModelAdmin):
+    list_display = ["name", "source", "hostname", "port", "ssl_flag", "service_name"]
+    list_editable = ["service_name"]
+    list_filter = ["ssl_flag"]
+    search_fields = ["name", "hostname", "service_name", "source__asset__hostname"]
 
 
 @admin.register(WebServiceDomain)

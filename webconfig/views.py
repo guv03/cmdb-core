@@ -9,19 +9,24 @@ from core.reconciliation import normalize_hostname
 from webconfig.models import WebConfigSource, WebConfigSourceRevision
 from webconfig.parsers import PARSERS
 from webconfig.serializers import WebConfigIngestSerializer
-from webconfig.sync import sync_webtob
+from webconfig.sync import sync_apache, sync_nginx, sync_webtob
 from webconfig.version_extract import VERSION_EXTRACTORS
 
-SYNC_FUNCS = {WebConfigSource.Kind.WEBTOB: sync_webtob}
+SYNC_FUNCS = {
+    WebConfigSource.Kind.WEBTOB: sync_webtob,
+    WebConfigSource.Kind.APACHE: sync_apache,
+    WebConfigSource.Kind.NGINX: sync_nginx,
+}
 
 
-def _extract_hostname(kind: str, sections: dict) -> str | None:
+def _extract_hostname(kind: str, sections: dict, payload_hostname: str) -> str | None:
     if kind == WebConfigSource.Kind.WEBTOB:
         node_entries = sections.get("NODE") or {}
         if not node_entries:
             return None
         return next(iter(node_entries.keys()))
-    return None
+    # apache/nginx는 설정 내용에 서버 자신을 가리키는 절이 없어 AWX가 보낸 hostname을 그대로 쓴다.
+    return payload_hostname or None
 
 
 class WebConfigIngestView(APIView):
@@ -43,11 +48,15 @@ class WebConfigIngestView(APIView):
             return Response({"error": f"지원하지 않는 kind: {kind}"}, status=status.HTTP_400_BAD_REQUEST)
 
         sections = parser(content)
-        hostname = _extract_hostname(kind, sections)
+        payload_hostname = serializer.validated_data.get("hostname", "")
+        hostname = _extract_hostname(kind, sections, payload_hostname)
         if not hostname:
-            return Response(
-                {"error": "설정 내용에서 호스트명을 찾지 못했습니다."}, status=status.HTTP_400_BAD_REQUEST
+            message = (
+                "설정 내용에서 호스트명을 찾지 못했습니다."
+                if kind == WebConfigSource.Kind.WEBTOB
+                else "hostname 필드가 없습니다."
             )
+            return Response({"error": message}, status=status.HTTP_400_BAD_REQUEST)
 
         asset = Asset.objects.filter(hostname=normalize_hostname(hostname)).first()
         if asset is None:

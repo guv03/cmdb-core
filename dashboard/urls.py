@@ -2,6 +2,8 @@ from django.contrib.auth.views import LogoutView
 from django.urls import path
 
 from dashboard.views import (
+    ApacheVhostListView,
+    ApacheVhostServiceUpdateView,
     AssetExportView,
     AssetFactsDetailView,
     AssetListAPIView,
@@ -12,6 +14,8 @@ from dashboard.views import (
     DashboardLoginView,
     ManualFieldImportConfirmView,
     ManualFieldImportView,
+    NginxVhostListView,
+    NginxVhostServiceUpdateView,
     PendingChangeDecisionView,
     ProcessDetailView,
     ProcessListView,
@@ -68,11 +72,23 @@ urlpatterns = [
     path("webconfig/", WebConfigListView.as_view(), name="dashboard-webconfig-list"),
     path("webconfig/changes/", WebConfigHistoryListView.as_view(), name="dashboard-webconfig-history"),
     path("webconfig/vhosts/", WebtobVhostListView.as_view(), name="dashboard-webtob-vhost-list"),
+    path("webconfig/apache/vhosts/", ApacheVhostListView.as_view(), name="dashboard-apache-vhost-list"),
+    path("webconfig/nginx/vhosts/", NginxVhostListView.as_view(), name="dashboard-nginx-vhost-list"),
     path("webconfig/<int:pk>/", WebConfigDetailView.as_view(), name="dashboard-webconfig-detail"),
     path(
         "webconfig/vhost/<int:pk>/service/",
         WebtobVhostServiceUpdateView.as_view(),
         name="dashboard-webconfig-vhost-service",
+    ),
+    path(
+        "webconfig/apache/vhost/<int:pk>/service/",
+        ApacheVhostServiceUpdateView.as_view(),
+        name="dashboard-apache-vhost-service",
+    ),
+    path(
+        "webconfig/nginx/vhost/<int:pk>/service/",
+        NginxVhostServiceUpdateView.as_view(),
+        name="dashboard-nginx-vhost-service",
     ),
     path("services/", WebServiceListView.as_view(), name="dashboard-webservice-list"),
     path("services/export/", ServiceExportView.as_view(), name="dashboard-service-export"),

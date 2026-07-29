@@ -4,7 +4,15 @@ import openpyxl
 from django.http import HttpResponse
 
 from core.reconciliation import normalize_hostname
-from webconfig.models import WebConfigSource, WebServiceDomain, WebtobVhost
+from webconfig.models import ApacheVhost, NginxVhost, WebConfigSource, WebServiceDomain, WebtobVhost
+
+# kind별 vhost 모델 - service_name은 vhost 쪽이 원본이고 WebServiceDomain은 복사본이라
+# 엑셀 반영 시 둘 다 갱신해야 한다(webconfig/sync.py의 sync_service_domains와 같은 이유).
+VHOST_MODELS = {
+    WebConfigSource.Kind.WEBTOB: WebtobVhost,
+    WebConfigSource.Kind.APACHE: ApacheVhost,
+    WebConfigSource.Kind.NGINX: NginxVhost,
+}
 
 HOSTNAME_HEADER = "hostname"
 VHOST_HEADER = "vhost"
@@ -212,8 +220,9 @@ def apply_service_updates(payload: list[dict]) -> tuple[int, int]:
             if service_domain is None:
                 continue
             new_value = item["new_value"]
-            if service_domain.source.kind == WebConfigSource.Kind.WEBTOB:
-                WebtobVhost.objects.filter(
+            model = VHOST_MODELS.get(service_domain.source.kind)
+            if model is not None:
+                model.objects.filter(
                     source=service_domain.source, name=service_domain.vhost_name
                 ).update(service_name=new_value)
             service_domain.service_name = new_value

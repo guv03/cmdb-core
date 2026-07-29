@@ -1,6 +1,8 @@
 from django.db import transaction
 
 from webconfig.models import (
+    ApacheVhost,
+    NginxVhost,
     WebConfigSource,
     WebServiceDomain,
     WebtobNode,
@@ -152,3 +154,75 @@ def sync_webtob(source: WebConfigSource, sections: dict) -> None:
 
     source.extra_sections = {k: v for k, v in sections.items() if k not in STRUCTURED_SECTIONS}
     source.save(update_fields=["extra_sections"])
+
+
+def _vhost_identity(hostname: str, port: str) -> str:
+    """설정 파일에 vhost 자신을 가리키는 별도 이름이 없는(apache/nginx) kind에서 업서트
+    식별키로 쓸 값. push마다 안정적이어야 수기 입력한 service_name이 보존된다."""
+    return f"{hostname}:{port}"
+
+
+@transaction.atomic
+def sync_apache(source: WebConfigSource, parsed: dict) -> None:
+    """VirtualHost 블록마다 이름(hostname:port)으로 upsert. WebToB와 달리 SvrGroup/Server/Uri
+    같은 관계형 테이블이 없어 vhost 하나만 통짜 관리하면 된다."""
+    vhost_by_name = {}
+    seen_names = []
+    for attrs in parsed.get("vhosts", []):
+        name = _vhost_identity(attrs.get("hostname", ""), attrs.get("port", ""))
+        vhost, _ = ApacheVhost.objects.update_or_create(
+            source=source,
+            name=name,
+            defaults=dict(
+                hostname=attrs.get("hostname", ""),
+                hostalias=attrs.get("hostalias", ""),
+                port=attrs.get("port", ""),
+                docroot=attrs.get("docroot", ""),
+                ssl_flag=attrs.get("ssl_flag", False),
+                ssl_certificate_file=attrs.get("ssl_certificate_file", ""),
+                ssl_certificate_key_file=attrs.get("ssl_certificate_key_file", ""),
+                logging=attrs.get("logging", ""),
+                errorlog=attrs.get("errorlog", ""),
+                proxy_summary=attrs.get("proxy_summary", ""),
+            ),
+        )
+        vhost_by_name[name] = vhost
+        seen_names.append(name)
+
+    ApacheVhost.objects.filter(source=source).exclude(name__in=seen_names).delete()
+
+    WebServiceDomain.objects.filter(source=source).delete()
+    sync_service_domains(vhost_by_name.values())
+
+
+@transaction.atomic
+def sync_nginx(source: WebConfigSource, parsed: dict) -> None:
+    """server 블록마다 이름(hostname:port)으로 upsert. sync_apache와 동일한 패턴."""
+    vhost_by_name = {}
+    seen_names = []
+    for attrs in parsed.get("vhosts", []):
+        name = _vhost_identity(attrs.get("hostname", ""), attrs.get("port", ""))
+        vhost, _ = NginxVhost.objects.update_or_create(
+            source=source,
+            name=name,
+            defaults=dict(
+                hostname=attrs.get("hostname", ""),
+                hostalias=attrs.get("hostalias", ""),
+                port=attrs.get("port", ""),
+                listen=attrs.get("listen", ""),
+                docroot=attrs.get("docroot", ""),
+                ssl_flag=attrs.get("ssl_flag", False),
+                ssl_certificate_file=attrs.get("ssl_certificate_file", ""),
+                ssl_certificate_key_file=attrs.get("ssl_certificate_key_file", ""),
+                logging=attrs.get("logging", ""),
+                errorlog=attrs.get("errorlog", ""),
+                proxy_summary=attrs.get("proxy_summary", ""),
+            ),
+        )
+        vhost_by_name[name] = vhost
+        seen_names.append(name)
+
+    NginxVhost.objects.filter(source=source).exclude(name__in=seen_names).delete()
+
+    WebServiceDomain.objects.filter(source=source).delete()
+    sync_service_domains(vhost_by_name.values())

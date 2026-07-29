@@ -8,6 +8,8 @@ class WebConfigSource(TimeStampedModel):
 
     class Kind(models.TextChoices):
         WEBTOB = "webtob", "WebtoB"
+        APACHE = "apache", "Apache"
+        NGINX = "nginx", "Nginx"
 
     asset = models.ForeignKey(Asset, on_delete=models.CASCADE, related_name="web_configs")
     kind = models.CharField(max_length=20, choices=Kind.choices)
@@ -183,6 +185,66 @@ class WebtobUri(TimeStampedModel):
     class Meta:
         constraints = [
             models.UniqueConstraint(fields=["source", "name"], name="unique_uri_name_per_source")
+        ]
+
+    def __str__(self):
+        return self.name
+
+
+class ApacheVhost(TimeStampedModel):
+    """<VirtualHost> 블록 하나 = 행 하나. WebToB의 SvrGroup/Server/Uri 같은 관계형 모델링은
+    안 하고(리버스 프록시 용도뿐이라 그 정도 깊이가 불필요) ProxyPass 대상은 proxy_summary에
+    요약 문자열로만 담는다. hostname/hostalias/port/service_name 필드명을 WebtobVhost와
+    맞춰서 sync_service_domains()를 수정 없이 그대로 재사용한다. name은 설정 파일에 vhost
+    자신을 가리키는 별도 식별자가 없어 "hostname:port"로 합성 - push마다 안정적이어야
+    upsert 시 수기 입력한 service_name이 보존된다."""
+
+    source = models.ForeignKey(WebConfigSource, on_delete=models.CASCADE, related_name="apache_vhosts")
+    name = models.CharField(max_length=255)
+    hostname = models.CharField(max_length=255, blank=True)
+    hostalias = models.CharField(max_length=500, blank=True)
+    port = models.CharField(max_length=20, blank=True)
+    docroot = models.CharField(max_length=255, blank=True)
+    ssl_flag = models.BooleanField(default=False)
+    ssl_certificate_file = models.CharField(max_length=500, blank=True)
+    ssl_certificate_key_file = models.CharField(max_length=500, blank=True)
+    logging = models.CharField(max_length=255, blank=True)
+    errorlog = models.CharField(max_length=255, blank=True)
+    proxy_summary = models.TextField(blank=True)
+    # 수기 입력: WebtobVhost.service_name과 동일 취급 - push 동기화 대상에서 빠져 보존됨.
+    service_name = models.CharField(max_length=255, blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["source", "name"], name="unique_apache_vhost_name_per_source")
+        ]
+
+    def __str__(self):
+        return self.name
+
+
+class NginxVhost(TimeStampedModel):
+    """server {} 블록 하나 = 행 하나. ApacheVhost와 같은 이유로 관계형 모델링 없이
+    proxy_summary 요약 문자열만 둔다."""
+
+    source = models.ForeignKey(WebConfigSource, on_delete=models.CASCADE, related_name="nginx_vhosts")
+    name = models.CharField(max_length=255)
+    hostname = models.CharField(max_length=255, blank=True)
+    hostalias = models.CharField(max_length=500, blank=True)
+    port = models.CharField(max_length=20, blank=True)
+    listen = models.CharField(max_length=255, blank=True)
+    docroot = models.CharField(max_length=255, blank=True)
+    ssl_flag = models.BooleanField(default=False)
+    ssl_certificate_file = models.CharField(max_length=500, blank=True)
+    ssl_certificate_key_file = models.CharField(max_length=500, blank=True)
+    logging = models.CharField(max_length=255, blank=True)
+    errorlog = models.CharField(max_length=255, blank=True)
+    proxy_summary = models.TextField(blank=True)
+    service_name = models.CharField(max_length=255, blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["source", "name"], name="unique_nginx_vhost_name_per_source")
         ]
 
     def __str__(self):

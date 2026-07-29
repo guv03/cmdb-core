@@ -119,6 +119,10 @@
                href="{% url 'dashboard-webconfig-list' %}">WEB 목록</a>
             <a class="navbar-item {% if request.resolver_match.url_name == 'dashboard-webtob-vhost-list' %}is-active{% endif %}"
                href="{% url 'dashboard-webtob-vhost-list' %}">WEBTOB 목록</a>
+            <a class="navbar-item {% if request.resolver_match.url_name == 'dashboard-apache-vhost-list' %}is-active{% endif %}"
+               href="{% url 'dashboard-apache-vhost-list' %}">Apache 목록</a>
+            <a class="navbar-item {% if request.resolver_match.url_name == 'dashboard-nginx-vhost-list' %}is-active{% endif %}"
+               href="{% url 'dashboard-nginx-vhost-list' %}">Nginx 목록</a>
             <a class="navbar-item {% if request.resolver_match.url_name == 'dashboard-webconfig-history' %}is-active{% endif %}"
                href="{% url 'dashboard-webconfig-history' %}">변경 이력</a>
           </div>

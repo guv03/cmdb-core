@@ -1,0 +1,92 @@
+---
+# AWX Job Template에서 실행하는 플레이북.
+# nginx 설정 파일을 읽어 CMDB(POST /api/webconfig/)로 push한다.
+# 자산 자체는 이 플레이북으로 생성되지 않는다 — push_facts_to_cmdb.yml로 먼저 자산이
+# 등록돼 있어야 한다.
+#
+# hostname은 push_apache_config_to_cmdb.yml과 같은 이유로 설정 내용에서 추출하지 않고
+# inventory_hostname을 payload에 직접 실어 보낸다(nginx.conf 안에도 서버 자신을 가리키는
+# 절이 없음 — server_name은 vhost 도메인일 뿐).
+#
+# 버전 정보도 설정 파일에는 없어 `nginx -v`로만 확인 가능. nginx는 버전 출력을 stdout이
+# 아니라 stderr로 내보내는 게 기본 동작이라(버전에 따라 다를 수 있어 방어적으로 둘 다 확인)
+# stderr_lines를 우선 쓰고 비어있으면 stdout_lines로 폴백한다. 한 줄짜리 출력이라 WebToB
+# 때 겪은 "마커 줄과 다음 내용 사이 개행이 깨지는" 문제는 애초에 해당 없음.
+#
+# 필요한 변수 (AWX Job Template의 Extra Variables / Survey / Credential로 주입):
+#   cmdb_base_url      : CMDB 베이스 URL (예: http://cmdb.internal:8000)
+#   cmdb_api_key        : webconfig push API 인증 키 (X-API-Key 헤더값). Credential로 주입 권장.
+#   nginx_config_path  : 파싱 대상 설정 파일 전체 경로(기본값 /etc/nginx/nginx.conf).
+#                          서버마다 실제 배치 경로가 다를 수 있어 인벤토리 host_vars로 재정의.
+#   nginx_path          : nginx 실행파일 전체 경로(기본값 nginx, PATH에서 탐색).
+#
+# 위 변수는 play vars에 기본값을 박아두지 않는다(push_webconfig_to_cmdb.yml과 동일 이유).
+
+- name: Read nginx config and push to CMDB
+  hosts: all
+  gather_facts: false
+
+  vars:
+    cmdb_validate_certs: true
+
+  tasks:
+    - name: nginx 버전 확인
+      ansible.builtin.command: "{{ nginx_path | default('nginx') }} -v"
+      register: nginx_version
+      changed_when: false
+      failed_when: false # 버전 조회가 실패해도(권한 문제 등) 설정 push 자체는 막히지 않게
+
+    - name: nginx 설정 파일 원본 읽기
+      ansible.builtin.slurp:
+        src: "{{ nginx_config_path | default('/etc/nginx/nginx.conf') }}"
+      register: nginx_config_raw
+
+    - name: 버전 출력 줄 선택(stderr 우선, 없으면 stdout)
+      ansible.builtin.set_fact:
+        nginx_version_line: >-
+          {{ (nginx_version.stderr_lines | default([]))[0]
+             if (nginx_version.stderr_lines | default([]) | length > 0)
+             else (nginx_version.stdout_lines | default([]))[0] }}
+      when: >-
+        nginx_version.rc == 0 and
+        ((nginx_version.stderr_lines | default([]) | length > 0) or
+         (nginx_version.stdout_lines | default([]) | length > 0))
+
+    - name: 버전 마커 줄 구성
+      # YAML 리터럴 블록(|+)은 이스케이프 해석 없이 실제 줄바꿈을 그대로 보존한다
+      # (push_webconfig_to_cmdb.yml에서 겪은 리터럴 "\n" 이스케이프 문제 방지).
+      ansible.builtin.set_fact:
+        nginx_solution_marker: |+
+          # CMDB_SOLUTION_VERSION: {{ nginx_version_line | trim }}
+
+      when: nginx_version_line is defined
+
+    - name: 버전 조회 실패 시 마커 없이 진행
+      ansible.builtin.set_fact:
+        nginx_solution_marker: ""
+      when: nginx_version_line is not defined
+
+    - name: 버전 마커를 얹은 push용 내용 구성
+      ansible.builtin.set_fact:
+        nginx_push_content: "{{ nginx_solution_marker + (nginx_config_raw.content | b64decode) }}"
+
+    - name: CMDB로 웹설정 push  # noqa: no-changed-when
+      ansible.builtin.uri:
+        url: "{{ cmdb_base_url }}/api/webconfig/"
+        method: POST
+        headers:
+          X-API-Key: "{{ cmdb_api_key }}"
+        body_format: json
+        body:
+          kind: nginx
+          hostname: "{{ inventory_hostname }}"
+          content: "{{ nginx_push_content }}"
+        status_code: [200, 201]
+        validate_certs: "{{ cmdb_validate_certs }}"
+      delegate_to: localhost
+      no_log: true # 응답/헤더에 X-API-Key가 로그로 남지 않도록
+      register: cmdb_push_result
+
+    - name: push 결과 출력
+      ansible.builtin.debug:
+        msg: "CMDB 웹설정 push 완료: asset_id={{ cmdb_push_result.json.asset_id }}, hostname={{ cmdb_push_result.json.hostname }}"

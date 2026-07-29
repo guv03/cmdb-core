@@ -16,7 +16,14 @@ from django.db.models import (
 from core.models import Asset
 from facts.models import FactFieldDefinition, HostFactValue, PendingChange
 from processes.models import ProcessSnapshot
-from webconfig.models import WebConfigSource, WebConfigSourceRevision, WebServiceDomain, WebtobVhost
+from webconfig.models import (
+    ApacheVhost,
+    NginxVhost,
+    WebConfigSource,
+    WebConfigSourceRevision,
+    WebServiceDomain,
+    WebtobVhost,
+)
 
 LEADING_FIXED_COLUMNS = [
     {"key": "hostname", "label": "Hostname", "lookup": "hostname"},
@@ -263,11 +270,17 @@ def get_webconfig_queryset(request):
     # 만드는데, raw_content/extra_sections는 Oracle에서 NCLOB으로 매핑돼 GROUP BY 대상이
     # 되면 ORA-00932가 난다(Postgres는 문제없어 로컬에서는 안 잡힘). 목록 화면은 두 필드를
     # 안 쓰므로 annotate 전에 defer로 빼둔다.
+    # vhost_count: 소스 하나는 항상 단일 kind라 vhosts/apache_vhosts/nginx_vhosts 중
+    # 최대 하나만 0이 아니다 - kind 무관하게 세 Count(distinct)를 더해서 정확한 값을 얻는다.
     queryset = (
         WebConfigSource.objects.select_related("asset")
         .defer("raw_content", "extra_sections")
         .annotate(
-            vhost_count=Count("vhosts", distinct=True),
+            vhost_count=(
+                Count("vhosts", distinct=True)
+                + Count("apache_vhosts", distinct=True)
+                + Count("nginx_vhosts", distinct=True)
+            ),
             last_changed_at=Max("revisions__detected_at"),
         )
     )
@@ -278,6 +291,10 @@ def get_webconfig_queryset(request):
             Q(asset__hostname__icontains=q)
             | Q(vhosts__hostname__icontains=q)
             | Q(vhosts__hostalias__icontains=q)
+            | Q(apache_vhosts__hostname__icontains=q)
+            | Q(apache_vhosts__hostalias__icontains=q)
+            | Q(nginx_vhosts__hostname__icontains=q)
+            | Q(nginx_vhosts__hostalias__icontains=q)
         ).distinct()
 
     sort = _request_param(request, "sort", "ordering", default="hostname")
@@ -316,9 +333,13 @@ WEBTOB_VHOST_SORT_LOOKUPS = {
 
 
 def get_webtob_vhost_queryset(request):
-    # select_related("source__...")가 WebConfigSource(raw_content/extra_sections, Oracle에서
-    # NCLOB)까지 같이 가져오는데, 검색 시 아래 .distinct()가 그 NCLOB 컬럼까지 DISTINCT
-    # 대상에 넣으면 ORA-00932가 난다(get_webconfig_queryset의 GROUP BY 문제와 동일 원인).
+    # select_related("source__...", "ssl")가 raw_content/extra_sections(WebConfigSource)와
+    # required_ciphers(WebtobSsl) 같은 TextField(Oracle에서 NCLOB)를 같이 끌고 오는데,
+    # 예전엔 검색 시 .distinct()를 걸어서 이 컬럼들까지 DISTINCT 대상에 들어가 ORA-00932가
+    # 났었다(get_webconfig_queryset의 GROUP BY 문제와 동일 원인, 1.0.12 참고). 지금 이
+    # 쿼리의 검색 필터는 own 필드/forward FK만 참조해 to-many 조인이 없으므로(중복 행이
+    # 생길 수 없음) .distinct() 자체가 불필요 - defer로 필드를 더 늘리는 대신 아예 제거해서
+    # 근본적으로 피한다.
     queryset = (
         WebtobVhost.objects.select_related("source__asset", "source__node", "ssl")
         .defer("source__raw_content", "source__extra_sections")
@@ -333,12 +354,87 @@ def get_webtob_vhost_queryset(request):
             | Q(hostname__icontains=q)
             | Q(hostalias__icontains=q)
             | Q(service_name__icontains=q)
-        ).distinct()
+        )
 
     sort = _request_param(request, "sort", "ordering", default="hostname")
     direction = "-" if sort.startswith("-") else ""
     sort_key = sort.lstrip("-")
     lookup = WEBTOB_VHOST_SORT_LOOKUPS.get(sort_key, "source__asset__hostname")
+
+    return queryset.order_by(f"{direction}{lookup}")
+
+
+APACHE_VHOST_SORT_LOOKUPS = {
+    "hostname": "source__asset__hostname",
+    "domain": "hostname",
+    "hostalias": "hostalias",
+    "port": "port",
+    "docroot": "docroot",
+    "ssl_flag": "ssl_flag",
+    "logging": "logging",
+    "errorlog": "errorlog",
+    "service_name": "service_name",
+}
+
+NGINX_VHOST_SORT_LOOKUPS = {
+    "hostname": "source__asset__hostname",
+    "domain": "hostname",
+    "hostalias": "hostalias",
+    "port": "port",
+    "docroot": "docroot",
+    "ssl_flag": "ssl_flag",
+    "logging": "logging",
+    "errorlog": "errorlog",
+    "service_name": "service_name",
+}
+
+
+def get_apache_vhost_queryset(request):
+    # WebToB의 get_webtob_vhost_queryset과 같은 패턴(NCLOB 대응, kind 전용 목록 화면).
+    # SvrGroup/Server/Uri 같은 관계형 테이블이 없어 prefetch_related는 불필요.
+    # proxy_summary(TextField, Oracle NCLOB)는 목록에 그대로 노출해야 해서 defer로 뺄 수
+    # 없는데, 검색 필터가 own 필드/forward FK만 참조해 to-many 조인이 없으므로(중복 행이
+    # 생길 수 없음) .distinct()가 애초에 불필요 - 걸지 않아서 NCLOB DISTINCT 문제를 피한다.
+    queryset = ApacheVhost.objects.select_related("source__asset").defer(
+        "source__raw_content", "source__extra_sections"
+    )
+
+    q = _request_param(request, "q", "search")
+    if q:
+        queryset = queryset.filter(
+            Q(source__asset__hostname__icontains=q)
+            | Q(hostname__icontains=q)
+            | Q(hostalias__icontains=q)
+            | Q(service_name__icontains=q)
+        )
+
+    sort = _request_param(request, "sort", "ordering", default="hostname")
+    direction = "-" if sort.startswith("-") else ""
+    sort_key = sort.lstrip("-")
+    lookup = APACHE_VHOST_SORT_LOOKUPS.get(sort_key, "source__asset__hostname")
+
+    return queryset.order_by(f"{direction}{lookup}")
+
+
+def get_nginx_vhost_queryset(request):
+    # get_apache_vhost_queryset과 동일한 이유로 .distinct() 없음(proxy_summary NCLOB 대응).
+    queryset = NginxVhost.objects.select_related("source__asset").defer(
+        "source__raw_content", "source__extra_sections"
+    )
+
+    q = _request_param(request, "q", "search")
+    if q:
+        queryset = queryset.filter(
+            Q(source__asset__hostname__icontains=q)
+            | Q(hostname__icontains=q)
+            | Q(hostalias__icontains=q)
+            | Q(service_name__icontains=q)
+        )
+
+    sort = _request_param(request, "sort", "ordering", default="hostname")
+    direction = "-" if sort.startswith("-") else ""
+    sort_key = sort.lstrip("-")
+    lookup = NGINX_VHOST_SORT_LOOKUPS.get(sort_key, "source__asset__hostname")
 
     return queryset.order_by(f"{direction}{lookup}")
 
