@@ -95,8 +95,11 @@ class WebtobVhost(TimeStampedModel):
     ssl = models.ForeignKey(
         WebtobSsl, null=True, blank=True, on_delete=models.SET_NULL, related_name="vhosts"
     )
-    logging = models.CharField(max_length=100, blank=True)
-    errorlog = models.CharField(max_length=100, blank=True)
+    # *VHOST절 원본은 *LOGGING절 엔트리 이름(예: "log1")만 담고 있는데, sync_webtob이
+    # 그 이름으로 *LOGGING절을 찾아 FileName으로 resolve해서 저장한다(대시보드에 이름이
+    # 아니라 실제 로그 경로가 보이도록) - 매칭 실패 시 원래 이름값으로 폴백.
+    logging = models.CharField(max_length=255, blank=True)
+    errorlog = models.CharField(max_length=255, blank=True)
     # 수기 입력: 이 vhost가 어떤 서비스인지. AUTO 필드와 달리 push로 덮어쓰지 않음(sync_webtob이
     # vhost를 이름으로 upsert하고 이 필드는 defaults에서 빠져있어 보존됨).
     service_name = models.CharField(max_length=255, blank=True)
@@ -208,6 +211,11 @@ class ApacheVhost(TimeStampedModel):
     ssl_flag = models.BooleanField(default=False)
     ssl_certificate_file = models.CharField(max_length=500, blank=True)
     ssl_certificate_key_file = models.CharField(max_length=500, blank=True)
+    # SSLProtocol/SSLCipherSuite - vhost 안에 직접 없으면 <VirtualHost> 밖의 전역 mod_ssl
+    # 설정으로 폴백해서 채운다(webconfig/parsers.py의 parse_apache 참고, WebtobSsl과 같은
+    # 이유로 ciphers만 TextField - 길이 제한 없이 그대로 담기 위함).
+    ssl_protocols = models.CharField(max_length=255, blank=True)
+    ssl_ciphers = models.TextField(blank=True)
     logging = models.CharField(max_length=255, blank=True)
     errorlog = models.CharField(max_length=255, blank=True)
     proxy_summary = models.TextField(blank=True)
@@ -237,6 +245,10 @@ class NginxVhost(TimeStampedModel):
     ssl_flag = models.BooleanField(default=False)
     ssl_certificate_file = models.CharField(max_length=500, blank=True)
     ssl_certificate_key_file = models.CharField(max_length=500, blank=True)
+    # ssl_protocols/ssl_ciphers - server{} 안에 직접 없으면 http{} 최상위 설정으로 폴백해서
+    # 채운다(webconfig/parsers.py의 parse_nginx 참고, ApacheVhost와 동일 취지).
+    ssl_protocols = models.CharField(max_length=255, blank=True)
+    ssl_ciphers = models.TextField(blank=True)
     logging = models.CharField(max_length=255, blank=True)
     errorlog = models.CharField(max_length=255, blank=True)
     proxy_summary = models.TextField(blank=True)

@@ -14,7 +14,7 @@ from django.db.models import (
 )
 
 from core.models import Asset
-from facts.models import FactFieldDefinition, HostFactValue, PendingChange
+from facts.models import FactFieldDefinition, HostFact, HostFactValue, PendingChange
 from processes.models import ProcessSnapshot
 from was.models import JeusContainer, WasConfigSource, WasConfigSourceRevision
 from webconfig.models import (
@@ -96,6 +96,117 @@ def _parse_date(value):
         return datetime.fromisoformat(value).date()
     except ValueError:
         return None
+
+
+# 통합대시보드 각 섹션(OS/WEB/WAS)에서 카테고리별로 각자 색을 받는 최대 개수 - dataviz
+# 원칙상 카테고리 색은 고정 개수만 배정하고 그 이상은 "기타"로 접는다(9번째 색을 새로
+# 만들지 않음). 세 섹션이 전부 같은 색 순서를 공유해도 서로 다른 카테고리 축(OS Family vs
+# WEB/WAS 종류)이라 섹션 간에 헷갈릴 일은 없다.
+CATEGORY_COLOR_SLOTS = ["s1", "s2", "s3", "s4", "s5"]
+
+
+def _build_category_tiles(rows, total, missing_label="(미수집)"):
+    """OS/WEB/WAS 통합대시보드 섹션 공통 타일 빌더. rows는 이미 count 내림차순으로 정렬된
+    [{"key": 드릴다운에 쓸 원본 값, "name": 화면에 보일 라벨, "count": 개수}, ...]. 상위
+    5개만 각자 색을 받고 나머지는 "기타"로 접으며, count 합계가 total에 못 미치면 그 차이를
+    missing_label 타일로 채운다(WEB/WAS의 kind처럼 항상 다 채워지는 필드는 차이가 0이라
+    이 타일이 아예 안 생긴다 - OS의 "(미수집)"에서만 실제로 나타남)."""
+    tiles = []
+    for i, row in enumerate(rows[: len(CATEGORY_COLOR_SLOTS)]):
+        tiles.append(
+            {
+                "key": row["key"],
+                "name": row["name"],
+                "count": row["count"],
+                "slot": CATEGORY_COLOR_SLOTS[i],
+                "clickable": True,
+            }
+        )
+
+    other_count = sum(row["count"] for row in rows[len(CATEGORY_COLOR_SLOTS) :])
+    if other_count:
+        tiles.append({"name": "기타", "count": other_count, "slot": "s6", "clickable": False})
+
+    missing = total - sum(row["count"] for row in rows)
+    if missing:
+        tiles.append({"name": missing_label, "count": missing, "slot": None, "clickable": False})
+
+    return tiles
+
+
+def _breakdown_by_field(queryset, field_name):
+    """통합대시보드 드릴다운 공통 - queryset을 field_name 기준으로 묶어 개수를 센다.
+    field_name이 비어있는 행(아직 그 값까지는 안 잡힌 경우)은 "(버전 미상)"으로 묶는다."""
+    rows = [
+        {"name": row[field_name], "count": row["count"]}
+        for row in queryset.exclude(**{field_name: ""})
+        .values(field_name)
+        .annotate(count=Count("id"))
+        .order_by("-count", field_name)
+    ]
+    unknown = queryset.count() - sum(row["count"] for row in rows)
+    if unknown:
+        rows.append({"name": "(버전 미상)", "count": unknown})
+    return rows
+
+
+def get_os_overview_data():
+    """통합대시보드 OS 섹션 - OS Family별 자산 수. os_family는 CharField라(TextField 아님)
+    GROUP BY해도 Oracle NCLOB 문제 없음."""
+    total = Asset.objects.count()
+    rows = [
+        {"key": row["os_family"], "name": row["os_family"], "count": row["count"]}
+        for row in HostFact.objects.exclude(os_family="")
+        .values("os_family")
+        .annotate(count=Count("id"))
+        .order_by("-count", "os_family")
+    ]
+    return {"total": total, "tiles": _build_category_tiles(rows, total)}
+
+
+def get_os_version_breakdown(os_family):
+    """통합대시보드 OS 섹션의 Family 타일 클릭 시 드릴다운 - 그 Family 안에서 os_version별 개수."""
+    return _breakdown_by_field(HostFact.objects.filter(os_family=os_family), "os_version")
+
+
+WEB_KIND_LABELS = dict(WebConfigSource.Kind.choices)
+
+
+def get_web_overview_data():
+    """통합대시보드 WEB 섹션 - 종류(webtob/apache/nginx)별 소스(서버) 수. OS의 os_family
+    자리에 kind가 들어가는 것 말고는 동일한 구조 - kind는 항상 값이 있어(CharField, blank
+    아님) "(미수집)" 타일은 실제로는 절대 안 나타난다."""
+    total = WebConfigSource.objects.count()
+    rows = [
+        {"key": row["kind"], "name": WEB_KIND_LABELS.get(row["kind"], row["kind"]), "count": row["count"]}
+        for row in WebConfigSource.objects.values("kind").annotate(count=Count("id")).order_by("-count", "kind")
+    ]
+    return {"total": total, "tiles": _build_category_tiles(rows, total)}
+
+
+def get_web_version_breakdown(kind):
+    """통합대시보드 WEB 섹션의 종류 타일 클릭 시 드릴다운 - 그 종류 안에서 솔루션 버전별 개수."""
+    return _breakdown_by_field(WebConfigSource.objects.filter(kind=kind), "solution_version")
+
+
+WAS_KIND_LABELS = dict(WasConfigSource.Kind.choices)
+
+
+def get_was_overview_data():
+    """통합대시보드 WAS 섹션 - get_web_overview_data와 동일 구조(지금은 kind가 jeus8
+    하나뿐이라 타일도 하나뿐이지만, 확장성을 위해 WEB과 똑같이 kind 축을 그대로 둔다 -
+    JEUS6 등 새 kind가 추가되면 코드 변경 없이 타일이 자동으로 늘어남)."""
+    total = WasConfigSource.objects.count()
+    rows = [
+        {"key": row["kind"], "name": WAS_KIND_LABELS.get(row["kind"], row["kind"]), "count": row["count"]}
+        for row in WasConfigSource.objects.values("kind").annotate(count=Count("id")).order_by("-count", "kind")
+    ]
+    return {"total": total, "tiles": _build_category_tiles(rows, total)}
+
+
+def get_was_version_breakdown(kind):
+    """통합대시보드 WAS 섹션의 종류 타일 클릭 시 드릴다운 - 그 종류 안에서 솔루션 버전별 개수."""
+    return _breakdown_by_field(WasConfigSource.objects.filter(kind=kind), "solution_version")
 
 
 def get_asset_queryset(request):
@@ -316,6 +427,9 @@ def get_webconfig_history_queryset(request):
     return queryset.order_by("-detected_at")
 
 
+# ssl_ciphers는 일부러 뺐다 - WebtobSsl.required_ciphers가 TextField(Oracle NCLOB)라
+# 정렬 대상이 되면 ORA-00932 위험이 있음(apache/nginx의 ssl_ciphers와 같은 이유,
+# APACHE_VHOST_SORT_LOOKUPS 주석 참고). ssl_protocols는 CharField라 안전.
 WEBTOB_VHOST_SORT_LOOKUPS = {
     "hostname": "source__asset__hostname",
     "vhost_name": "name",
@@ -325,7 +439,6 @@ WEBTOB_VHOST_SORT_LOOKUPS = {
     "docroot": "docroot",
     "ssl_flag": "ssl_flag",
     "ssl_protocols": "ssl__protocols",
-    "ssl_ciphers": "ssl__required_ciphers",
     "logging": "logging",
     "errorlog": "errorlog",
     "service_name": "service_name",
@@ -365,6 +478,9 @@ def get_webtob_vhost_queryset(request):
     return queryset.order_by(f"{direction}{lookup}")
 
 
+# ssl_ciphers는 일부러 뺐다 - TextField(Oracle NCLOB)라 정렬 대상이 되면 WebtobVhost의
+# required_ciphers와 같은 이유로 ORA-00932 위험이 있음(CLAUDE.md의 NCLOB 규칙, ORDER BY도
+# 대상). ssl_protocols는 CharField라 안전.
 APACHE_VHOST_SORT_LOOKUPS = {
     "hostname": "source__asset__hostname",
     "domain": "hostname",
@@ -372,6 +488,7 @@ APACHE_VHOST_SORT_LOOKUPS = {
     "port": "port",
     "docroot": "docroot",
     "ssl_flag": "ssl_flag",
+    "ssl_protocols": "ssl_protocols",
     "logging": "logging",
     "errorlog": "errorlog",
     "service_name": "service_name",
@@ -384,6 +501,7 @@ NGINX_VHOST_SORT_LOOKUPS = {
     "port": "port",
     "docroot": "docroot",
     "ssl_flag": "ssl_flag",
+    "ssl_protocols": "ssl_protocols",
     "logging": "logging",
     "errorlog": "errorlog",
     "service_name": "service_name",

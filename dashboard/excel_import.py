@@ -44,20 +44,29 @@ class ImportResult:
     invalid_cells: list[InvalidCell]
 
 
-def _manual_fields_by_label() -> dict[str, FactFieldDefinition]:
-    manual_fields = list(
-        FactFieldDefinition.objects.filter(
-            source=FactFieldDefinition.Source.MANUAL, is_visible=True
-        )
+def _dynamic_fields() -> list[FactFieldDefinition]:
+    """FIXED를 뺀 전체 동적 필드(AUTO+MANUAL) - 다운로드에는 둘 다 참고용으로 실어서
+    대시보드 화면과 같은 값을 보여주고, 실제 반영 대상은 이 중 MANUAL만이다(아래
+    parse_manual_field_workbook)."""
+    return list(
+        FactFieldDefinition.objects.exclude(source=FactFieldDefinition.Source.FIXED)
+        .filter(is_visible=True)
+        .order_by("sort_order", "id")
     )
-    labels = [fd.label for fd in manual_fields]
+
+
+def _dynamic_fields_by_label(dynamic_fields: list[FactFieldDefinition]) -> dict[str, FactFieldDefinition]:
+    """헤더 매칭용 라벨 사전 - AUTO/MANUAL을 합쳐서 한 시트에 같이 싣기 때문에, 라벨 중복은
+    소스 구분 없이 전체를 대상으로 검사해야 한다(label은 DB 레벨 unique가 아니라서 admin에서
+    실수로 겹치게 등록할 수 있음)."""
+    labels = [fd.label for fd in dynamic_fields]
     duplicate_labels = sorted({label for label in labels if labels.count(label) > 1})
     if duplicate_labels:
         raise ImportFileError(
-            "다음 라벨을 쓰는 수기 입력 필드가 여러 개 등록돼 있어 엑셀 헤더와 매칭할 수 없습니다: "
+            "다음 라벨을 쓰는 필드가 여러 개 등록돼 있어 엑셀 헤더와 매칭할 수 없습니다: "
             f"{', '.join(duplicate_labels)}. admin에서 라벨을 정리한 뒤 다시 시도해주세요."
         )
-    return {fd.label: fd for fd in manual_fields}
+    return {fd.label: fd for fd in dynamic_fields}
 
 
 def _current_stored_value(host_fact, field_definition: FactFieldDefinition) -> HostFactValue | None:
@@ -79,19 +88,17 @@ def _current_value_display(host_fact, field_definition: FactFieldDefinition) -> 
 
 
 def export_manual_field_workbook() -> HttpResponse:
-    """전체 자산의 hostname + 수기 입력 필드 현재 값을 xlsx로 내려준다(서비스 조회의
-    엑셀 다운로드와 동일한 취지 - 몇 칸만 고쳐서 재업로드하는 흐름). 헤더가 그대로
+    """전체 자산의 hostname + 동적 필드(AUTO+MANUAL) 현재 값을 xlsx로 내려준다(서비스 조회의
+    엑셀 다운로드와 동일한 취지 - 몇 칸만 고쳐서 재업로드하는 흐름). AUTO 필드는 대시보드
+    화면과 맥락을 맞춰 참고용으로 같이 싣지만 편집 대상이 아니라서, 값을 고쳐서 올려도
+    parse_manual_field_workbook이 조용히 무시한다(반영은 MANUAL 필드만). 헤더가 그대로
     parse_manual_field_workbook이 기대하는 업로드 형식이라 다운로드/업로드가 짝을 이룬다."""
-    manual_fields = list(
-        FactFieldDefinition.objects.filter(source=FactFieldDefinition.Source.MANUAL, is_visible=True).order_by(
-            "sort_order", "id"
-        )
-    )
+    dynamic_fields = _dynamic_fields()
 
     workbook = openpyxl.Workbook()
     sheet = workbook.active
     sheet.title = "자산"
-    sheet.append([HOSTNAME_HEADER] + [fd.label for fd in manual_fields])
+    sheet.append([HOSTNAME_HEADER] + [fd.label for fd in dynamic_fields])
 
     assets = (
         Asset.objects.select_related("hostfact")
@@ -102,7 +109,7 @@ def export_manual_field_workbook() -> HttpResponse:
     )
     for asset in assets:
         host_fact = getattr(asset, "hostfact", None)
-        sheet.append([asset.hostname] + [_current_value_display(host_fact, fd) for fd in manual_fields])
+        sheet.append([asset.hostname] + [_current_value_display(host_fact, fd) for fd in dynamic_fields])
 
     response = HttpResponse(
         content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -125,7 +132,10 @@ def parse_manual_field_workbook(uploaded_file) -> ImportResult:
     if not header or str(header[0] or "").strip() != HOSTNAME_HEADER:
         raise ImportFileError(f"첫 번째 컬럼 헤더는 '{HOSTNAME_HEADER}'이어야 합니다.")
 
-    fields_by_label = _manual_fields_by_label()
+    # AUTO 필드 헤더도 알려진 컬럼으로 인정한다(다운로드가 AUTO도 참고용으로 같이 싣기
+    # 때문에, 안 고치고 그대로 재업로드해도 "인식 못하는 컬럼"으로 걸리면 안 됨) - 실제
+    # 반영 여부는 아래 행 처리 루프에서 source로 다시 가른다.
+    fields_by_label = _dynamic_fields_by_label(_dynamic_fields())
 
     column_fields: list[FactFieldDefinition | None] = []
     unknown_headers = []
@@ -141,7 +151,7 @@ def parse_manual_field_workbook(uploaded_file) -> ImportResult:
 
     if unknown_headers:
         raise ImportFileError(
-            "다음 컬럼은 등록된 수기 입력 필드와 매칭되지 않습니다: " + ", ".join(unknown_headers)
+            "다음 컬럼은 등록된 필드와 매칭되지 않습니다: " + ", ".join(unknown_headers)
         )
 
     choice_values_by_field_id = {
@@ -188,7 +198,13 @@ def parse_manual_field_workbook(uploaded_file) -> ImportResult:
         host_fact = getattr(asset, "hostfact", None)
 
         for field_definition, cell_value in zip(column_fields, values):
-            if field_definition is None or cell_value in (None, ""):
+            if (
+                field_definition is None
+                or field_definition.source != FactFieldDefinition.Source.MANUAL
+                or cell_value in (None, "")
+            ):
+                # AUTO 필드는 참고용으로만 실려있는 컬럼이라 값이 있어도 반영하지 않는다 -
+                # 어차피 다음 push 때 조용히 덮어써지므로(수기 입력과 반대로 push가 원본).
                 continue
 
             defaults = coerce_fact_value(cell_value, field_definition.value_type)

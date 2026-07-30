@@ -38,7 +38,7 @@
     </thead>
     <tbody>
       {% for row in rows %}
-      <tr class="asset-row" style="cursor: pointer;" data-asset-id="{{ row.asset.id }}" data-hostname="{{ row.asset.hostname }}">
+      <tr class="asset-row" style="cursor: pointer;" data-detail-url="{% url 'dashboard-asset-detail' row.asset.id %}">
         <td class="dash-sticky-col dash-sticky-col-1">{{ row.asset.hostname }}</td>
         <td class="dash-sticky-col dash-sticky-col-2">{{ row.asset.primary_ip|default:"" }}</td>
         <td>{{ row.hostfact.os_family|default:"" }}</td>
@@ -78,16 +78,14 @@
   </span>
 </nav>
 
-<div class="modal" id="factsModal">
+<div class="modal" id="assetModal">
   <div class="modal-background"></div>
   <div class="modal-card" style="width: 90%; max-width: 960px;">
     <header class="modal-card-head">
-      <p class="modal-card-title" id="factsModalTitle">Facts</p>
-      <button class="delete" aria-label="close" id="factsModalClose"></button>
+      <p class="modal-card-title" id="assetModalTitle">자산 상세</p>
+      <button class="delete" aria-label="close" id="assetModalClose"></button>
     </header>
-    <section class="modal-card-body">
-      <pre id="factsModalBody" style="white-space: pre-wrap; word-break: break-all; max-height: 70vh; overflow-y: auto;">불러오는 중...</pre>
-    </section>
+    <section class="modal-card-body" id="assetModalBody">불러오는 중...</section>
   </div>
 </div>
 
@@ -114,9 +112,8 @@
 {% block extra_body %}
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-  var modal = document.getElementById('factsModal');
-  var modalTitle = document.getElementById('factsModalTitle');
-  var modalBody = document.getElementById('factsModalBody');
+  var modal = document.getElementById('assetModal');
+  var modalBody = document.getElementById('assetModalBody');
 
   function closeModal() {
     modal.classList.remove('is-active');
@@ -124,15 +121,15 @@ document.addEventListener('DOMContentLoaded', function () {
 
   document.querySelectorAll('.asset-row').forEach(function (row) {
     row.addEventListener('click', function () {
-      var assetId = row.dataset.assetId;
-      modalTitle.textContent = row.dataset.hostname + ' - Facts';
       modalBody.textContent = '불러오는 중...';
       modal.classList.add('is-active');
 
-      fetch('/dashboard/assets/' + assetId + '/facts/')
-        .then(function (res) { return res.json(); })
-        .then(function (data) {
-          modalBody.textContent = JSON.stringify(data.raw_facts, null, 2);
+      fetch(row.dataset.detailUrl)
+        .then(function (res) { return res.text(); })
+        .then(function (html) {
+          var doc = new DOMParser().parseFromString(html, 'text/html');
+          var content = doc.getElementById('asset-content');
+          modalBody.innerHTML = content ? content.innerHTML : '불러오기 실패';
         })
         .catch(function () {
           modalBody.textContent = '불러오기 실패';
@@ -140,7 +137,7 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   });
 
-  document.getElementById('factsModalClose').addEventListener('click', closeModal);
+  document.getElementById('assetModalClose').addEventListener('click', closeModal);
   modal.querySelector('.modal-background').addEventListener('click', closeModal);
 
   function getCsrfToken() {

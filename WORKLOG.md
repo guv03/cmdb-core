@@ -2,6 +2,44 @@
 
 일 단위로 진행한 작업을 기록한다. 새 날짜는 위에 추가한다.
 
+## 2026-07-30
+
+- **WebToB vhost의 Logging/ErrorLog가 실제 경로를 보여주도록 수정**: 웹 목록 모달에서 이 두 값이 `*LOGGING`절 엔트리 이름(`log1`, `log2`처럼)만 보여서 알아보기 어렵다는 지적. 코딩 전 검토 → `parse_webtob`이 이미 모든 절을 범용 파싱해서 `*LOGGING`절 데이터(FileName 포함) 자체는 파싱 결과에 있지만 `sync_webtob`이 이름값만 그대로 저장하고 있었던 게 원인
+  - `sync_webtob`에 `_resolve_log_path` 추가 — `*LOGGING`절에서 이름→FileName 맵을 만들어 VHost 저장 시 resolve, 못 찾거나 FileName이 비어있으면 원래 이름값으로 폴백(완전히 비우지 않음)
+  - 부수적으로 `WebtobVhost.logging`/`errorlog`의 `max_length`를 100→255로 확장(짧은 엔트리 이름 기준이던 걸 실제 경로 길이에 맞춤, Apache/Nginx와 통일) — 마이그레이션 하나 추가
+  - 실제 `samples/webtob/APCS01_http.m` 재push로 `vhost1`의 값이 `log1`/`log2`에서 실제 경로로 바뀌는 것, 목록/상세 모달 렌더링까지 확인
+- **엑셀 다운로드 없는 화면 10개에 추가**: 처음엔 "컬럼별 엑셀 필터"(엑셀처럼 헤더 클릭 → 체크박스로 값 필터링) 요청이었으나 검토 중 사용자가 방향을 바꿔 "그냥 화면마다 엑셀 다운로드만 있으면 될 것 같다"로 스코프 축소 — 필터 UI는 컬럼마다 카디널리티가 너무 달라서(hostname처럼 사실상 전부 다른 값 vs OS/종류처럼 몇 개 안 되는 값) 화면별로 설계가 갈리는 문제를 짚어준 게 결정에 영향
+  - 변경 이력/WEB 목록·변경 이력/WebToB·Apache·Nginx vhost 목록/WAS 목록·변경 이력/JEUS8 컨테이너 목록/어플리케이션 — 총 10개 화면에 다운로드 버튼 신규(`dashboard/list_export.py`)
+  - 기존 두 다운로드(자산 MANUAL 필드, 서비스 조회)와 같은 관례: 검색 필터 무시하고 항상 전체 데이터. 화면별 `get_*_queryset(request)`를 빈 GET 가짜 request로 그대로 재사용해서 Oracle NCLOB 대응 로직을 중복시키지 않음
+  - tz-aware datetime을 openpyxl이 거부하는 문제(Excel이 타임존 미지원)를 로컬시간 변환 후 naive화해서 해결, Decimal도 float로 변환
+- **자산 엑셀 다운로드/업로드에 AUTO 필드도 포함**: 위 작업 논의 중 "OS 목록은 컬럼이 admin에서 자유롭게 늘어나는데 그것도 엑셀 다운로드 되냐"는 질문에서 시작 — 확인해보니 기존 자산 엑셀(`export_manual_field_workbook`)은 MANUAL 필드만 대상이라 AUTO 필드는 화면엔 보여도 다운로드엔 안 실렸던 것. "다운로드엔 AUTO도 같이 싣고, 업로드할 땐 그 컬럼이 껴있어도 에러 안 나게" 요청
+  - `_dynamic_fields_by_label`로 헤더 매칭 대상을 AUTO+MANUAL 전체로 넓히되(라벨 중복 검사도 전체로), 실제 반영(`PendingUpdate` 생성)은 여전히 MANUAL 필드만 — AUTO 컬럼 값을 고쳐서 올려도 조용히 무시(다음 push 때 어차피 덮어써지므로)
+  - 다운로드 → 그대로 재업로드(에러 없음, 반영 0건) / AUTO 셀만 수정 후 업로드(무시됨) / MANUAL 셀 수정 후 업로드(반영됨) / 진짜 모르는 헤더(에러) 네 가지 케이스 전부 재현 검증
+- **WAS(JEUS8) "배포된 앱" 표시를 path+id로 변경**: `context-path`가 실제 domain.xml 샘플에서 거의 다 `/`(URL 루트)로만 찍혀 있어 앱을 구분하는 데 도움이 안 된다는 지적 — 실제 구분되는 값은 `<path>`(배포 경로, 예: `/deploy/cmp`)라 이걸 `id`와 함께 보여주도록 `was/parsers.py` 수정. `samples/jeus8/domain.xml` 재push로 확인
+- **Apache/Nginx에 SSL Protocols/Ciphers 추가**: WebToB에는 이미 있는데 Apache/Nginx엔 빠져있다는 지적으로 추가
+  - Apache 샘플(`httpd-ssl.conf`)은 `SSLProtocol`/`SSLCipherSuite`를 `<VirtualHost>` 안이 아니라 파일 전역(mod_ssl 공통 설정)에 한 번만 두는 구조라, vhost 안에 값이 없으면 전역값으로 폴백하는 로직이 필요했음(`_parse_global_ssl_defaults`, `<VirtualHost>` 블록을 통째로 지워서 전역 영역만 스캔). Nginx도 `http{}` 최상위에 한 번만 두는 경우를 대비해 같은 폴백을 넣음(SSL 안 쓰는 vhost엔 채우지 않음)
+  - `ApacheVhost`/`NginxVhost`에 `ssl_protocols`(CharField)/`ssl_ciphers`(TextField) 신규, 목록/상세 모달/엑셀 다운로드까지 반영
+  - 정렬 컬럼 설계 중 `ssl_ciphers`가 TextField(Oracle NCLOB)라 정렬 대상이 되면 위험하다는 걸 미리 인지해서 애초에 정렬 목록에서 뺌(SSL Protocols는 CharField라 정렬 넣음) — 이 과정에서 **기존 WebToB의 "SSL RequiredCiphers" 컬럼이 이미 같은 이유로 정렬 가능하게 돼있던 걸(`ssl__required_ciphers`) 발견**, 사용자 확인 받아 같이 제거(잠재 버그였는데 로컬 Postgres에선 재현이 안 돼 지금까지 안 걸렸을 것)
+  - `samples/apache/httpd-ssl.conf`/`samples/nginx/nginx.conf` 재push로 전역 폴백/서버별 값 둘 다 확인, 목록/상세/엑셀까지 검증
+- **자산 상세를 모달 대신 실제 페이지로 신규**: "OS 목록은 컬럼이 admin에서 자유롭게 늘어나는데, 늘어나면 가로 스크롤이 보기 어려워질 것 같다"는 문제 제기로 코딩 전 검토부터 진행
+  - 메인 테이블이 이미 쓰는 `build_rows()`를 재사용해 같은 컬럼(동적 필드 포함)을 세로 label-value 표로 보여주는 방식으로 결정 — admin에서 컬럼이 늘어도 코드 수정 없이 그대로 따라감
+  - 구조는 webconfig/was 상세 화면과 동일한 패턴 채택: `/dashboard/assets/<pk>/` 진짜 상세 페이지(`base.html` extends) 신규, 목록 행 클릭 시 AJAX로 fetch해 모달에 주입(`DOMParser`로 특정 div만 추출) — process/webconfig 목록이 이미 쓰던 패턴 그대로 재사용. 기존 raw facts 전용 JSON 엔드포인트(`/facts/`)는 폐기하고 이 페이지 안에 `<details>`로 접어서 유지
+  - MANUAL 필드는 이 화면에서 읽기 전용으로 결정(✎ 아이콘도 안 붙임) — 편집을 넣으려면 전용 모달을 또 띄워야 해서 "모달 안에 모달" 중첩이 되고, CLAUDE.md의 기존 관례(중첩 회피용 `prompt()`)로는 checkbox/select/date 타입까지 있는 MANUAL 필드를 못 다뤄서 스코프 밖으로 뺌
+  - hostfact가 아직 없는 자산(facts 미수집)도 에러 없이 빈 값으로 처리되는 것까지 확인
+- **통합대시보드 신규**: "상단 CMDB 로고를 누르면 통합뷰로 가게 하고, 자산별 카운팅을 한눈에 보여주고 싶다(예: OS 전체 몇 개, 리눅스/AIX 몇 개)"는 요청으로 시작, 코딩 전 검토부터 진행
+  - 시안 논의: dataviz/artifact-design 스킬로 실제 클릭 가능한 아티팩트 목업 3개(숫자+막대 목록/스탯 타일 그리드/도넛+범례) 제작해 비교 → 사용자가 스탯 타일 그리드(B) 선택
+  - 이어서 "타일 클릭하면 그 OS의 버전별 개수를 C안(도넛) 형태로 보여줄 수 있냐"는 요청 → 같은 아티팩트에 클릭 인터랙션(캔버스 도넛, 툴팁, 열림/닫힘 토글) 추가해서 먼저 시연
+  - 실제 구현 직전 "os_version 컬럼을 추가해놔야 하지 않냐"는 질문에 확인해보니 `HostFact.os_version`은 이미 모델/수집 로직 다 있고 데이터도 들어와 있었음(화면에 노출만 안 됐던 것) — 착오였음을 설명하고 노출만 추가하는 걸로 진행
+  - "OS만 만들었는데 WEB/WAS도 같은 형태로 추가 가능하냐"는 후속 요청에 검토: `WebConfigSource`/`WasConfigSource`의 `kind`/`solution_version`이 OS의 `os_family`/`os_version`과 완전히 같은 구조(둘 다 CharField)라 그대로 재사용 가능하다고 확인. "전체" 기준(서버 수 vs vhost 수)과 WAS의 kind 단계 유지 여부를 사용자에게 확인받고(각각 서버 수, 확장성 위해 유지) 구현
+  - 구현은 처음부터 OS 하나로 짜지 않고 `_build_category_tiles`/`_breakdown_by_field` 공통 헬퍼 + `sections` 리스트 기반으로 일반화 — 섹션이 늘어나도 뷰에 한 줄만 추가하면 되는 구조. 이름은 "통합뷰"로 시작했다가 사용자 요청으로 "통합대시보드"로 일괄 변경
+  - `/dashboard/`(루트)가 원래 연결된 화면이 없어 404였는데 이 화면을 그 자리에 배치해 자연스럽게 해결
+  - 실제 DB 데이터로 OS/WEB/WAS 세 섹션 타일·퍼센트·드릴다운 도넛(RedHat 9.4, Apache 버전, WebToB "버전 미상" 묶음 등)까지 전부 확인
+- **1.0.17 릴리즈 전 Oracle/폐쇄망 호환성 검토**: 위 통합대시보드가 처음 만드는 집계(GROUP BY) 화면이라 반입 전 점검 요청
+  - 새로 추가한 집계는 전부 `CharField`(os_family/os_version/kind/solution_version)만 대상이라 `TextField`→NCLOB 문제 없음을 확인, `.distinct()`도 새로 추가한 데 없음(전부 `.values().annotate(count=...)` 단순 집계)을 코드 전수 확인
+  - 새 마이그레이션 2개(WebtobVhost max_length 변경, ApacheVhost/NginxVhost SSL 필드 추가) 전부 표준 Django 오퍼레이션이라 Oracle에서도 동일 동작
+  - `openpyxl`은 기존 의존성 재사용(신규 패키지 없음), 이미지 빌드도 `--no-index --find-links=vendor/wheels`로 인터넷 없이 정상 완료되는 것 확인
+  - 이미지 버전 관리 절차대로 1.0.17 빌드·릴리즈 진행
+
 ## 2026-07-29
 
 - **Apache/Nginx 웹설정 파싱 추가**: `samples/apache/httpd-ssl.conf`, `samples/nginx/nginx.conf` 샘플을 받아 WebToB와 같은 방식으로 파싱해 대시보드에 노출, 도메인/포트 기준으로 서비스 조회(`WebServiceDomain`)에도 연계. 코딩 전에 검토부터 진행(Plan 모드) — 세 가지 확인 필요 사항을 사용자에게 질문:

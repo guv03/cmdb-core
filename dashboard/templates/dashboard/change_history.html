@@ -3,7 +3,16 @@
 {% block title %}변경 이력 - CMDB{% endblock %}
 
 {% block content %}
-<h1 class="title is-4">변경 이력</h1>
+<div class="level">
+  <div class="level-left">
+    <h1 class="title is-4">변경 이력</h1>
+  </div>
+  <div class="level-right">
+    <div class="buttons">
+      <a class="button is-light" href="{% url 'dashboard-change-history-export' %}">엑셀 다운로드</a>
+    </div>
+  </div>
+</div>
 
 <form class="field has-addons" method="get">
   <div class="control is-expanded">

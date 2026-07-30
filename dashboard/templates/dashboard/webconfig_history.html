@@ -4,7 +4,16 @@
 
 {% block content %}
 {% csrf_token %}
-<h1 class="title is-4">웹 설정 변경 이력</h1>
+<div class="level">
+  <div class="level-left">
+    <h1 class="title is-4">웹 설정 변경 이력</h1>
+  </div>
+  <div class="level-right">
+    <div class="buttons">
+      <a class="button is-light" href="{% url 'dashboard-webconfig-history-export' %}">엑셀 다운로드</a>
+    </div>
+  </div>
+</div>
 <p class="subtitle is-6 has-text-grey">원본 설정이 실제로 바뀐 시점만 기록됩니다. 승인/반려는 없고, push는 지금처럼 감지 즉시 반영됩니다.</p>
 
 <form class="field has-addons" method="get">

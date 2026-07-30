@@ -4,7 +4,16 @@
 
 {% block content %}
 {% csrf_token %}
-<h1 class="title is-4">WEBTOB 목록</h1>
+<div class="level">
+  <div class="level-left">
+    <h1 class="title is-4">WEBTOB 목록</h1>
+  </div>
+  <div class="level-right">
+    <div class="buttons">
+      <a class="button is-light" href="{% url 'dashboard-webtob-vhost-export' %}">엑셀 다운로드</a>
+    </div>
+  </div>
+</div>
 <p class="subtitle is-6 has-text-grey">vhost 하나가 한 행입니다 — 여러 서버를 가로질러 vhost 단위로 검색·정렬합니다. LimitRequestBody는 *NODE절 설정이 vhost에 상속되는 값입니다. SvrGroup/Server/URI는 vhost 하나에 여러 개씩 걸릴 수 있는 관계형 데이터라 정렬은 지원하지 않습니다.</p>
 
 <form class="field has-addons" method="get">
@@ -29,7 +38,7 @@
         <th><a class="has-text-dark" href="{% querystring sort=columns.limit_request_body.next_sort page=None %}">LimitRequestBody</a></th>
         <th><a class="has-text-dark" href="{% querystring sort=columns.ssl_flag.next_sort page=None %}">SSL</a></th>
         <th><a class="has-text-dark" href="{% querystring sort=columns.ssl_protocols.next_sort page=None %}">SSL Protocols</a></th>
-        <th><a class="has-text-dark" href="{% querystring sort=columns.ssl_ciphers.next_sort page=None %}">SSL RequiredCiphers</a></th>
+        <th>SSL RequiredCiphers</th>
         <th><a class="has-text-dark" href="{% querystring sort=columns.logging.next_sort page=None %}">Logging</a></th>
         <th><a class="has-text-dark" href="{% querystring sort=columns.errorlog.next_sort page=None %}">ErrorLog</a></th>
         <th><a class="has-text-dark" href="{% querystring sort=columns.service_name.next_sort page=None %}">서비스명</a></th>

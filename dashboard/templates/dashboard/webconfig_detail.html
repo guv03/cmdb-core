@@ -125,6 +125,8 @@
       {% if vhost.ssl_flag %}
       <tr><th>SSL 인증서</th><td>{{ vhost.ssl_certificate_file }}</td></tr>
       <tr><th>SSL Key</th><td>{{ vhost.ssl_certificate_key_file }}</td></tr>
+      <tr><th>SSL Protocols</th><td>{{ vhost.ssl_protocols|default:"" }}</td></tr>
+      <tr><th>SSL Ciphers</th><td style="word-break: break-all;">{{ vhost.ssl_ciphers|default:"" }}</td></tr>
       {% endif %}
       <tr><th>Logging / ErrorLog</th><td>{{ vhost.logging }} / {{ vhost.errorlog }}</td></tr>
       <tr><th>Proxy 대상</th><td>{{ vhost.proxy_summary|default:"" }}</td></tr>
@@ -159,6 +161,8 @@
       {% if vhost.ssl_flag %}
       <tr><th>SSL 인증서</th><td>{{ vhost.ssl_certificate_file }}</td></tr>
       <tr><th>SSL Key</th><td>{{ vhost.ssl_certificate_key_file }}</td></tr>
+      <tr><th>SSL Protocols</th><td>{{ vhost.ssl_protocols|default:"" }}</td></tr>
+      <tr><th>SSL Ciphers</th><td style="word-break: break-all;">{{ vhost.ssl_ciphers|default:"" }}</td></tr>
       {% endif %}
       <tr><th>Logging / ErrorLog</th><td>{{ vhost.logging }} / {{ vhost.errorlog }}</td></tr>
       <tr><th>Proxy 대상</th><td>{{ vhost.proxy_summary|default:"" }}</td></tr>

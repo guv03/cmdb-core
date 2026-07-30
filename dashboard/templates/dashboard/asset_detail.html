@@ -1,0 +1,32 @@
+{% extends "dashboard/base.html" %}
+
+{% block title %}{{ asset.hostname }} - CMDB{% endblock %}
+
+{% block content %}
+<div id="asset-content">
+<h1 class="title is-4">{{ asset.hostname }}</h1>
+
+<div class="box">
+  <table class="table is-narrow is-fullwidth">
+    <tbody>
+      <tr><th style="width: 12em;">Hostname</th><td>{{ row.asset.hostname }}</td></tr>
+      <tr><th>IP</th><td>{{ row.asset.primary_ip|default:"" }}</td></tr>
+      <tr><th>OS</th><td>{{ row.hostfact.os_family|default:"" }}</td></tr>
+      {% for cell in row.dynamic_cells %}
+      <tr>
+        <th>{{ cell.label }}</th>
+        <td>{{ cell.value|default:"" }}</td>
+      </tr>
+      {% endfor %}
+      <tr><th>최근 변경일</th><td>{{ row.asset.last_changed_at|default:"" }}</td></tr>
+      <tr><th>최근 반영일</th><td>{{ row.hostfact.last_seen_at|default:"" }}</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<details class="box">
+  <summary class="has-text-weight-semibold" style="cursor: pointer;">원본 facts 보기</summary>
+  <pre style="white-space: pre-wrap; word-break: break-all; max-height: 70vh; overflow-y: auto;">{{ raw_facts_json }}</pre>
+</details>
+</div>
+{% endblock %}

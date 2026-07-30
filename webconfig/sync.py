@@ -34,6 +34,16 @@ def _resolve_vhosts(vhost_names_attr: str | None, vhost_by_name: dict) -> list:
     return [vhost_by_name[n] for n in names if n in vhost_by_name]
 
 
+def _resolve_log_path(name: str, logging_section: dict) -> str:
+    """*VHOST절의 LOGGING/ERRORLOG는 *LOGGING절 엔트리 이름만 담고 있어, 그 엔트리의
+    FileName(실제 로그 경로)으로 바꿔서 돌려준다. 엔트리를 못 찾거나 FileName이 비어있으면
+    원래 이름값으로 폴백(값을 완전히 비우기보다는 뭐라도 보이는 쪽을 택함)."""
+    if not name:
+        return ""
+    filename = (logging_section.get(name) or {}).get("filename", "")
+    return filename or name
+
+
 def _split_domains(vhost: WebtobVhost) -> list[str]:
     """hostname(주 도메인)과 hostalias(콤마 구분 별칭)를 한데 모아 중복 없이 펼친다."""
     raw = [vhost.hostname] + vhost.hostalias.split(",")
@@ -100,6 +110,8 @@ def sync_webtob(source: WebConfigSource, sections: dict) -> None:
             required_ciphers=attrs.get("requiredciphers", ""),
         )
 
+    logging_section = sections.get("LOGGING") or {}
+
     vhost_by_name = {}
     vhost_section = sections.get("VHOST") or {}
     for name, attrs in vhost_section.items():
@@ -113,8 +125,8 @@ def sync_webtob(source: WebConfigSource, sections: dict) -> None:
                 port=attrs.get("port", ""),
                 ssl_flag=_is_yes(attrs.get("sslflag")),
                 ssl=ssl_by_name.get(attrs.get("sslname")),
-                logging=attrs.get("logging", ""),
-                errorlog=attrs.get("errorlog", ""),
+                logging=_resolve_log_path(attrs.get("logging", ""), logging_section),
+                errorlog=_resolve_log_path(attrs.get("errorlog", ""), logging_section),
             ),
         )
         vhost_by_name[name] = vhost
@@ -181,6 +193,8 @@ def sync_apache(source: WebConfigSource, parsed: dict) -> None:
                 ssl_flag=attrs.get("ssl_flag", False),
                 ssl_certificate_file=attrs.get("ssl_certificate_file", ""),
                 ssl_certificate_key_file=attrs.get("ssl_certificate_key_file", ""),
+                ssl_protocols=attrs.get("ssl_protocols", ""),
+                ssl_ciphers=attrs.get("ssl_ciphers", ""),
                 logging=attrs.get("logging", ""),
                 errorlog=attrs.get("errorlog", ""),
                 proxy_summary=attrs.get("proxy_summary", ""),
@@ -214,6 +228,8 @@ def sync_nginx(source: WebConfigSource, parsed: dict) -> None:
                 ssl_flag=attrs.get("ssl_flag", False),
                 ssl_certificate_file=attrs.get("ssl_certificate_file", ""),
                 ssl_certificate_key_file=attrs.get("ssl_certificate_key_file", ""),
+                ssl_protocols=attrs.get("ssl_protocols", ""),
+                ssl_ciphers=attrs.get("ssl_ciphers", ""),
                 logging=attrs.get("logging", ""),
                 errorlog=attrs.get("errorlog", ""),
                 proxy_summary=attrs.get("proxy_summary", ""),

@@ -123,10 +123,37 @@ def _first_token(value: str) -> str:
     return parts[0] if parts else ""
 
 
+def _parse_global_ssl_defaults(content: str) -> tuple[str, str]:
+    """(SSLProtocol, SSLCipherSuite) 전역 기본값 - 이 두 지시어는 mod_ssl 관례상 vhost마다
+    안 적고 <VirtualHost> 밖(서버 전역 설정)에 한 번만 두는 경우가 흔하다(샘플
+    httpd-ssl.conf도 그렇게 돼있음). vhost 블록 안에 있으면 아래 파싱 루프가 그 값으로
+    덮어쓰므로, 여기서는 vhost에 값이 없을 때의 폴백만 구한다. VirtualHost 블록을 통째로
+    지워서 전역 영역만 남긴 텍스트를 스캔한다."""
+    global_content = _VHOST_RE.sub("", content)
+    protocols = ""
+    ciphers = ""
+    for raw_line in global_content.splitlines():
+        line = _strip_comment(raw_line).strip()
+        if not line:
+            continue
+        match = _DIRECTIVE_RE.match(line)
+        if not match:
+            continue
+        directive = match.group(1).lower()
+        value = _strip_directive_value(match.group(2))
+        if directive == "sslprotocol":
+            protocols = value
+        elif directive == "sslciphersuite":
+            ciphers = value
+    return protocols, ciphers
+
+
 def parse_apache(content: str) -> dict:
     """httpd <VirtualHost ADDR:PORT> ... </VirtualHost> 블록을 vhost 목록으로 변환.
     WebToB처럼 이름으로 참조하는 절 구조가 아니라 블록 하나가 그대로 독립적인 값 뭉치라
     {SECTION: {...}}이 아니라 {"vhosts": [...]} 형태로 둔다."""
+    global_ssl_protocols, global_ssl_ciphers = _parse_global_ssl_defaults(content)
+
     vhosts = []
     for addr_port_match, block in _VHOST_RE.findall(content):
         port = addr_port_match.rsplit(":", 1)[-1].strip() if ":" in addr_port_match else ""
@@ -137,6 +164,8 @@ def parse_apache(content: str) -> dict:
         ssl_flag = False
         ssl_cert = ""
         ssl_key = ""
+        ssl_protocols = ""
+        ssl_ciphers = ""
         errorlog = ""
         logging = ""
         proxy_lines = []
@@ -163,6 +192,10 @@ def parse_apache(content: str) -> dict:
                 ssl_cert = value
             elif directive == "sslcertificatekeyfile":
                 ssl_key = value
+            elif directive == "sslprotocol":
+                ssl_protocols = value
+            elif directive == "sslciphersuite":
+                ssl_ciphers = value
             elif directive == "errorlog":
                 errorlog = value
             elif directive in ("customlog", "transferlog"):
@@ -179,6 +212,10 @@ def parse_apache(content: str) -> dict:
                 "ssl_flag": ssl_flag,
                 "ssl_certificate_file": ssl_cert,
                 "ssl_certificate_key_file": ssl_key,
+                # vhost 안에 직접 없으면(흔한 경우) 전역 mod_ssl 설정으로 폴백 - SSL을 안 쓰는
+                # vhost한테까지 전역값을 채우면 오해 소지가 있어 ssl_flag일 때만 채운다.
+                "ssl_protocols": ssl_protocols or (global_ssl_protocols if ssl_flag else ""),
+                "ssl_ciphers": ssl_ciphers or (global_ssl_ciphers if ssl_flag else ""),
                 "logging": logging,
                 "errorlog": errorlog,
                 "proxy_summary": ", ".join(proxy_lines),
@@ -266,6 +303,19 @@ def parse_nginx(content: str) -> dict:
     for directive, _args, body in _split_nginx_blocks(content):
         if directive.lower() != "http":
             continue
+
+        # ssl_protocols/ssl_ciphers는 server{} 블록마다 안 적고 http{} 최상위에 한 번만
+        # 두는 경우도 흔해서(Apache의 전역 SSLProtocol/SSLCipherSuite와 같은 취지) 이 두
+        # 값을 폴백으로 미리 구해둔다. _nginx_top_level_directives는 중첩 블록(server 등)
+        # 안은 건너뛰므로 http{} 자기 자신의 최상위 지시어만 잡힌다.
+        http_ssl_protocols = ""
+        http_ssl_ciphers = ""
+        for name, value in _nginx_top_level_directives(body):
+            if name == "ssl_protocols":
+                http_ssl_protocols = value
+            elif name == "ssl_ciphers":
+                http_ssl_ciphers = value
+
         for inner_directive, inner_args, inner_body in _split_nginx_blocks(body):
             if inner_directive.lower() != "server":
                 continue
@@ -277,6 +327,8 @@ def parse_nginx(content: str) -> dict:
             docroot = ""
             ssl_cert = ""
             ssl_key = ""
+            ssl_protocols = ""
+            ssl_ciphers = ""
             access_log = ""
             error_log = ""
             proxy_targets = []
@@ -295,6 +347,10 @@ def parse_nginx(content: str) -> dict:
                     ssl_cert = value
                 elif name == "ssl_certificate_key":
                     ssl_key = value
+                elif name == "ssl_protocols":
+                    ssl_protocols = value
+                elif name == "ssl_ciphers":
+                    ssl_ciphers = value
                 elif name == "access_log":
                     access_log = value.split()[0] if value.split() else value
                 elif name == "error_log":
@@ -320,6 +376,8 @@ def parse_nginx(content: str) -> dict:
                     "ssl_flag": ssl_flag,
                     "ssl_certificate_file": ssl_cert,
                     "ssl_certificate_key_file": ssl_key,
+                    "ssl_protocols": ssl_protocols or (http_ssl_protocols if ssl_flag else ""),
+                    "ssl_ciphers": ssl_ciphers or (http_ssl_ciphers if ssl_flag else ""),
                     "logging": access_log,
                     "errorlog": error_log,
                     "proxy_summary": ", ".join(proxy_targets),

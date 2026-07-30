@@ -60,14 +60,17 @@ def parse_jeus8(content: str) -> dict:
     admin_server_name = _text(root, "admin-server-name")
 
     # deployed-application은 target-server/name으로 컨테이너를 참조 - 서버 이름별로 모아둔다.
+    # context-path는 배포 환경에 따라 대부분 "/"로만 찍혀 있어(URL 루트) 앱을 구분하는 데
+    # 도움이 안 되고, 실제로 어떤 앱인지 구분되는 값은 배포 경로(path, 예: "/deploy/cmp")라
+    # id와 함께 보여준다.
     apps_by_server: dict[str, list[str]] = {}
     for app in root.findall("deployed-applications/deployed-application"):
         server_name = _text(app, "target-server/name")
         if not server_name:
             continue
-        context_path = _text(app, "context-path")
+        app_path = _text(app, "path")
         app_id = _text(app, "id")
-        label = f"{context_path} ({app_id})" if app_id else context_path
+        label = f"{app_path} ({app_id})" if app_id else app_path
         apps_by_server.setdefault(server_name, []).append(label)
 
     containers = []

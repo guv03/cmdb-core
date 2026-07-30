@@ -4,7 +4,16 @@
 
 {% block content %}
 {% csrf_token %}
-<h1 class="title is-4">Apache 목록</h1>
+<div class="level">
+  <div class="level-left">
+    <h1 class="title is-4">Apache 목록</h1>
+  </div>
+  <div class="level-right">
+    <div class="buttons">
+      <a class="button is-light" href="{% url 'dashboard-apache-vhost-export' %}">엑셀 다운로드</a>
+    </div>
+  </div>
+</div>
 <p class="subtitle is-6 has-text-grey">VirtualHost 하나가 한 행입니다 — 여러 서버를 가로질러 vhost 단위로 검색·정렬합니다. Proxy 대상은 ProxyPass 요약입니다(경로 단위 조회는 상세 화면 참고).</p>
 
 <form class="field has-addons" method="get">
@@ -26,6 +35,8 @@
         <th><a class="has-text-dark" href="{% querystring sort=columns.port.next_sort page=None %}">Port</a></th>
         <th><a class="has-text-dark" href="{% querystring sort=columns.ssl_flag.next_sort page=None %}">SSL</a></th>
         <th>SSL 인증서</th>
+        <th><a class="has-text-dark" href="{% querystring sort=columns.ssl_protocols.next_sort page=None %}">SSL Protocols</a></th>
+        <th>SSL Ciphers</th>
         <th><a class="has-text-dark" href="{% querystring sort=columns.docroot.next_sort page=None %}">DocRoot</a></th>
         <th><a class="has-text-dark" href="{% querystring sort=columns.logging.next_sort page=None %}">Logging</a></th>
         <th><a class="has-text-dark" href="{% querystring sort=columns.errorlog.next_sort page=None %}">ErrorLog</a></th>
@@ -42,6 +53,8 @@
         <td>{{ vhost.port|default:"" }}</td>
         <td>{% if vhost.ssl_flag %}<span class="tag is-success">SSL</span>{% endif %}</td>
         <td style="word-break: break-all;">{{ vhost.ssl_certificate_file|default:"" }}</td>
+        <td>{{ vhost.ssl_protocols|default:"" }}</td>
+        <td style="word-break: break-all;">{{ vhost.ssl_ciphers|default:"" }}</td>
         <td>{{ vhost.docroot|default:"" }}</td>
         <td>{{ vhost.logging|default:"" }}</td>
         <td>{{ vhost.errorlog|default:"" }}</td>
@@ -52,7 +65,7 @@
         </td>
       </tr>
       {% empty %}
-      <tr><td colspan="11" class="has-text-grey">등록된 vhost가 없습니다.</td></tr>
+      <tr><td colspan="13" class="has-text-grey">등록된 vhost가 없습니다.</td></tr>
       {% endfor %}
     </tbody>
   </table>

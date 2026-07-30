@@ -5,6 +5,16 @@
 
 1.0.6까지의 이력은 이 파일 도입 전이라 별도 기록 없음 — `WORKLOG.md`의 해당 날짜 항목 참고.
 
+## 1.0.17
+
+- 통합대시보드 신규 — 상단 "CMDB" 로고 클릭 시 이동(`/dashboard/`, 이전엔 연결된 화면이 없어 404였음). OS/WEB/WAS를 카테고리별 개수 타일로 한눈에 보여주고, 타일을 누르면 그 아래 도넛 차트로 하위 분포(OS는 버전, WEB/WAS는 솔루션 버전)를 펼쳐 보여준다. 세 섹션 다 같은 코드(`_build_category_tiles`/`_breakdown_by_field`)를 공유해서 나중에 섹션이 늘어나도 뷰에 한 줄만 추가하면 됨
+- 자산 상세를 모달 대신 실제 페이지(`/dashboard/assets/<pk>/`)로 신규 — 메인 목록과 같은 컬럼(동적 필드 포함)을 가로 스크롤 대신 세로 표로 보여줌. admin에서 필드를 추가/변경해도 코드 수정 없이 그대로 반영됨. 원본 facts는 접어서(`<details>`) 유지, 편집은 목록 화면에서만(중첩 모달 방지)
+- WebToB vhost의 Logging/ErrorLog가 `*LOGGING`절 엔트리 이름(예: `log1`) 대신 실제 로그 경로를 보여주도록 수정 — 이름을 못 찾으면 기존처럼 이름값으로 폴백
+- Apache/Nginx vhost에도 WebToB처럼 SSL Protocols/Ciphers 노출. `<VirtualHost>`/`server{}` 안에 값이 없으면 전역(mod_ssl 공통 설정/`http{}`) 값으로 폴백. WebToB의 "SSL RequiredCiphers" 컬럼 정렬은 제거(TextField/Oracle NCLOB이라 `ORA-00932` 위험 — Apache/Nginx의 동일 컬럼은 처음부터 정렬 미노출로 설계)
+- 엑셀 다운로드가 없던 화면 10개(변경 이력/WEB 목록·변경 이력/WebToB·Apache·Nginx vhost 목록/WAS 목록·변경 이력/JEUS8 컨테이너 목록/어플리케이션)에 다운로드 버튼 추가 — 검색 필터 무시하고 항상 전체 데이터
+- 자산 MANUAL 필드 엑셀 다운로드/업로드가 이제 AUTO 필드도 참고용으로 같이 싣는다(편집은 여전히 MANUAL만 반영) — AUTO 컬럼이 섞인 채로 재업로드해도 더 이상 에러 나지 않음
+- WAS(JEUS8) 컨테이너의 "배포된 앱" 표시가 `context-path`(대부분 `/`라 앱 구분이 안 됨) 대신 실제 배포 경로(`path`)를 `id`와 함께 보여주도록 수정
+
 ## 1.0.16
 
 - WAS(JEUS 8) 설정 파싱 추가 — 신규 `was` 앱, `POST /api/was/`(`kind=jeus8`)가 domain.xml을 파싱해 컨테이너(`<server>`) 단위로 노출. 대시보드에 `/dashboard/was/`(공통 목록), `/dashboard/was/jeus8/containers/`(JEUS8 컨테이너 목록), `/dashboard/was/<pk>/`(상세), `/dashboard/was/changes/`(변경 이력) 신규 — 상단 내비게이션에 "WAS" 드롭다운 추가

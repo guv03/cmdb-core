@@ -4,7 +4,16 @@
 
 {% block content %}
 {% csrf_token %}
-<h1 class="title is-4">어플리케이션</h1>
+<div class="level">
+  <div class="level-left">
+    <h1 class="title is-4">어플리케이션</h1>
+  </div>
+  <div class="level-right">
+    <div class="buttons">
+      <a class="button is-light" href="{% url 'dashboard-process-export' %}">엑셀 다운로드</a>
+    </div>
+  </div>
+</div>
 <p class="subtitle is-6 has-text-grey">AWX가 push한 ps -ef 스냅샷에서 등록된 패턴에 매칭된 어플리케이션을 자산별로 보여줍니다.</p>
 
 <form class="field has-addons" method="get">

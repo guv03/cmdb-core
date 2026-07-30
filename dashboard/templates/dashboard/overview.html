@@ -1,0 +1,291 @@
+{% extends "dashboard/base.html" %}
+
+{% block title %}통합대시보드 - CMDB{% endblock %}
+
+{% block extra_head %}
+<style>
+  :root {
+    --ov-s1: #2a78d6; /* blue */
+    --ov-s2: #eb6834; /* orange */
+    --ov-s3: #1baf7a; /* aqua */
+    --ov-s4: #eda100; /* yellow */
+    --ov-s5: #e87ba4; /* magenta */
+    --ov-s6: #008300; /* green - 기타 */
+    --ov-neutral: #9a988f; /* 미수집 */
+  }
+
+  .ov-section { margin-bottom: 32px; }
+  .ov-section h2 { margin-bottom: 12px; }
+
+  .ov-tile-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .ov-tile {
+    border: 2px solid var(--bulma-border);
+    border-radius: 6px;
+    padding: 16px 18px;
+    background: var(--bulma-scheme-main-bis);
+    text-align: left;
+    font: inherit;
+    color: inherit;
+    width: 100%;
+  }
+  button.ov-tile { cursor: pointer; transition: border-color 0.12s, background 0.12s; }
+  button.ov-tile:hover { border-color: var(--ov-tile-color, var(--bulma-link)); }
+  button.ov-tile.is-selected {
+    border-color: var(--ov-tile-color, var(--bulma-link));
+    background: var(--bulma-scheme-main);
+  }
+  .ov-tile.is-total {
+    grid-column: span 3;
+    border-color: var(--bulma-link);
+    background: var(--bulma-scheme-main);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .ov-tile .ov-swatch { width: 10px; height: 10px; border-radius: 2px; display: inline-block; margin-right: 6px; }
+  .ov-tile .ov-label { font-size: 0.85rem; color: var(--bulma-text-weak); display: flex; align-items: center; margin-bottom: 6px; }
+  .ov-tile.is-total .ov-label { margin-bottom: 0; font-size: 0.95rem; }
+  .ov-tile .ov-num { font-size: 1.6rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .ov-tile.is-total .ov-num { font-size: 2.1rem; }
+  .ov-tile .ov-pct { font-size: 0.8rem; color: var(--bulma-text-weak); margin-left: 6px; font-variant-numeric: tabular-nums; }
+  .ov-tile .ov-hint { display: block; font-size: 0.75rem; color: var(--bulma-text-weak); margin-top: 6px; }
+
+  .ov-drill-panel {
+    margin-top: 16px;
+    border: 2px solid var(--bulma-border);
+    border-radius: 6px;
+    background: var(--bulma-scheme-main-bis);
+    padding: 20px 22px;
+    display: none;
+  }
+  .ov-drill-panel.is-open { display: block; }
+  .ov-drill-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+  .ov-drill-head h3 { font-size: 1rem; font-weight: 700; margin: 0; display: flex; align-items: center; gap: 8px; }
+  .ov-drill-close {
+    border: none; background: transparent; color: var(--bulma-text-weak); font-size: 1.1rem;
+    cursor: pointer; line-height: 1; padding: 4px 6px; border-radius: 4px;
+  }
+  .ov-drill-close:hover { background: var(--bulma-border); }
+  .ov-drill-empty { font-size: 0.9rem; color: var(--bulma-text-weak); }
+
+  .ov-donut-layout { display: flex; gap: 36px; align-items: center; flex-wrap: wrap; }
+  .ov-donut-wrap { position: relative; flex: 0 0 auto; }
+  .ov-donut-center { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; pointer-events: none; }
+  .ov-donut-center .ov-num { font-size: 1.3rem; font-weight: 700; font-variant-numeric: tabular-nums; display: block; }
+  .ov-donut-center .ov-label { font-size: 0.65rem; color: var(--bulma-text-weak); }
+  .ov-legend { display: flex; flex-direction: column; gap: 9px; flex: 1; min-width: 180px; }
+  .ov-legend-row { display: flex; align-items: center; gap: 10px; font-size: 0.9rem; }
+  .ov-legend-row .ov-swatch { width: 11px; height: 11px; border-radius: 3px; flex: 0 0 auto; }
+  .ov-legend-row .ov-lname { flex: 1; }
+  .ov-legend-row .ov-lcount { font-weight: 700; font-variant-numeric: tabular-nums; }
+  .ov-legend-row .ov-lpct { color: var(--bulma-text-weak); font-size: 0.8rem; width: 38px; text-align: right; font-variant-numeric: tabular-nums; }
+
+  #ovDonutTooltip {
+    position: fixed; pointer-events: none; background: #17181c; color: #fff;
+    font-size: 0.78rem; padding: 6px 10px; border-radius: 5px; opacity: 0;
+    transition: opacity 0.1s; z-index: 30; white-space: nowrap;
+  }
+
+  @media (max-width: 640px) {
+    .ov-tile-grid { grid-template-columns: repeat(2, 1fr); }
+    .ov-tile.is-total { grid-column: span 2; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<h1 class="title is-4">통합대시보드</h1>
+
+{% for section in sections %}
+<div class="ov-section" data-section="{{ section.key }}">
+  <h2 class="title is-6">{{ section.title }}</h2>
+  <div class="ov-tile-grid">
+    <div class="ov-tile is-total">
+      <span class="ov-label">전체</span>
+      <span class="ov-num">{{ section.total }}</span>
+    </div>
+    {% for tile in section.tiles %}
+    {% if tile.clickable %}
+    <button type="button" class="ov-tile" data-key="{{ tile.key }}" data-name="{{ tile.name }}"
+            style="--ov-tile-color: var(--ov-{{ tile.slot }});">
+      <span class="ov-label"><span class="ov-swatch" style="background: var(--ov-{{ tile.slot }});"></span>{{ tile.name }}</span>
+      <span class="ov-num">{{ tile.count }}{% if section.total %}<span class="ov-pct">{% widthratio tile.count section.total 100 %}%</span>{% endif %}</span>
+      <span class="ov-hint">버전별 보기 ›</span>
+    </button>
+    {% else %}
+    <div class="ov-tile">
+      <span class="ov-label"><span class="ov-swatch" style="background: {% if tile.slot %}var(--ov-{{ tile.slot }}){% else %}var(--ov-neutral){% endif %};"></span>{{ tile.name }}</span>
+      <span class="ov-num">{{ tile.count }}{% if section.total %}<span class="ov-pct">{% widthratio tile.count section.total 100 %}%</span>{% endif %}</span>
+    </div>
+    {% endif %}
+    {% endfor %}
+  </div>
+  <div class="ov-drill-panel"></div>
+</div>
+{% endfor %}
+
+<div id="ovDonutTooltip"></div>
+{% endblock %}
+
+{% block extra_body %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  var tooltip = document.getElementById('ovDonutTooltip');
+  var drilldownUrl = '{% url "dashboard-overview-drilldown" %}';
+
+  function resolveVar(name) {
+    return getComputedStyle(document.body).getPropertyValue(name).trim();
+  }
+
+  function tint(hex, pct) {
+    var r = parseInt(hex.substr(1, 2), 16), g = parseInt(hex.substr(3, 2), 16), b = parseInt(hex.substr(5, 2), 16);
+    r = Math.round(r + (255 - r) * pct);
+    g = Math.round(g + (255 - g) * pct);
+    b = Math.round(b + (255 - b) * pct);
+    return 'rgb(' + r + ',' + g + ',' + b + ')';
+  }
+
+  function initSection(sectionEl) {
+    var section = sectionEl.dataset.section;
+    var panel = sectionEl.querySelector('.ov-drill-panel');
+    var activeKey = null;
+    var activeBtn = null;
+
+    function closePanel() {
+      activeKey = null;
+      if (activeBtn) activeBtn.classList.remove('is-selected');
+      activeBtn = null;
+      panel.classList.remove('is-open');
+      panel.innerHTML = '';
+      tooltip.style.opacity = '0';
+    }
+
+    function openPanel(key, name, btn, colorVar) {
+      activeKey = key;
+      if (activeBtn) activeBtn.classList.remove('is-selected');
+      activeBtn = btn;
+      btn.classList.add('is-selected');
+      panel.classList.add('is-open');
+      panel.innerHTML = '<p class="has-text-grey">불러오는 중...</p>';
+
+      fetch(drilldownUrl + '?section=' + encodeURIComponent(section) + '&key=' + encodeURIComponent(key))
+        .then(function (res) { return res.json(); })
+        .then(function (data) { renderDrill(name, data.items || [], colorVar); })
+        .catch(function () { panel.innerHTML = '<p class="has-text-grey">불러오기 실패</p>'; });
+    }
+
+    function renderDrill(name, items, colorVar) {
+      if (!items.length) {
+        panel.innerHTML =
+          '<div class="ov-drill-head"><h3><span class="ov-swatch" style="background:var(' + colorVar + ')"></span>' + name + '</h3>' +
+          '<button type="button" class="ov-drill-close" aria-label="닫기">✕</button></div>' +
+          '<p class="ov-drill-empty">아직 세부 정보가 없습니다.</p>';
+        panel.querySelector('.ov-drill-close').addEventListener('click', closePanel);
+        return;
+      }
+
+      var subTotal = items.reduce(function (a, v) { return a + v.count; }, 0);
+      var baseHex = resolveVar(colorVar);
+      var steps = items.map(function (_, i) { return i / Math.max(items.length - 1, 1) * 0.55; });
+      var colors = items.map(function (_, i) { return tint(baseHex, steps[i]); });
+
+      panel.innerHTML =
+        '<div class="ov-drill-head"><h3><span class="ov-swatch" style="background:' + baseHex + '"></span>' + name + ' 세부 개수</h3>' +
+        '<button type="button" class="ov-drill-close" aria-label="닫기">✕</button></div>' +
+        '<div class="ov-donut-layout">' +
+        '<div class="ov-donut-wrap"><canvas width="160" height="160" style="width:160px;height:160px;"></canvas>' +
+        '<div class="ov-donut-center"><span class="ov-num">' + subTotal + '</span><span class="ov-label">' + name + '</span></div></div>' +
+        '<div class="ov-legend"></div></div>';
+
+      panel.querySelector('.ov-drill-close').addEventListener('click', closePanel);
+
+      var legendEl = panel.querySelector('.ov-legend');
+      items.forEach(function (v, i) {
+        var pct = ((v.count / subTotal) * 100).toFixed(0);
+        var row = document.createElement('div');
+        row.className = 'ov-legend-row';
+        row.innerHTML =
+          '<span class="ov-swatch" style="background:' + colors[i] + '"></span>' +
+          '<span class="ov-lname">' + v.name + '</span>' +
+          '<span class="ov-lcount">' + v.count + '</span>' +
+          '<span class="ov-lpct">' + pct + '%</span>';
+        legendEl.appendChild(row);
+      });
+
+      var canvas = panel.querySelector('canvas');
+      var ctx = canvas.getContext('2d');
+      var dpr = window.devicePixelRatio || 1;
+      var size = 160;
+      canvas.width = size * dpr;
+      canvas.height = size * dpr;
+      ctx.scale(dpr, dpr);
+      var cx = size / 2, cy = size / 2, rOuter = 72, rInner = 44, gap = 0.025;
+      var segments = [];
+
+      function draw(hoverIndex) {
+        ctx.clearRect(0, 0, size, size);
+        var start = -Math.PI / 2;
+        segments = [];
+        items.forEach(function (v, i) {
+          var frac = v.count / subTotal;
+          var end = start + frac * Math.PI * 2;
+          var segStart = start + gap;
+          var segEnd = end - gap;
+          var ro = i === hoverIndex ? rOuter + 4 : rOuter;
+          ctx.beginPath();
+          ctx.arc(cx, cy, ro, segStart, segEnd);
+          ctx.arc(cx, cy, rInner, segEnd, segStart, true);
+          ctx.closePath();
+          ctx.fillStyle = colors[i];
+          ctx.fill();
+          segments.push({ start: segStart, end: segEnd });
+          start = end;
+        });
+      }
+      draw(-1);
+
+      canvas.addEventListener('mousemove', function (e) {
+        var rect = canvas.getBoundingClientRect();
+        var x = e.clientX - rect.left - cx, y = e.clientY - rect.top - cy;
+        var dist = Math.sqrt(x * x + y * y);
+        var angle = Math.atan2(y, x);
+        if (angle < -Math.PI / 2) angle += Math.PI * 2;
+        var hover = -1;
+        if (dist >= rInner && dist <= rOuter + 4) {
+          for (var i = 0; i < segments.length; i++) {
+            if (angle >= segments[i].start - 0.02 && angle <= segments[i].end + 0.02) { hover = i; break; }
+          }
+        }
+        draw(hover);
+        if (hover >= 0) {
+          var v = items[hover];
+          var pct = ((v.count / subTotal) * 100).toFixed(0);
+          tooltip.textContent = name + ' ' + v.name + ' · ' + v.count + '개 (' + pct + '%)';
+          tooltip.style.left = e.clientX + 14 + 'px';
+          tooltip.style.top = e.clientY + 14 + 'px';
+          tooltip.style.opacity = '1';
+          canvas.style.cursor = 'pointer';
+        } else {
+          tooltip.style.opacity = '0';
+          canvas.style.cursor = 'default';
+        }
+      });
+      canvas.addEventListener('mouseleave', function () { draw(-1); tooltip.style.opacity = '0'; });
+    }
+
+    sectionEl.querySelectorAll('.ov-tile[data-key]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var key = btn.dataset.key;
+        var name = btn.dataset.name;
+        var colorVar = btn.style.getPropertyValue('--ov-tile-color').replace(/^var\(|\)$/g, '');
+        if (activeKey === key) {
+          closePanel();
+        } else {
+          openPanel(key, name, btn, colorVar);
+        }
+      });
+    });
+  }
+
+  document.querySelectorAll('.ov-section').forEach(initSection);
+});
+</script>
+{% endblock %}

@@ -3,12 +3,13 @@ import json
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.views import LoginView
+from django.db.models import Prefetch
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse_lazy
 from django.utils import timezone
 from django.views import View
-from django.views.generic import DetailView, ListView
+from django.views.generic import DetailView, ListView, TemplateView
 from rest_framework.authentication import SessionAuthentication
 from rest_framework.generics import ListAPIView
 from rest_framework.permissions import IsAuthenticated
@@ -19,6 +20,18 @@ from dashboard.excel_import import (
     apply_updates,
     export_manual_field_workbook,
     parse_manual_field_workbook,
+)
+from dashboard.list_export import (
+    export_apache_vhost_workbook,
+    export_change_history_workbook,
+    export_jeus_container_workbook,
+    export_nginx_vhost_workbook,
+    export_process_workbook,
+    export_was_config_workbook,
+    export_was_history_workbook,
+    export_webconfig_history_workbook,
+    export_webconfig_workbook,
+    export_webtob_vhost_workbook,
 )
 from dashboard.queries import (
     build_jeus_container_rows,
@@ -32,10 +45,16 @@ from dashboard.queries import (
     get_dynamic_field_definitions,
     get_jeus_container_queryset,
     get_nginx_vhost_queryset,
+    get_os_overview_data,
+    get_os_version_breakdown,
     get_process_queryset,
     get_was_config_queryset,
     get_was_history_queryset,
+    get_was_overview_data,
+    get_was_version_breakdown,
+    get_web_overview_data,
     get_web_service_queryset,
+    get_web_version_breakdown,
     get_webconfig_history_queryset,
     get_webconfig_queryset,
     get_webtob_vhost_queryset,
@@ -60,6 +79,42 @@ class DashboardLoginView(LoginView):
     template_name = "dashboard/login.html"
 
 
+class OverviewView(LoginRequiredMixin, TemplateView):
+    """상단 "CMDB" 로고를 누르면 오는 통합대시보드 홈 - OS/WEB/WAS 섹션을 카테고리별 개수
+    타일로 한눈에 보여준다. sections를 리스트로 둬서 나중에 섹션이 더 늘어나도(예: 서비스
+    조회) 여기 한 줄만 추가하면 되고 템플릿/JS는 그대로 재사용된다."""
+
+    template_name = "dashboard/overview.html"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["sections"] = [
+            {"key": "os", "title": "OS", **get_os_overview_data()},
+            {"key": "web", "title": "WEB", **get_web_overview_data()},
+            {"key": "was", "title": "WAS", **get_was_overview_data()},
+        ]
+        return context
+
+
+class OverviewDrilldownView(LoginRequiredMixin, View):
+    """통합대시보드의 카테고리 타일 클릭 시 그 아래 도넛으로 펼쳐 보여줄 하위 분포(AJAX).
+    section으로 어느 축(OS/WEB/WAS)인지 고르고 key로 그 축 안의 카테고리를 지정한다."""
+
+    BREAKDOWN_FUNCS = {
+        "os": get_os_version_breakdown,
+        "web": get_web_version_breakdown,
+        "was": get_was_version_breakdown,
+    }
+
+    def get(self, request):
+        section = request.GET.get("section", "")
+        key = request.GET.get("key", "")
+        breakdown_func = self.BREAKDOWN_FUNCS.get(section)
+        if breakdown_func is None or not key:
+            return JsonResponse({"error": "section/key 파라미터가 올바르지 않습니다."}, status=400)
+        return JsonResponse({"section": section, "key": key, "items": breakdown_func(key)})
+
+
 class AssetListView(LoginRequiredMixin, ListView):
     template_name = "dashboard/asset_list.html"
     context_object_name = "assets"
@@ -77,12 +132,30 @@ class AssetListView(LoginRequiredMixin, ListView):
         return context
 
 
-class AssetFactsDetailView(LoginRequiredMixin, View):
-    def get(self, request, pk):
-        asset = get_object_or_404(Asset, pk=pk)
-        hostfact = getattr(asset, "hostfact", None)
+class AssetDetailView(LoginRequiredMixin, DetailView):
+    """자산 목록 행 클릭 시 모달로 뜨는 상세 - 메인 테이블과 같은 build_rows()를 재사용해서
+    같은 컬럼(동적 필드 포함)을 가로 스크롤 대신 세로 label-value 표로 보여준다. 컬럼이
+    admin에서 늘어나도 이 화면은 코드 수정 없이 그대로 따라간다(메인 테이블과 동일한 원리).
+    편집은 여기서 하지 않음 - MANUAL 필드 편집 모달을 이 모달 위에 또 띄우면 중첩 모달이
+    되고, 이 화면에 뜨는 모달 위에 또 모달을 띄우는 대신 prompt()를 쓰는 기존 관례로는
+    checkbox/select/date 타입까지 있는 MANUAL 필드를 제대로 못 다뤄서 read-only로 유지."""
+
+    template_name = "dashboard/asset_detail.html"
+    context_object_name = "asset"
+
+    def get_queryset(self):
+        return Asset.objects.select_related("hostfact").prefetch_related(
+            Prefetch("hostfact__values", queryset=HostFactValue.objects.select_related("field_definition"))
+        )
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        dynamic_field_definitions = list(get_dynamic_field_definitions())
+        context["row"] = build_rows([self.object], dynamic_field_definitions)[0]
+        hostfact = getattr(self.object, "hostfact", None)
         raw_facts = hostfact.raw_facts if hostfact is not None else {}
-        return JsonResponse({"hostname": asset.hostname, "raw_facts": raw_facts})
+        context["raw_facts_json"] = json.dumps(raw_facts, indent=2, ensure_ascii=False)
+        return context
 
 
 class AssetManualFieldUpdateView(LoginRequiredMixin, View):
@@ -217,6 +290,11 @@ class ChangeHistoryListView(LoginRequiredMixin, ListView):
         return context
 
 
+class ChangeHistoryExportView(LoginRequiredMixin, View):
+    def get(self, request):
+        return export_change_history_workbook()
+
+
 class PendingChangeDecisionView(LoginRequiredMixin, View):
     action = None  # "approve" or "reject"
 
@@ -284,6 +362,11 @@ class WebConfigListView(LoginRequiredMixin, ListView):
         return context
 
 
+class WebConfigExportView(LoginRequiredMixin, View):
+    def get(self, request):
+        return export_webconfig_workbook()
+
+
 class WebConfigDetailView(LoginRequiredMixin, DetailView):
     template_name = "dashboard/webconfig_detail.html"
     context_object_name = "source"
@@ -316,6 +399,11 @@ class WebConfigHistoryListView(LoginRequiredMixin, ListView):
         return context
 
 
+class WebConfigHistoryExportView(LoginRequiredMixin, View):
+    def get(self, request):
+        return export_webconfig_history_workbook()
+
+
 class WebtobVhostListView(LoginRequiredMixin, ListView):
     """웹 설정 목록(서버 단위)과 달리 vhost 하나 = 행 하나로 여러 서버를 가로질러 본다.
     WebToB 전용 화면(SvrGroup/URI 등 WebToB 개념이라 kind 공통 화면으로는 안 만듦)."""
@@ -342,7 +430,6 @@ class WebtobVhostListView(LoginRequiredMixin, ListView):
                 "limit_request_body",
                 "ssl_flag",
                 "ssl_protocols",
-                "ssl_ciphers",
                 "logging",
                 "errorlog",
                 "service_name",
@@ -351,6 +438,11 @@ class WebtobVhostListView(LoginRequiredMixin, ListView):
         )
         context["current_q"] = self.request.GET.get("q", "")
         return context
+
+
+class WebtobVhostExportView(LoginRequiredMixin, View):
+    def get(self, request):
+        return export_webtob_vhost_workbook()
 
 
 class WebtobVhostServiceUpdateView(LoginRequiredMixin, View):
@@ -381,11 +473,16 @@ class ApacheVhostListView(LoginRequiredMixin, ListView):
         context = super().get_context_data(**kwargs)
         context["columns"] = build_sort_columns(
             self.request,
-            ["hostname", "domain", "hostalias", "port", "docroot", "ssl_flag", "logging", "errorlog", "service_name"],
+            ["hostname", "domain", "hostalias", "port", "docroot", "ssl_flag", "ssl_protocols", "logging", "errorlog", "service_name"],
             default="hostname",
         )
         context["current_q"] = self.request.GET.get("q", "")
         return context
+
+
+class ApacheVhostExportView(LoginRequiredMixin, View):
+    def get(self, request):
+        return export_apache_vhost_workbook()
 
 
 class ApacheVhostServiceUpdateView(LoginRequiredMixin, View):
@@ -411,11 +508,16 @@ class NginxVhostListView(LoginRequiredMixin, ListView):
         context = super().get_context_data(**kwargs)
         context["columns"] = build_sort_columns(
             self.request,
-            ["hostname", "domain", "hostalias", "port", "docroot", "ssl_flag", "logging", "errorlog", "service_name"],
+            ["hostname", "domain", "hostalias", "port", "docroot", "ssl_flag", "ssl_protocols", "logging", "errorlog", "service_name"],
             default="hostname",
         )
         context["current_q"] = self.request.GET.get("q", "")
         return context
+
+
+class NginxVhostExportView(LoginRequiredMixin, View):
+    def get(self, request):
+        return export_nginx_vhost_workbook()
 
 
 class NginxVhostServiceUpdateView(LoginRequiredMixin, View):
@@ -451,6 +553,11 @@ class WasConfigListView(LoginRequiredMixin, ListView):
         return context
 
 
+class WasConfigExportView(LoginRequiredMixin, View):
+    def get(self, request):
+        return export_was_config_workbook()
+
+
 class WasConfigDetailView(LoginRequiredMixin, DetailView):
     template_name = "dashboard/was_detail.html"
     context_object_name = "source"
@@ -477,6 +584,11 @@ class WasConfigHistoryListView(LoginRequiredMixin, ListView):
         return context
 
 
+class WasConfigHistoryExportView(LoginRequiredMixin, View):
+    def get(self, request):
+        return export_was_history_workbook()
+
+
 class JeusContainerListView(LoginRequiredMixin, ListView):
     """WebtobVhostListView와 같은 취지의 JEUS8 전용 목록 - 다만 Hostname 컬럼은
     container.asset(컨테이너 자신의 node-name으로 해석된 자산)을 쓴다. source.asset(=push를
@@ -499,6 +611,11 @@ class JeusContainerListView(LoginRequiredMixin, ListView):
         )
         context["current_q"] = self.request.GET.get("q", "")
         return context
+
+
+class JeusContainerExportView(LoginRequiredMixin, View):
+    def get(self, request):
+        return export_jeus_container_workbook()
 
 
 class JeusContainerServiceUpdateView(LoginRequiredMixin, View):
@@ -613,6 +730,11 @@ class ProcessListView(LoginRequiredMixin, ListView):
         context = super().get_context_data(**kwargs)
         context["columns"] = build_sort_columns(self.request, ["hostname", "collected_at"], default="hostname")
         return context
+
+
+class ProcessExportView(LoginRequiredMixin, View):
+    def get(self, request):
+        return export_process_workbook()
 
 
 class ProcessDetailView(LoginRequiredMixin, DetailView):
