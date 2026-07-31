@@ -70,7 +70,7 @@ def sync_service_domains(vhosts) -> None:
                 domain=domains[0],
                 aliases=", ".join(domains[1:]),
                 port=vhost.port,
-                service_name=vhost.service_name,
+                service_name=vhost.service.name if vhost.service_id else "",
             )
         )
     WebServiceDomain.objects.bulk_create(rows)

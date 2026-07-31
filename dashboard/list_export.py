@@ -149,7 +149,7 @@ def export_webtob_vhost_workbook() -> HttpResponse:
                 vhost.ssl.required_ciphers if vhost.ssl else "",
                 vhost.logging,
                 vhost.errorlog,
-                vhost.service_name,
+                vhost.service.name if vhost.service_id else "",
                 row["svrgroup_summary"],
                 row["server_summary"],
                 row["uri_summary"],
@@ -183,7 +183,7 @@ def export_apache_vhost_workbook() -> HttpResponse:
             vhost.logging,
             vhost.errorlog,
             vhost.proxy_summary,
-            vhost.service_name,
+            vhost.service.name if vhost.service_id else "",
         ]
         for vhost in vhosts
     ]
@@ -212,7 +212,7 @@ def export_nginx_vhost_workbook() -> HttpResponse:
             vhost.logging,
             vhost.errorlog,
             vhost.proxy_summary,
-            vhost.service_name,
+            vhost.service.name if vhost.service_id else "",
         ]
         for vhost in vhosts
     ]
@@ -266,7 +266,7 @@ def export_jeus_container_workbook() -> HttpResponse:
             row["container"].ssl_port,
             row["container"].deployed_apps_summary,
             row["webtob_connector_summary"],
-            row["container"].service_name,
+            row["container"].service.name if row["container"].service_id else "",
         ]
         for row in build_jeus_container_rows(containers)
     ]

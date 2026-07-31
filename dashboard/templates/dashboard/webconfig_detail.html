@@ -40,7 +40,7 @@
       <tr>
         <th style="width: 12em;">서비스명</th>
         <td class="vhost-service-cell dash-editable-cell" data-service-url="/dashboard/webconfig/vhost/{{ vhost.id }}/service/">
-          <span class="vhost-service-value">{{ vhost.service_name }}</span><span class="dash-manual-icon" aria-hidden="true">✎</span>
+          <span class="vhost-service-value">{{ vhost.service.name|default:"" }}</span><span class="dash-manual-icon" aria-hidden="true">✎</span>
         </td>
       </tr>
       <tr><th>Hostname</th><td>{{ vhost.hostname }}</td></tr>
@@ -115,7 +115,7 @@
       <tr>
         <th style="width: 12em;">서비스명</th>
         <td class="vhost-service-cell dash-editable-cell" data-service-url="/dashboard/webconfig/apache/vhost/{{ vhost.id }}/service/">
-          <span class="vhost-service-value">{{ vhost.service_name }}</span><span class="dash-manual-icon" aria-hidden="true">✎</span>
+          <span class="vhost-service-value">{{ vhost.service.name|default:"" }}</span><span class="dash-manual-icon" aria-hidden="true">✎</span>
         </td>
       </tr>
       <tr><th>Domain</th><td>{{ vhost.hostname }}</td></tr>
@@ -150,7 +150,7 @@
       <tr>
         <th style="width: 12em;">서비스명</th>
         <td class="vhost-service-cell dash-editable-cell" data-service-url="/dashboard/webconfig/nginx/vhost/{{ vhost.id }}/service/">
-          <span class="vhost-service-value">{{ vhost.service_name }}</span><span class="dash-manual-icon" aria-hidden="true">✎</span>
+          <span class="vhost-service-value">{{ vhost.service.name|default:"" }}</span><span class="dash-manual-icon" aria-hidden="true">✎</span>
         </td>
       </tr>
       <tr><th>Domain</th><td>{{ vhost.hostname }}</td></tr>

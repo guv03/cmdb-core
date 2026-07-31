@@ -36,20 +36,20 @@ def _resolve_webtob_server(registration_id: str, webtob_asset: Asset | None) -> 
     ).first()
 
 
-def _resolve_webtob_service_name(webtob_servers: list[WebtobServer]) -> str | None:
-    """연결된 WebtobServer들의 SvrGroup에 걸린 vhost service_name을 모아, 공백 아닌 값이
-    정확히 하나로 겹치면 그 값을 돌려준다(이중화 - 같은 서비스가 여러 WebToB 서버로 붙는
+def _resolve_webtob_service(webtob_servers: list[WebtobServer]):
+    """연결된 WebtobServer들의 SvrGroup에 걸린 vhost.service를 모아, 공백 아닌 값이
+    정확히 하나로 겹치면 그 Service를 돌려준다(이중화 - 같은 서비스가 여러 WebToB 서버로 붙는
     일반적인 경우). 값이 갈리면(서로 다른 서비스가 섞인 이상 케이스) None을 반환해
-    호출부가 기존 service_name을 그대로 두게 한다."""
-    names = set()
+    호출부가 기존 service를 그대로 두게 한다."""
+    services = set()
     for server in webtob_servers:
         if server.svrgroup_id is None:
             continue
         for vhost in server.svrgroup.vhosts.all():
-            if vhost.service_name:
-                names.add(vhost.service_name)
-    if len(names) == 1:
-        return next(iter(names))
+            if vhost.service_id:
+                services.add(vhost.service_id)
+    if len(services) == 1:
+        return next(iter(services))
     return None
 
 
@@ -93,11 +93,11 @@ def sync_jeus8(source: WasConfigSource, parsed: dict) -> None:
             if webtob_server is not None:
                 webtob_servers.append(webtob_server)
 
-        # WebToB 쪽 서비스명을 따라간다(AUTO-if-resolvable, 아니면 기존 수기 입력 값 유지) -
-        # 이중화로 여러 connector가 붙어도 실제 서비스명이 같으면 자동으로 채워짐.
-        resolved_service_name = _resolve_webtob_service_name(webtob_servers)
-        if resolved_service_name is not None:
-            container.service_name = resolved_service_name
-            container.save(update_fields=["service_name"])
+        # WebToB 쪽 서비스를 따라간다(AUTO-if-resolvable, 아니면 기존 수기 입력 값 유지) -
+        # 이중화로 여러 connector가 붙어도 실제 서비스가 같으면 자동으로 채워짐.
+        resolved_service_id = _resolve_webtob_service(webtob_servers)
+        if resolved_service_id is not None:
+            container.service_id = resolved_service_id
+            container.save(update_fields=["service"])
 
     JeusContainer.objects.filter(source=source).exclude(name__in=seen_names).delete()

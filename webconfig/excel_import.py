@@ -3,6 +3,7 @@ from dataclasses import dataclass
 import openpyxl
 from django.http import HttpResponse
 
+from core.models import Service
 from core.reconciliation import normalize_hostname
 from webconfig.models import ApacheVhost, NginxVhost, WebConfigSource, WebServiceDomain, WebtobVhost
 
@@ -220,11 +221,14 @@ def apply_service_updates(payload: list[dict]) -> tuple[int, int]:
             if service_domain is None:
                 continue
             new_value = item["new_value"]
+            service = None
+            if new_value:
+                service, _ = Service.objects.get_or_create(name=new_value)
             model = VHOST_MODELS.get(service_domain.source.kind)
             if model is not None:
                 model.objects.filter(
                     source=service_domain.source, name=service_domain.vhost_name
-                ).update(service_name=new_value)
+                ).update(service=service)
             service_domain.service_name = new_value
             service_domain.save(update_fields=["service_name"])
             changed_asset_ids.add(service_domain.source.asset_id)

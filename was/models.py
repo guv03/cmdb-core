@@ -1,6 +1,6 @@
 from django.db import models
 
-from core.models import Asset, TimeStampedModel
+from core.models import Asset, Service, TimeStampedModel
 
 
 class WasConfigSource(TimeStampedModel):
@@ -59,12 +59,15 @@ class JeusContainer(TimeStampedModel):
     listen_port = models.CharField(max_length=20, blank=True)
     ssl_port = models.CharField(max_length=20, blank=True)
     deployed_apps_summary = models.TextField(blank=True)
-    # 혼합 필드: webtob-connector로 연결된 WebToB vhost의 service_name이 정확히 하나로
-    # 겹치면 push 시점에 자동으로 덮어쓴다(was/sync.py의 _resolve_webtob_service_name -
-    # 이중화로 connector가 여러 개 붙어도 실제 서비스명은 같은 게 보통이라 자동 채움 가능).
+    # 혼합 필드: webtob-connector로 연결된 WebToB vhost의 service가 정확히 하나로
+    # 겹치면 push 시점에 자동으로 덮어쓴다(was/sync.py의 _resolve_webtob_service -
+    # 이중화로 connector가 여러 개 붙어도 실제 서비스는 같은 게 보통이라 자동 채움 가능).
     # 값이 없거나 여러 개로 갈리면(연결이 아예 없는 컨테이너 포함) 기존 값을 그대로 두고
-    # 대시보드에서 수기 입력한 값이 보존된다.
-    service_name = models.CharField(max_length=255, blank=True)
+    # 대시보드에서 수기 입력한 값이 보존된다. webconfig.WebtobVhost.service와 같은
+    # core.Service를 참조해야 오타 없이 WebToB<->JEUS 서비스 전파가 성립한다.
+    service = models.ForeignKey(
+        Service, null=True, blank=True, on_delete=models.SET_NULL, related_name="jeus_containers"
+    )
 
     class Meta:
         constraints = [

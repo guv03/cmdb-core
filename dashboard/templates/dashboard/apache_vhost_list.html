@@ -63,7 +63,7 @@
         <td>{{ vhost.proxy_summary|default:"" }}</td>
         <td class="editable-cell dash-editable-cell" data-url="/dashboard/webconfig/apache/vhost/{{ vhost.pk }}/service/"
             data-param="service_name" data-title="{{ vhost.source.asset.hostname|upper }} / {{ vhost.hostname }} - 서비스명">
-          <span class="cell-value">{{ vhost.service_name|default:"" }}</span><span class="dash-manual-icon" aria-hidden="true">✎</span>
+          <span class="cell-value">{{ vhost.service.name|default:"" }}</span><span class="dash-manual-icon" aria-hidden="true">✎</span>
         </td>
       </tr>
       {% empty %}

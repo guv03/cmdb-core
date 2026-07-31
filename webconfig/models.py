@@ -1,6 +1,6 @@
 from django.db import models
 
-from core.models import Asset, TimeStampedModel
+from core.models import Asset, Service, TimeStampedModel
 
 
 class WebConfigSource(TimeStampedModel):
@@ -101,8 +101,11 @@ class WebtobVhost(TimeStampedModel):
     logging = models.CharField(max_length=255, blank=True)
     errorlog = models.CharField(max_length=255, blank=True)
     # 수기 입력: 이 vhost가 어떤 서비스인지. AUTO 필드와 달리 push로 덮어쓰지 않음(sync_webtob이
-    # vhost를 이름으로 upsert하고 이 필드는 defaults에서 빠져있어 보존됨).
-    service_name = models.CharField(max_length=255, blank=True)
+    # vhost를 이름으로 upsert하고 이 필드는 defaults에서 빠져있어 보존됨). Service FK라
+    # 오타 없이 WAS(JeusContainer.service)와 정확히 같은 값을 참조할 수 있다.
+    service = models.ForeignKey(
+        Service, null=True, blank=True, on_delete=models.SET_NULL, related_name="webtob_vhosts"
+    )
 
     class Meta:
         constraints = [
@@ -155,7 +158,8 @@ class WebServiceDomain(TimeStampedModel):
     """도메인 기준으로 서비스를 조회하기 위한 요약 테이블. vhost 하나당 한 행(kind별 sync 함수가
     push마다 통째로 재생성). 주 도메인(hostname)만 domain에 담고 나머지 별칭은 aliases에
     콤마로 모아둬 화면이 vhost 개수만큼만 늘어나게 한다 - 검색은 둘 다 대상으로 한다.
-    service_name은 해당 vhost의 값을 그대로 복사해두는 것이라 vhost 쪽 수기 입력이 바뀌면
+    service_name은 해당 vhost.service.name을 그대로 복사해두는 것이라(Service FK가 아니라
+    이름 문자열만 저장 - 도메인 기준 조회/검색에는 이 정도로 충분) vhost 쪽 서비스가 바뀌면
     함께 갱신해야 한다."""
 
     source = models.ForeignKey(WebConfigSource, on_delete=models.CASCADE, related_name="service_domains")
@@ -197,10 +201,10 @@ class WebtobUri(TimeStampedModel):
 class ApacheVhost(TimeStampedModel):
     """<VirtualHost> 블록 하나 = 행 하나. WebToB의 SvrGroup/Server/Uri 같은 관계형 모델링은
     안 하고(리버스 프록시 용도뿐이라 그 정도 깊이가 불필요) ProxyPass 대상은 proxy_summary에
-    요약 문자열로만 담는다. hostname/hostalias/port/service_name 필드명을 WebtobVhost와
+    요약 문자열로만 담는다. hostname/hostalias/port/service 필드명을 WebtobVhost와
     맞춰서 sync_service_domains()를 수정 없이 그대로 재사용한다. name은 설정 파일에 vhost
     자신을 가리키는 별도 식별자가 없어 "hostname:port"로 합성 - push마다 안정적이어야
-    upsert 시 수기 입력한 service_name이 보존된다."""
+    upsert 시 수기 입력한 service가 보존된다."""
 
     source = models.ForeignKey(WebConfigSource, on_delete=models.CASCADE, related_name="apache_vhosts")
     name = models.CharField(max_length=255)
@@ -219,8 +223,10 @@ class ApacheVhost(TimeStampedModel):
     logging = models.CharField(max_length=255, blank=True)
     errorlog = models.CharField(max_length=255, blank=True)
     proxy_summary = models.TextField(blank=True)
-    # 수기 입력: WebtobVhost.service_name과 동일 취급 - push 동기화 대상에서 빠져 보존됨.
-    service_name = models.CharField(max_length=255, blank=True)
+    # 수기 입력: WebtobVhost.service와 동일 취급 - push 동기화 대상에서 빠져 보존됨.
+    service = models.ForeignKey(
+        Service, null=True, blank=True, on_delete=models.SET_NULL, related_name="apache_vhosts"
+    )
 
     class Meta:
         constraints = [
@@ -252,7 +258,9 @@ class NginxVhost(TimeStampedModel):
     logging = models.CharField(max_length=255, blank=True)
     errorlog = models.CharField(max_length=255, blank=True)
     proxy_summary = models.TextField(blank=True)
-    service_name = models.CharField(max_length=255, blank=True)
+    service = models.ForeignKey(
+        Service, null=True, blank=True, on_delete=models.SET_NULL, related_name="nginx_vhosts"
+    )
 
     class Meta:
         constraints = [

@@ -460,7 +460,7 @@ WEBTOB_VHOST_SORT_LOOKUPS = {
     "ssl_protocols": "ssl__protocols",
     "logging": "logging",
     "errorlog": "errorlog",
-    "service_name": "service_name",
+    "service_name": "service__name",
     "limit_request_body": "source__node__limit_request_body",
 }
 
@@ -474,7 +474,7 @@ def get_webtob_vhost_queryset(request):
     # 생길 수 없음) .distinct() 자체가 불필요 - defer로 필드를 더 늘리는 대신 아예 제거해서
     # 근본적으로 피한다.
     queryset = (
-        WebtobVhost.objects.select_related("source__asset", "source__node", "ssl")
+        WebtobVhost.objects.select_related("source__asset", "source__node", "ssl", "service")
         .defer("source__raw_content", "source__extra_sections")
         .prefetch_related("svrgroups__servers", "uris__server")
     )
@@ -486,7 +486,7 @@ def get_webtob_vhost_queryset(request):
             | Q(name__icontains=q)
             | Q(hostname__icontains=q)
             | Q(hostalias__icontains=q)
-            | Q(service_name__icontains=q)
+            | Q(service__name__icontains=q)
         )
 
     sort = _request_param(request, "sort", "ordering", default="hostname")
@@ -511,7 +511,7 @@ APACHE_VHOST_SORT_LOOKUPS = {
     "ssl_protocols": "ssl_protocols",
     "logging": "logging",
     "errorlog": "errorlog",
-    "service_name": "service_name",
+    "service_name": "service__name",
 }
 
 NGINX_VHOST_SORT_LOOKUPS = {
@@ -525,7 +525,7 @@ NGINX_VHOST_SORT_LOOKUPS = {
     "ssl_protocols": "ssl_protocols",
     "logging": "logging",
     "errorlog": "errorlog",
-    "service_name": "service_name",
+    "service_name": "service__name",
 }
 
 
@@ -535,7 +535,7 @@ def get_apache_vhost_queryset(request):
     # proxy_summary(TextField, Oracle NCLOB)는 목록에 그대로 노출해야 해서 defer로 뺄 수
     # 없는데, 검색 필터가 own 필드/forward FK만 참조해 to-many 조인이 없으므로(중복 행이
     # 생길 수 없음) .distinct()가 애초에 불필요 - 걸지 않아서 NCLOB DISTINCT 문제를 피한다.
-    queryset = ApacheVhost.objects.select_related("source__asset").defer(
+    queryset = ApacheVhost.objects.select_related("source__asset", "service").defer(
         "source__raw_content", "source__extra_sections"
     )
 
@@ -545,7 +545,7 @@ def get_apache_vhost_queryset(request):
             Q(source__asset__hostname__icontains=q)
             | Q(hostname__icontains=q)
             | Q(hostalias__icontains=q)
-            | Q(service_name__icontains=q)
+            | Q(service__name__icontains=q)
         )
 
     sort = _request_param(request, "sort", "ordering", default="hostname")
@@ -558,7 +558,7 @@ def get_apache_vhost_queryset(request):
 
 def get_nginx_vhost_queryset(request):
     # get_apache_vhost_queryset과 동일한 이유로 .distinct() 없음(proxy_summary NCLOB 대응).
-    queryset = NginxVhost.objects.select_related("source__asset").defer(
+    queryset = NginxVhost.objects.select_related("source__asset", "service").defer(
         "source__raw_content", "source__extra_sections"
     )
 
@@ -568,7 +568,7 @@ def get_nginx_vhost_queryset(request):
             Q(source__asset__hostname__icontains=q)
             | Q(hostname__icontains=q)
             | Q(hostalias__icontains=q)
-            | Q(service_name__icontains=q)
+            | Q(service__name__icontains=q)
         )
 
     sort = _request_param(request, "sort", "ordering", default="hostname")
@@ -666,7 +666,7 @@ JEUS_CONTAINER_SORT_LOOKUPS = {
     "container": "name",
     "listen_port": "listen_port",
     "ssl_port": "ssl_port",
-    "service_name": "service_name",
+    "service_name": "service__name",
 }
 
 
@@ -676,7 +676,7 @@ def get_jeus_container_queryset(request):
     # 행이 생길 수 없음) .distinct()가 애초에 불필요 - 걸지 않아서 NCLOB 문제를 피한다
     # (apache/nginx vhost 목록에서 확립한 원칙과 동일).
     queryset = (
-        JeusContainer.objects.select_related("source__asset", "asset")
+        JeusContainer.objects.select_related("source__asset", "asset", "service")
         .defer("source__raw_content")
         .prefetch_related("webtob_connectors__webtob_server__source__asset")
     )
@@ -688,7 +688,7 @@ def get_jeus_container_queryset(request):
             | Q(asset__hostname__icontains=q)
             | Q(node_name__icontains=q)
             | Q(name__icontains=q)
-            | Q(service_name__icontains=q)
+            | Q(service__name__icontains=q)
         )
 
     sort = _request_param(request, "sort", "ordering", default="hostname")

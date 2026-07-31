@@ -24,10 +24,10 @@ class WebConfigSourceAdmin(admin.ModelAdmin):
 
 @admin.register(WebtobVhost)
 class WebtobVhostAdmin(admin.ModelAdmin):
-    list_display = ["name", "source", "hostname", "port", "ssl_flag", "docroot", "service_name"]
-    list_editable = ["service_name"]
+    list_display = ["name", "source", "hostname", "port", "ssl_flag", "docroot", "service"]
+    list_editable = ["service"]
     list_filter = ["ssl_flag"]
-    search_fields = ["name", "hostname", "service_name", "source__asset__hostname"]
+    search_fields = ["name", "hostname", "service__name", "source__asset__hostname"]
 
 
 @admin.register(WebtobNode)
@@ -69,18 +69,18 @@ class WebtobUriAdmin(admin.ModelAdmin):
 
 @admin.register(ApacheVhost)
 class ApacheVhostAdmin(admin.ModelAdmin):
-    list_display = ["name", "source", "hostname", "port", "ssl_flag", "service_name"]
-    list_editable = ["service_name"]
+    list_display = ["name", "source", "hostname", "port", "ssl_flag", "service"]
+    list_editable = ["service"]
     list_filter = ["ssl_flag"]
-    search_fields = ["name", "hostname", "service_name", "source__asset__hostname"]
+    search_fields = ["name", "hostname", "service__name", "source__asset__hostname"]
 
 
 @admin.register(NginxVhost)
 class NginxVhostAdmin(admin.ModelAdmin):
-    list_display = ["name", "source", "hostname", "port", "ssl_flag", "service_name"]
-    list_editable = ["service_name"]
+    list_display = ["name", "source", "hostname", "port", "ssl_flag", "service"]
+    list_editable = ["service"]
     list_filter = ["ssl_flag"]
-    search_fields = ["name", "hostname", "service_name", "source__asset__hostname"]
+    search_fields = ["name", "hostname", "service__name", "source__asset__hostname"]
 
 
 @admin.register(WebServiceDomain)

@@ -14,7 +14,7 @@ from rest_framework.authentication import SessionAuthentication
 from rest_framework.generics import ListAPIView
 from rest_framework.permissions import IsAuthenticated
 
-from core.models import Asset
+from core.models import Asset, Service
 from dashboard.excel_import import (
     ImportFileError,
     apply_updates,
@@ -71,6 +71,7 @@ from facts.models import FactFieldDefinition, HostFactValue, PendingChange
 from processes.models import ProcessSnapshot
 from webconfig.diff import unified_diff_lines
 from webconfig.excel_import import (
+    VHOST_MODELS,
     ImportFileError as ServiceImportFileError,
     apply_service_updates,
     export_service_workbook,
@@ -86,6 +87,16 @@ from systems.excel_import import (
 from systems.models import SystemHost, SystemHostFieldDefinition, SystemHostFieldValue
 from was.models import JeusContainer, WasConfigSource
 from webconfig.models import ApacheVhost, NginxVhost, WebConfigSource, WebServiceDomain, WebtobVhost
+
+
+def _resolve_service(name: str) -> Service | None:
+    """서비스명 인라인 편집 입력을 core.Service로 변환 - 같은 이름이면 기존 Service를
+    재사용하고(get_or_create), 빈 문자열이면 연결 해제(None)."""
+    name = (name or "").strip()
+    if not name:
+        return None
+    service, _ = Service.objects.get_or_create(name=name)
+    return service
 
 
 class DashboardLoginView(LoginView):
@@ -443,10 +454,11 @@ class WebConfigDetailView(LoginRequiredMixin, DetailView):
     def get_queryset(self):
         return WebConfigSource.objects.select_related("asset", "node").prefetch_related(
             "vhosts__ssl",
+            "vhosts__service",
             "vhosts__svrgroups__servers",
             "vhosts__uris__server",
-            "apache_vhosts",
-            "nginx_vhosts",
+            "apache_vhosts__service",
+            "nginx_vhosts__service",
         )
 
 
@@ -520,12 +532,12 @@ class WebtobVhostServiceUpdateView(LoginRequiredMixin, View):
 
     def post(self, request, pk):
         vhost = get_object_or_404(WebtobVhost, pk=pk)
-        vhost.service_name = request.POST.get("service_name", "").strip()
-        vhost.save(update_fields=["service_name"])
+        vhost.service = _resolve_service(request.POST.get("service_name", ""))
+        vhost.save(update_fields=["service"])
         WebServiceDomain.objects.filter(source=vhost.source, vhost_name=vhost.name).update(
-            service_name=vhost.service_name
+            service_name=vhost.service.name if vhost.service_id else ""
         )
-        return JsonResponse({"service_name": vhost.service_name})
+        return JsonResponse({"service_name": vhost.service.name if vhost.service_id else ""})
 
 
 class ApacheVhostListView(LoginRequiredMixin, ListView):
@@ -558,12 +570,12 @@ class ApacheVhostExportView(LoginRequiredMixin, View):
 class ApacheVhostServiceUpdateView(LoginRequiredMixin, View):
     def post(self, request, pk):
         vhost = get_object_or_404(ApacheVhost, pk=pk)
-        vhost.service_name = request.POST.get("service_name", "").strip()
-        vhost.save(update_fields=["service_name"])
+        vhost.service = _resolve_service(request.POST.get("service_name", ""))
+        vhost.save(update_fields=["service"])
         WebServiceDomain.objects.filter(source=vhost.source, vhost_name=vhost.name).update(
-            service_name=vhost.service_name
+            service_name=vhost.service.name if vhost.service_id else ""
         )
-        return JsonResponse({"service_name": vhost.service_name})
+        return JsonResponse({"service_name": vhost.service.name if vhost.service_id else ""})
 
 
 class NginxVhostListView(LoginRequiredMixin, ListView):
@@ -593,12 +605,12 @@ class NginxVhostExportView(LoginRequiredMixin, View):
 class NginxVhostServiceUpdateView(LoginRequiredMixin, View):
     def post(self, request, pk):
         vhost = get_object_or_404(NginxVhost, pk=pk)
-        vhost.service_name = request.POST.get("service_name", "").strip()
-        vhost.save(update_fields=["service_name"])
+        vhost.service = _resolve_service(request.POST.get("service_name", ""))
+        vhost.save(update_fields=["service"])
         WebServiceDomain.objects.filter(source=vhost.source, vhost_name=vhost.name).update(
-            service_name=vhost.service_name
+            service_name=vhost.service.name if vhost.service_id else ""
         )
-        return JsonResponse({"service_name": vhost.service_name})
+        return JsonResponse({"service_name": vhost.service.name if vhost.service_id else ""})
 
 
 class WasConfigListView(LoginRequiredMixin, ListView):
@@ -634,7 +646,9 @@ class WasConfigDetailView(LoginRequiredMixin, DetailView):
 
     def get_queryset(self):
         return WasConfigSource.objects.select_related("asset").prefetch_related(
-            "containers__asset", "containers__webtob_connectors__webtob_server__source__asset"
+            "containers__asset",
+            "containers__service",
+            "containers__webtob_connectors__webtob_server__source__asset",
         )
 
 
@@ -691,9 +705,9 @@ class JeusContainerExportView(LoginRequiredMixin, View):
 class JeusContainerServiceUpdateView(LoginRequiredMixin, View):
     def post(self, request, pk):
         container = get_object_or_404(JeusContainer, pk=pk)
-        container.service_name = request.POST.get("service_name", "").strip()
-        container.save(update_fields=["service_name"])
-        return JsonResponse({"service_name": container.service_name})
+        container.service = _resolve_service(request.POST.get("service_name", ""))
+        container.save(update_fields=["service"])
+        return JsonResponse({"service_name": container.service.name if container.service_id else ""})
 
 
 class SystemListView(LoginRequiredMixin, ListView):
@@ -892,18 +906,20 @@ class WebServiceListView(LoginRequiredMixin, ListView):
 
 
 class WebServiceDomainServiceUpdateView(LoginRequiredMixin, View):
-    """서비스 조회 화면에서의 서비스명 인라인 편집. 원본은 kind별 vhost 쪽(webtob는 WebtobVhost)
-    이라 거기에 먼저 반영하고, 같은 vhost가 걸친 나머지 도메인 행도 함께 맞춘다(도메인별로
-    서비스명이 갈리면 안 되므로 vhost 단위로 동기화)."""
+    """서비스 조회 화면에서의 서비스명 인라인 편집. 원본은 kind별 vhost 쪽(VHOST_MODELS로
+    kind->모델 매핑)이라 거기에 먼저 반영하고, 같은 vhost가 걸친 나머지 도메인 행도 함께
+    맞춘다(도메인별로 서비스명이 갈리면 안 되므로 vhost 단위로 동기화)."""
 
     def post(self, request, pk):
         service_domain = get_object_or_404(WebServiceDomain, pk=pk)
-        service_name = request.POST.get("service_name", "").strip()
+        service = _resolve_service(request.POST.get("service_name", ""))
+        service_name = service.name if service else ""
 
-        if service_domain.source.kind == WebConfigSource.Kind.WEBTOB:
-            WebtobVhost.objects.filter(
+        model = VHOST_MODELS.get(service_domain.source.kind)
+        if model is not None:
+            model.objects.filter(
                 source=service_domain.source, name=service_domain.vhost_name
-            ).update(service_name=service_name)
+            ).update(service=service)
 
         WebServiceDomain.objects.filter(
             source=service_domain.source, vhost_name=service_domain.vhost_name

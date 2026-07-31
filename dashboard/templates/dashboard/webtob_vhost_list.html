@@ -69,7 +69,7 @@
         <td>{{ row.vhost.errorlog|default:"" }}</td>
         <td class="editable-cell dash-editable-cell" data-url="/dashboard/webconfig/vhost/{{ row.vhost.pk }}/service/"
             data-param="service_name" data-title="{{ row.vhost.source.asset.hostname|upper }} / {{ row.vhost.name }} - 서비스명">
-          <span class="cell-value">{{ row.vhost.service_name|default:"" }}</span><span class="dash-manual-icon" aria-hidden="true">✎</span>
+          <span class="cell-value">{{ row.vhost.service.name|default:"" }}</span><span class="dash-manual-icon" aria-hidden="true">✎</span>
         </td>
         <td>{{ row.svrgroup_summary }}</td>
         <td>{{ row.server_summary }}</td>

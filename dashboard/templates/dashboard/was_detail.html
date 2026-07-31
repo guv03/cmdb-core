@@ -24,7 +24,7 @@
       <tr>
         <th style="width: 12em;">서비스명</th>
         <td class="container-service-cell dash-editable-cell" data-service-url="/dashboard/was/jeus8/container/{{ container.id }}/service/">
-          <span class="container-service-value">{{ container.service_name }}</span><span class="dash-manual-icon" aria-hidden="true">✎</span>
+          <span class="container-service-value">{{ container.service.name|default:"" }}</span><span class="dash-manual-icon" aria-hidden="true">✎</span>
         </td>
       </tr>
       <tr><th>Node</th><td>{{ container.node_name }}</td></tr>

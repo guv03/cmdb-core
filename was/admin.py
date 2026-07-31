@@ -12,9 +12,9 @@ class WasConfigSourceAdmin(admin.ModelAdmin):
 
 @admin.register(JeusContainer)
 class JeusContainerAdmin(admin.ModelAdmin):
-    list_display = ["name", "source", "asset", "node_name", "listen_port", "service_name"]
-    list_editable = ["service_name"]
-    search_fields = ["name", "node_name", "service_name", "source__asset__hostname"]
+    list_display = ["name", "source", "asset", "node_name", "listen_port", "service"]
+    list_editable = ["service"]
+    search_fields = ["name", "node_name", "service__name", "source__asset__hostname"]
 
 
 @admin.register(JeusWebtobConnector)

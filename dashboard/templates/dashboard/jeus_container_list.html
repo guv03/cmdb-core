@@ -53,7 +53,7 @@
         <td>{{ row.webtob_connector_summary }}</td>
         <td class="editable-cell dash-editable-cell" data-url="/dashboard/was/jeus8/container/{{ row.container.pk }}/service/"
             data-param="service_name" data-title="{{ row.container.asset.hostname|default:row.container.node_name|upper }} / {{ row.container.name }} - 서비스명">
-          <span class="cell-value">{{ row.container.service_name|default:"" }}</span><span class="dash-manual-icon" aria-hidden="true">✎</span>
+          <span class="cell-value">{{ row.container.service.name|default:"" }}</span><span class="dash-manual-icon" aria-hidden="true">✎</span>
         </td>
       </tr>
       {% empty %}
