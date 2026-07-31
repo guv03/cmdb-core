@@ -6,10 +6,31 @@ from rest_framework.views import APIView
 
 from core.authentication import AWXAPIKeyAuthentication
 from core.reconciliation import get_or_create_asset
-from facts.approval import stage_governed_changes
+from facts.approval import compute_fixed_values, stage_governed_changes
 from facts.dynamic_fields import sync_dynamic_fields
 from facts.models import FactFieldDefinition, HostFact
 from facts.serializers import FactsIngestSerializer
+
+
+def _extract_primary_ip(ansible_facts: dict) -> str | None:
+    # ansible_facts 딕셔너리 안의 원본 키는 hostvars에 주입될 때 붙는 "ansible_" 접두사가
+    # 없다 (예: ansible_facts.distribution, ansible_distribution이 아님).
+    default_ipv4 = ansible_facts.get("default_ipv4")
+    if isinstance(default_ipv4, dict) and default_ipv4.get("address"):
+        return default_ipv4["address"]
+
+    # Windows ansible facts엔 default_ipv4 자체가 없다 - 대신 interfaces 목록에서
+    # default_gateway가 걸린(=아웃바운드 기본 경로) 인터페이스의 ipv4.address를 쓴다.
+    # 그런 인터페이스가 없으면 첫 interface의 ipv4.address로 폴백.
+    interfaces = ansible_facts.get("interfaces")
+    if isinstance(interfaces, list):
+        candidates = [i for i in interfaces if isinstance(i, dict) and isinstance(i.get("ipv4"), dict)]
+        for interface in sorted(candidates, key=lambda i: not i.get("default_gateway")):
+            address = interface["ipv4"].get("address")
+            if address:
+                return address
+
+    return None
 
 
 class FactsIngestView(APIView):
@@ -24,27 +45,9 @@ class FactsIngestView(APIView):
         ansible_facts = serializer.validated_data["ansible_facts"]
         hypervisor = serializer.validated_data["hypervisor"]
 
-        # ansible_facts 딕셔너리 안의 원본 키는 hostvars에 주입될 때 붙는 "ansible_" 접두사가
-        # 없다 (예: ansible_facts.distribution, ansible_distribution이 아님).
-        default_ipv4 = ansible_facts.get("default_ipv4")
-        primary_ip = default_ipv4.get("address") if isinstance(default_ipv4, dict) else None
-
-        # AWX 인벤토리 쪽 매핑 누락 시 키가 아예 없거나(None) 빈 문자열로 오는 두 경우가
-        # 다 있을 수 있어서, 숫자 필드는 빈 값을 None으로 정규화해 DB 저장 실패를 막는다.
-        num_cpu = hypervisor.get("num_cpu")
-        memory_mb = hypervisor.get("memory_mb")
-
-        fixed_values = {
-            "os_family": ansible_facts.get("distribution", ""),
-            "os_version": ansible_facts.get("distribution_version", ""),
-            "source_platform": hypervisor.get("source_platform"),
-            "vm_uuid": hypervisor.get("vm_uuid"),
-            "cluster_name": hypervisor.get("cluster_name"),
-            "power_state": hypervisor.get("power_state"),
-            "num_cpu": num_cpu if num_cpu not in ("", None) else None,
-            "memory_mb": memory_mb if memory_mb not in ("", None) else None,
-        }
+        primary_ip = _extract_primary_ip(ansible_facts)
         raw_facts = {"ansible_facts": ansible_facts, "hypervisor": hypervisor}
+        fixed_values = compute_fixed_values(raw_facts)
 
         with transaction.atomic():
             asset = get_or_create_asset(hostname, primary_ip=primary_ip)

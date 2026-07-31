@@ -48,9 +48,24 @@ class FactFieldDefinition(TimeStampedModel):
         max_length=255,
         unique=True,
         help_text=(
-            "AUTO: raw_facts 안의 dot-path, 예: ansible_facts.ansible_memtotal_mb / "
+            "AUTO: raw_facts 안의 dot-path(os_family_key_overrides에 없는 os_family는 이 경로를 씀), "
+            "예: ansible_facts.ansible_memtotal_mb / "
             "MANUAL: raw_facts와 무관한 고유 식별자 / "
-            "FIXED: HostFact 고정 컬럼명(facts.approval.FIXED_FIELD_PATHS 참고)"
+            "FIXED: HostFact 고정 컬럼명(facts.approval.FIXED_FIELD_EXTRACTORS 참고)"
+        ),
+    )
+    os_family_key_overrides = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text=(
+            "AUTO 필드 전용(선택). os_family(예: Windows/RedHat/AIX)별로 key와 다른 경로를 써야 할 "
+            "때만 그 os_family만 채움 — 값이 같은 os_family는 안 넣어도 되고, 그 경우 key(기본 경로)를 "
+            '그대로 씀. 예1(다른 OS가 하나): {"Windows": "ansible_facts.distribution"} '
+            "(distribution_version이 리눅스는 사람이 읽는 버전이지만 윈도우는 커널 빌드번호라서, "
+            "key=ansible_facts.distribution_version을 기본으로 두고 Windows만 이렇게 재정의). "
+            '예2(다른 OS가 둘 이상): {"Windows": "ansible_facts.distribution", '
+            '"AIX": "ansible_facts.oslevel"} (윈도우/AIX 둘 다 기본 경로와 다르면 같은 JSON 안에 '
+            "os_family 키를 나란히 추가 — 셋 이상도 같은 방식)"
         ),
     )
     label = models.CharField(max_length=255)

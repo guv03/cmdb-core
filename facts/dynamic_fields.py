@@ -13,6 +13,13 @@ def extract_json_path(data: dict, path: str):
     return current
 
 
+def resolve_field_path(field_definition: FactFieldDefinition, os_family: str) -> str:
+    """AUTO 필드의 실제 추출 경로. os_family_key_overrides에 해당 os_family가 있으면 그 경로,
+    없으면(대부분의 필드는 늘 이 경우) key를 그대로 씀."""
+    overrides = field_definition.os_family_key_overrides or {}
+    return overrides.get(os_family, field_definition.key)
+
+
 def coerce_fact_value(raw_value, value_type: str) -> dict:
     """value_type에 맞는 컬럼 하나만 채운 dict를 반환. 변환 불가하면 전부 None."""
     empty = {"value_text": None, "value_number": None, "value_date": None}
@@ -60,7 +67,8 @@ def sync_dynamic_fields(host_fact: HostFact, exclude_keys: set[str] | None = Non
     if exclude_keys:
         field_definitions = field_definitions.exclude(key__in=exclude_keys)
     for field_definition in field_definitions:
-        raw_value = extract_json_path(host_fact.raw_facts, field_definition.key)
+        path = resolve_field_path(field_definition, host_fact.os_family)
+        raw_value = extract_json_path(host_fact.raw_facts, path)
         defaults = coerce_fact_value(raw_value, field_definition.value_type)
         HostFactValue.objects.update_or_create(
             host_fact=host_fact, field_definition=field_definition, defaults=defaults
@@ -71,7 +79,8 @@ def backfill_field(field_definition: FactFieldDefinition) -> int:
     """기존 HostFact.raw_facts에서 field_definition 값을 소급 추출해 채운다. 갱신된 호스트 수를 반환."""
     updated = 0
     for host_fact in HostFact.objects.all():
-        raw_value = extract_json_path(host_fact.raw_facts, field_definition.key)
+        path = resolve_field_path(field_definition, host_fact.os_family)
+        raw_value = extract_json_path(host_fact.raw_facts, path)
         defaults = coerce_fact_value(raw_value, field_definition.value_type)
         HostFactValue.objects.update_or_create(
             host_fact=host_fact, field_definition=field_definition, defaults=defaults

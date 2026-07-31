@@ -1,7 +1,7 @@
 from django import forms
 from django.contrib import admin
 
-from facts.approval import FIXED_FIELD_PATHS, apply_pending_change, reject_pending_change
+from facts.approval import FIXED_FIELD_EXTRACTORS, apply_pending_change, reject_pending_change
 from facts.dynamic_fields import backfill_field
 from facts.models import (
     FactFieldChoice,
@@ -42,15 +42,25 @@ class FactFieldDefinitionForm(forms.ModelForm):
         cleaned = super().clean()
         source = cleaned.get("source")
         key = cleaned.get("key")
+        overrides = cleaned.get("os_family_key_overrides")
 
-        if source == FactFieldDefinition.Source.FIXED and key not in FIXED_FIELD_PATHS:
+        if source == FactFieldDefinition.Source.FIXED and key not in FIXED_FIELD_EXTRACTORS:
             raise forms.ValidationError(
-                f"FIXED 필드는 다음 중 하나여야 함: {', '.join(FIXED_FIELD_PATHS)}"
+                f"FIXED 필드는 다음 중 하나여야 함: {', '.join(FIXED_FIELD_EXTRACTORS)}"
             )
         if source == FactFieldDefinition.Source.MANUAL and cleaned.get("requires_approval"):
             raise forms.ValidationError(
                 "MANUAL 필드는 대시보드 입력이 항상 즉시 반영되므로 승인 대상으로 지정할 수 없음"
             )
+        if overrides:
+            if source != FactFieldDefinition.Source.AUTO:
+                raise forms.ValidationError("os_family_key_overrides는 AUTO 필드에서만 쓸 수 있음")
+            if not isinstance(overrides, dict) or not all(
+                isinstance(k, str) and isinstance(v, str) for k, v in overrides.items()
+            ):
+                raise forms.ValidationError(
+                    'os_family_key_overrides는 {"os_family 문자열": "경로 문자열"} 형태의 JSON 객체여야 함'
+                )
 
         return cleaned
 

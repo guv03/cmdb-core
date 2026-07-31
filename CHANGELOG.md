@@ -5,6 +5,12 @@
 
 1.0.6까지의 이력은 이 파일 도입 전이라 별도 기록 없음 — `WORKLOG.md`의 해당 날짜 항목 참고.
 
+## 1.0.18
+
+- Windows 자산의 OS 관련 필드 오적재 수정: `HostFact.os_family`가 `ansible_facts.distribution`(윈도우에선 "Microsoft Windows Server 2022 Standard" 같은 풀네임) 대신 표준 `os_family` 키를 쓰도록 변경, `os_version`은 Windows일 때만 `distribution`(마케팅명)을 쓰고 그 외엔 기존처럼 `distribution_version`을 쓰도록 분기 — 관련 추출 로직을 `facts/views.py`/`facts/approval.py` 두 곳 중복 정의에서 `facts/approval.py`의 `FIXED_FIELD_EXTRACTORS`/`compute_fixed_values()` 한 곳으로 통합
+- `Asset.primary_ip` 추출이 Windows ansible facts엔 없는 `default_ipv4`에만 의존해 IP가 빈 값으로 저장되던 문제 수정 — 없으면 `interfaces[].default_gateway`가 걸린 인터페이스의 `ipv4.address`로 폴백
+- `FactFieldDefinition`에 `os_family_key_overrides`(JSON) 신규 — AUTO 동적 필드가 os_family별로 다른 raw facts 경로를 써야 할 때(예: OS버전) 값이 실제로 다른 os_family만 등록하면 되고 나머지는 기존 `key`를 그대로 씀. push 시점(`sync_dynamic_fields`)과 소급 백필(`backfill_field`) 둘 다 지원
+
 ## 1.0.17
 
 - 통합대시보드 신규 — 상단 "CMDB" 로고 클릭 시 이동(`/dashboard/`, 이전엔 연결된 화면이 없어 404였음). OS/WEB/WAS를 카테고리별 개수 타일로 한눈에 보여주고, 타일을 누르면 그 아래 도넛 차트로 하위 분포(OS는 버전, WEB/WAS는 솔루션 버전)를 펼쳐 보여준다. 세 섹션 다 같은 코드(`_build_category_tiles`/`_breakdown_by_field`)를 공유해서 나중에 섹션이 늘어나도 뷰에 한 줄만 추가하면 됨
