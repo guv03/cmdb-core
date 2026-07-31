@@ -31,13 +31,14 @@
   <table class="table is-narrow is-fullwidth">
     <thead>
       <tr>
-        <th>이름</th><th>종류</th><th>VM 수</th>
+        <th>소스</th><th>이름</th><th>종류</th><th>VM 수</th>
         {% for cell in linked_system_host_rows.0.dynamic_cells %}<th>{{ cell.label }}</th>{% endfor %}
       </tr>
     </thead>
     <tbody>
       {% for row in linked_system_host_rows %}
       <tr>
+        <td>{{ row.host.source.name }}</td>
         <td><a href="{% url 'dashboard-system-detail' row.host.pk %}">{{ row.host.name|default:row.host.external_id }}</a></td>
         <td>{{ row.host.source.get_kind_display }}</td>
         <td>{{ row.host.vm_count }}</td>

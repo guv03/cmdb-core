@@ -5,6 +5,11 @@
 
 1.0.6까지의 이력은 이 파일 도입 전이라 별도 기록 없음 — `WORKLOG.md`의 해당 날짜 항목 참고.
 
+## 1.0.22
+
+- 시스템 목록/자산 상세의 "연결된 시스템" 표에 "소스"(vCenter/Nutanix 인스턴스명) 컬럼 신규 — 물리 호스트 이름(예: `DRNRAP01`)이 OS hostname과 달리 여러 인스턴스에 걸쳐 유일하다는 보장이 없어(엑셀 매칭 키가 애초에 `(source_name, name)` 복합키였던 이유와 동일), 이름 하나만 보여주면 오해 소지가 있어 소스를 이름보다 앞(더 넓은 범위)에 배치
+- WEB(웹설정/WebToB/Apache/Nginx vhost 목록)·WAS(WAS/JEUS8 컨테이너 목록) 6개 화면 전부 Hostname 오른쪽에 IP 컬럼 추가 — 설정 파일 자체엔 IP 정보가 없어, hostname과 마찬가지로 이미 연결된 Asset(facts로 등록된 자산)의 `primary_ip`를 그대로 재사용(JEUS8만 `source.asset`이 아닌 `container.asset` 기준, 다른 화면과 동일하게 Hostname 컬럼이 참조하는 asset을 그대로 씀)
+
 ## 1.0.21
 
 - **"시스템" 신규** — vCenter/Nutanix가 보고하는 물리 장비(ESXi 호스트/AHV 노드) 인벤토리를 시각화하는 `systems` 앱 추가. 개별 호스트 facts push와 완전히 분리된 흐름으로, AWX가 `hosts: localhost`에서 vCenter/Nutanix API를 직접 호출해 물리 호스트+VM 목록을 배치로 CMDB(`POST /api/systems/`)에 push하고, VM은 hostname으로 기존 facts 자산과 매칭한다(자산 신규 생성은 안 함)

@@ -32,6 +32,9 @@ from dashboard.views import (
     ServiceImportConfirmView,
     ServiceImportView,
     SystemDetailView,
+    SystemHostExportView,
+    SystemHostImportConfirmView,
+    SystemHostImportView,
     SystemHostManualFieldUpdateView,
     SystemListView,
     WasConfigExportView,
@@ -176,6 +179,13 @@ urlpatterns = [
         "systems/<int:pk>/manual-fields/",
         SystemHostManualFieldUpdateView.as_view(),
         name="dashboard-system-manual-fields-update",
+    ),
+    path("systems/export/", SystemHostExportView.as_view(), name="dashboard-system-export"),
+    path("systems/import/", SystemHostImportView.as_view(), name="dashboard-system-import"),
+    path(
+        "systems/import/confirm/",
+        SystemHostImportConfirmView.as_view(),
+        name="dashboard-system-import-confirm",
     ),
 ]
 

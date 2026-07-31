@@ -30,7 +30,8 @@
     <thead>
       <tr>
         <th class="dash-sticky-col dash-sticky-col-1"><a class="has-text-dark" href="{% querystring sort=columns.hostname.next_sort page=None %}">Hostname</a></th>
-        <th class="dash-sticky-col dash-sticky-col-2"><a class="has-text-dark" href="{% querystring sort=columns.domain.next_sort page=None %}">Domain</a></th>
+        <th class="dash-sticky-col dash-sticky-col-2"><a class="has-text-dark" href="{% querystring sort=columns.ip.next_sort page=None %}">IP</a></th>
+        <th><a class="has-text-dark" href="{% querystring sort=columns.domain.next_sort page=None %}">Domain</a></th>
         <th><a class="has-text-dark" href="{% querystring sort=columns.hostalias.next_sort page=None %}">Alias</a></th>
         <th><a class="has-text-dark" href="{% querystring sort=columns.port.next_sort page=None %}">Port</a></th>
         <th>Listen</th>
@@ -49,7 +50,8 @@
       {% for vhost in vhosts %}
       <tr>
         <td class="dash-sticky-col dash-sticky-col-1 dash-hostname">{{ vhost.source.asset.hostname }}</td>
-        <td class="dash-sticky-col dash-sticky-col-2">{{ vhost.hostname|default:"" }}</td>
+        <td class="dash-sticky-col dash-sticky-col-2">{{ vhost.source.asset.primary_ip|default:"" }}</td>
+        <td>{{ vhost.hostname|default:"" }}</td>
         <td>{{ vhost.hostalias|default:"" }}</td>
         <td>{{ vhost.port|default:"" }}</td>
         <td>{{ vhost.listen|default:"" }}</td>
@@ -67,7 +69,7 @@
         </td>
       </tr>
       {% empty %}
-      <tr><td colspan="14" class="has-text-grey">등록된 vhost가 없습니다.</td></tr>
+      <tr><td colspan="15" class="has-text-grey">등록된 vhost가 없습니다.</td></tr>
       {% endfor %}
     </tbody>
   </table>

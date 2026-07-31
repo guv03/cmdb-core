@@ -77,6 +77,12 @@ from webconfig.excel_import import (
     parse_service_workbook,
 )
 from systems.dynamic_fields import is_valid_choice as system_is_valid_choice
+from systems.excel_import import (
+    ImportFileError as SystemImportFileError,
+    apply_updates as apply_system_host_updates,
+    export_system_host_workbook,
+    parse_system_host_workbook,
+)
 from systems.models import SystemHost, SystemHostFieldDefinition, SystemHostFieldValue
 from was.models import JeusContainer, WasConfigSource
 from webconfig.models import ApacheVhost, NginxVhost, WebConfigSource, WebServiceDomain, WebtobVhost
@@ -412,6 +418,7 @@ class WebConfigListView(LoginRequiredMixin, ListView):
             self.request,
             [
                 "hostname",
+                "ip",
                 "kind",
                 "solution_version",
                 "solution_fix",
@@ -484,6 +491,7 @@ class WebtobVhostListView(LoginRequiredMixin, ListView):
             self.request,
             [
                 "hostname",
+                "ip",
                 "vhost_name",
                 "domain",
                 "hostalias",
@@ -535,7 +543,7 @@ class ApacheVhostListView(LoginRequiredMixin, ListView):
         context = super().get_context_data(**kwargs)
         context["columns"] = build_sort_columns(
             self.request,
-            ["hostname", "domain", "hostalias", "port", "docroot", "ssl_flag", "ssl_protocols", "logging", "errorlog", "service_name"],
+            ["hostname", "ip", "domain", "hostalias", "port", "docroot", "ssl_flag", "ssl_protocols", "logging", "errorlog", "service_name"],
             default="hostname",
         )
         context["current_q"] = self.request.GET.get("q", "")
@@ -570,7 +578,7 @@ class NginxVhostListView(LoginRequiredMixin, ListView):
         context = super().get_context_data(**kwargs)
         context["columns"] = build_sort_columns(
             self.request,
-            ["hostname", "domain", "hostalias", "port", "docroot", "ssl_flag", "ssl_protocols", "logging", "errorlog", "service_name"],
+            ["hostname", "ip", "domain", "hostalias", "port", "docroot", "ssl_flag", "ssl_protocols", "logging", "errorlog", "service_name"],
             default="hostname",
         )
         context["current_q"] = self.request.GET.get("q", "")
@@ -609,7 +617,7 @@ class WasConfigListView(LoginRequiredMixin, ListView):
         context = super().get_context_data(**kwargs)
         context["columns"] = build_sort_columns(
             self.request,
-            ["hostname", "kind", "solution_version", "container_count", "last_changed_at", "last_pushed_at"],
+            ["hostname", "ip", "kind", "solution_version", "container_count", "last_changed_at", "last_pushed_at"],
             default="hostname",
         )
         return context
@@ -668,7 +676,7 @@ class JeusContainerListView(LoginRequiredMixin, ListView):
         context["rows"] = build_jeus_container_rows(context["containers"])
         context["columns"] = build_sort_columns(
             self.request,
-            ["hostname", "node_name", "container", "listen_port", "ssl_port", "service_name"],
+            ["hostname", "ip", "node_name", "container", "listen_port", "ssl_port", "service_name"],
             default="hostname",
         )
         context["current_q"] = self.request.GET.get("q", "")
@@ -705,7 +713,7 @@ class SystemListView(LoginRequiredMixin, ListView):
         context["rows"] = build_system_host_rows(context["hosts"], dynamic_field_definitions)
         context["columns"] = build_sort_columns(
             self.request,
-            ["name", "kind", "vm_count"],
+            ["source_name", "name", "kind", "vm_count"],
             default="name",
         )
         # MANUAL 셀 편집 모달의 선택형(choice) 입력 구성용 - 자산 목록의
@@ -754,6 +762,65 @@ class SystemDetailView(LoginRequiredMixin, DetailView):
             self.object.vms.all(), os_dynamic_field_definitions
         )
         return context
+
+
+class SystemHostExportView(LoginRequiredMixin, View):
+    def get(self, request):
+        return export_system_host_workbook()
+
+
+class SystemHostImportView(LoginRequiredMixin, View):
+    """시스템 목록 MANUAL 필드 엑셀 업로드 - dashboard의 ManualFieldImportView와 같은 패턴
+    (다운로드→몇 칸만 고침→재업로드), 매칭 키만 source_name+name."""
+
+    template_name = "dashboard/system_host_import.html"
+
+    def _manual_field_labels(self):
+        return list(
+            SystemHostFieldDefinition.objects.filter(
+                source=SystemHostFieldDefinition.Source.MANUAL, is_visible=True
+            ).values_list("label", flat=True)
+        )
+
+    def get(self, request):
+        return render(request, self.template_name, {"manual_field_labels": self._manual_field_labels()})
+
+    def post(self, request):
+        uploaded_file = request.FILES.get("file")
+        context = {"manual_field_labels": self._manual_field_labels()}
+
+        if not uploaded_file:
+            messages.error(request, "업로드할 엑셀 파일을 선택해주세요.")
+            return render(request, self.template_name, context)
+
+        try:
+            result = parse_system_host_workbook(uploaded_file)
+        except SystemImportFileError as exc:
+            messages.error(request, str(exc))
+            return render(request, self.template_name, context)
+
+        payload = [
+            {"host_id": u.host_id, "field_id": u.field_id, "new_value": u.new_value}
+            for u in result.updates
+        ]
+        context.update({"result": result, "payload_json": json.dumps(payload)})
+        return render(request, self.template_name, context)
+
+
+class SystemHostImportConfirmView(LoginRequiredMixin, View):
+    def post(self, request):
+        try:
+            payload = json.loads(request.POST.get("payload", "[]"))
+        except json.JSONDecodeError:
+            payload = []
+
+        applied, host_count = apply_system_host_updates(payload)
+        if applied:
+            messages.success(request, f"{host_count}개 물리 장비에 수기 필드 값 {applied}건을 반영했습니다.")
+        else:
+            messages.warning(request, "반영할 내용이 없습니다.")
+
+        return redirect("dashboard-system-list")
 
 
 class ServiceExportView(LoginRequiredMixin, View):

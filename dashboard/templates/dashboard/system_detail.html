@@ -25,34 +25,38 @@
 <div class="box">
   <p class="title is-6">이 장비에 떠있는 OS(VM)</p>
   <p class="help">OS 목록에 등록된 컬럼(고정 필드+admin 동적 필드)을 그대로 보여줍니다 — 이 시스템의 하드웨어 정보가 아니라 "여기 어떤 OS가 떠있나"를 보기 위한 표입니다.</p>
-  <table class="table is-narrow is-fullwidth">
-    <thead>
-      <tr>
-        {% for column in os_columns %}<th>{{ column.label }}</th>{% endfor %}
-      </tr>
-    </thead>
-    <tbody>
-      {% for entry in vm_entries %}
-      {% if entry.matched %}
-      <tr>
-        <td class="dash-hostname"><a href="{% url 'dashboard-asset-detail' entry.row.asset.id %}">{{ entry.row.asset.hostname }}</a></td>
-        <td>{{ entry.row.asset.primary_ip|default:"" }}</td>
-        <td>{{ entry.row.hostfact.os_family|default:"" }}</td>
-        {% for cell in entry.row.dynamic_cells %}<td>{{ cell.value|default:"" }}</td>{% endfor %}
-        <td>{{ entry.row.asset.last_changed_at|default:"" }}</td>
-        <td>{{ entry.row.hostfact.last_seen_at|default:"" }}</td>
-      </tr>
-      {% else %}
-      <tr>
-        <td class="dash-hostname">{{ entry.name }}</td>
-        <td colspan="{{ os_columns|length|add:"-1" }}" class="has-text-grey">자산 미매칭</td>
-      </tr>
-      {% endif %}
-      {% empty %}
-      <tr><td colspan="{{ os_columns|length }}" class="has-text-grey">이 장비에서 확인된 VM이 없습니다.</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  <div class="table-container">
+    <table class="table is-narrow is-fullwidth dash-scroll-table">
+      <thead>
+        <tr>
+          {% for column in os_columns %}
+          <th class="{% if forloop.counter == 1 %}dash-sticky-col dash-sticky-col-1{% elif forloop.counter == 2 %}dash-sticky-col dash-sticky-col-2{% endif %}">{{ column.label }}</th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for entry in vm_entries %}
+        {% if entry.matched %}
+        <tr>
+          <td class="dash-sticky-col dash-sticky-col-1 dash-hostname"><a href="{% url 'dashboard-asset-detail' entry.row.asset.id %}">{{ entry.row.asset.hostname }}</a></td>
+          <td class="dash-sticky-col dash-sticky-col-2">{{ entry.row.asset.primary_ip|default:"" }}</td>
+          <td>{{ entry.row.hostfact.os_family|default:"" }}</td>
+          {% for cell in entry.row.dynamic_cells %}<td>{{ cell.value|default:"" }}</td>{% endfor %}
+          <td>{{ entry.row.asset.last_changed_at|default:"" }}</td>
+          <td>{{ entry.row.hostfact.last_seen_at|default:"" }}</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td class="dash-sticky-col dash-sticky-col-1 dash-hostname">{{ entry.name }}</td>
+          <td colspan="{{ os_columns|length|add:"-1" }}" class="has-text-grey">자산 미매칭</td>
+        </tr>
+        {% endif %}
+        {% empty %}
+        <tr><td colspan="{{ os_columns|length }}" class="has-text-grey">이 장비에서 확인된 VM이 없습니다.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
 </div>
 </div>
 {% endblock %}

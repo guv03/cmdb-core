@@ -384,6 +384,7 @@ def get_web_service_queryset(request):
 
 WEBCONFIG_SORT_LOOKUPS = {
     "hostname": "asset__hostname",
+    "ip": "asset__primary_ip",
     "kind": "kind",
     "solution_version": "solution_version",
     "solution_fix": "solution_fix",
@@ -449,6 +450,7 @@ def get_webconfig_history_queryset(request):
 # APACHE_VHOST_SORT_LOOKUPS 주석 참고). ssl_protocols는 CharField라 안전.
 WEBTOB_VHOST_SORT_LOOKUPS = {
     "hostname": "source__asset__hostname",
+    "ip": "source__asset__primary_ip",
     "vhost_name": "name",
     "domain": "hostname",
     "hostalias": "hostalias",
@@ -500,6 +502,7 @@ def get_webtob_vhost_queryset(request):
 # 대상). ssl_protocols는 CharField라 안전.
 APACHE_VHOST_SORT_LOOKUPS = {
     "hostname": "source__asset__hostname",
+    "ip": "source__asset__primary_ip",
     "domain": "hostname",
     "hostalias": "hostalias",
     "port": "port",
@@ -513,6 +516,7 @@ APACHE_VHOST_SORT_LOOKUPS = {
 
 NGINX_VHOST_SORT_LOOKUPS = {
     "hostname": "source__asset__hostname",
+    "ip": "source__asset__primary_ip",
     "domain": "hostname",
     "hostalias": "hostalias",
     "port": "port",
@@ -608,6 +612,7 @@ def build_webtob_vhost_rows(vhosts):
 
 WAS_CONFIG_SORT_LOOKUPS = {
     "hostname": "asset__hostname",
+    "ip": "asset__primary_ip",
     "kind": "kind",
     "solution_version": "solution_version",
     "container_count": "container_count",
@@ -656,6 +661,7 @@ def get_was_history_queryset(request):
 
 JEUS_CONTAINER_SORT_LOOKUPS = {
     "hostname": "asset__hostname",
+    "ip": "asset__primary_ip",
     "node_name": "node_name",
     "container": "name",
     "listen_port": "listen_port",
@@ -771,6 +777,7 @@ def get_process_queryset(request):
 
 
 SYSTEM_HOST_SORT_LOOKUPS = {
+    "source_name": "source__name",
     "name": "name",
     "kind": "source__kind",
     "vm_count": "vm_count",
@@ -794,6 +801,7 @@ def get_system_host_queryset(request):
         queryset = queryset.filter(
             Q(name__icontains=q)
             | Q(external_id__icontains=q)
+            | Q(source__name__icontains=q)
             | _kind_search_q(SystemSource.Kind, "source__kind", q)
         )
 
