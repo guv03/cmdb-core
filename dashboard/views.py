@@ -1,4 +1,5 @@
 import json
+import subprocess
 
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
@@ -65,6 +66,7 @@ from dashboard.queries import (
     get_webconfig_queryset,
     get_webtob_vhost_queryset,
 )
+from dashboard.topology import build_service_topology_graph, render_topology_svg
 from dashboard.serializers import AssetSerializer
 from facts.approval import apply_pending_change, reject_pending_change
 from facts.dynamic_fields import coerce_fact_value, is_valid_choice
@@ -936,6 +938,36 @@ class ServiceContainerUpdateView(LoginRequiredMixin, View):
             )
 
         return JsonResponse({"service_name": service.name if service else ""})
+
+
+class ServiceTopologyView(LoginRequiredMixin, TemplateView):
+    """서비스 하나를 골라 WEB<->WAS<->시스템 연결을 Graphviz로 그린 구성도. 서비스 탭 행의
+    "구성도" 링크(?name=서비스명)로 바로 들어오거나, 이 화면 자체의 검색(datalist)으로
+    고를 수도 있다. 표/레인 방식은 OS 이중화 시 같은 서버가 레인마다 반복 표시돼 헷갈리는
+    문제가 있어(dashboard/topology.py 모듈 docstring 참고) 실제 그래프+Graphviz 렌더링으로
+    바꿨다."""
+
+    template_name = "dashboard/service_topology.html"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        name = self.request.GET.get("name", "").strip()
+        context["service_names"] = Service.objects.order_by("name").values_list("name", flat=True)
+        context["current_name"] = name
+
+        if name:
+            service = Service.objects.filter(name=name).first()
+            if service is None:
+                context["not_found"] = True
+            else:
+                context["service"] = service
+                graph = build_service_topology_graph(service)
+                if graph["nodes"]:
+                    try:
+                        context["topology_svg"] = render_topology_svg(graph)
+                    except (RuntimeError, FileNotFoundError, subprocess.TimeoutExpired) as exc:
+                        context["render_error"] = str(exc)
+        return context
 
 
 class ProcessListView(LoginRequiredMixin, ListView):

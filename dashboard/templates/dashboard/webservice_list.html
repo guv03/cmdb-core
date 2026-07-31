@@ -41,9 +41,12 @@
     <tbody>
       {% for row in service_domains %}
       <tr>
-        <td class="editable-cell dash-editable-cell" data-url="/dashboard/services/{{ row.pk }}/service/"
-            data-param="service_name" data-title="{{ row.domain }} - 서비스명">
-          <span class="cell-value">{{ row.service_name|default:"" }}</span><span class="dash-manual-icon" aria-hidden="true">✎</span>
+        <td>
+          <span class="editable-cell dash-editable-cell" data-url="/dashboard/services/{{ row.pk }}/service/"
+              data-param="service_name" data-title="{{ row.domain }} - 서비스명">
+            <span class="cell-value">{{ row.service_name|default:"" }}</span><span class="dash-manual-icon" aria-hidden="true">✎</span>
+          </span>
+          {% if row.service_name %}<a class="is-size-7" href="{% url 'dashboard-service-topology' %}?name={{ row.service_name|urlencode }}">구성도</a>{% endif %}
         </td>
         <td>
           {{ row.domain }}
@@ -91,9 +94,12 @@
     <tbody>
       {% for container in was_rows %}
       <tr>
-        <td class="editable-cell dash-editable-cell" data-url="/dashboard/services/container/{{ container.pk }}/service/"
-            data-param="service_name" data-title="{{ container.name }} - 서비스명">
-          <span class="cell-value">{{ container.service.name|default:"" }}</span><span class="dash-manual-icon" aria-hidden="true">✎</span>
+        <td>
+          <span class="editable-cell dash-editable-cell" data-url="/dashboard/services/container/{{ container.pk }}/service/"
+              data-param="service_name" data-title="{{ container.name }} - 서비스명">
+            <span class="cell-value">{{ container.service.name|default:"" }}</span><span class="dash-manual-icon" aria-hidden="true">✎</span>
+          </span>
+          {% if container.service %}<a class="is-size-7" href="{% url 'dashboard-service-topology' %}?name={{ container.service.name|urlencode }}">구성도</a>{% endif %}
         </td>
         <td>{{ container.name }}</td>
         <td>{{ container.node_name }}</td>

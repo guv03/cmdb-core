@@ -94,6 +94,11 @@ Django + DRF 기반 CMDB. 자산 자체(신규 생성)는 AWX push 경로 하나
   - 매칭 키는 `(hostname, vhost)`다 — **도메인은 매칭 키로 못 씀**(같은 도메인을 http/https vhost 두 개가 나눠 쓰는 실제 케이스가 있어 유일하지 않음, 예: `vhost1`/`vhost1_ssl`이 둘 다 `cal.lotteins.co.kr`). `domain`/`aliases` 컬럼은 사람이 알아보기 위한 참고용으로만 내보내고 업로드 시엔 무시.
   - 서비스명은 vhost 단위 값이라 행 하나 = vhost 하나로 반영. 솔루션버전/Fix는 AUTO 필드로 바뀌면서(위 "솔루션 버전/Fix는 AUTO" 참고) 엑셀로는 수정 불가 — domain/aliases와 같은 참고용 컬럼으로만 내보내고 업로드 시 무시.
   - 기존 값과 실제로 다른 셀만 "반영 예정"에 잡는다(자산 임포터는 이 diff 비교가 없어 안 바뀐 셀도 매번 반영 예정으로 뜨는데, "전체 내보내서 일부만 고쳐 재업로드"하는 흐름에서는 그러면 노이즈가 너무 많아짐).
+- **구성도**(`/dashboard/services/topology/`, "서비스" 드롭다운 하위): 서비스 하나를 골라 WEB↔WAS↔시스템 연결을 실제 그림(Graphviz로 서버에서 그린 SVG)으로 보여주는 기능. 처음엔 표/레인 방식(레인 하나 = WEB vhost-WAS 컨테이너 한 쌍)으로 만들었는데, **OS가 이중화된 경우 같은 물리 서버가 레인마다 반복 표시돼 같은 서버인지 다른 서버인지 한눈에 안 들어오는 문제**가 있어(WebToB 2대 × JEUS 2대처럼 N:M 연결이면 레인이 4줄인데 서버는 실제로 2+2대뿐) 기각 — Mermaid(브라우저 렌더링)도 검토했으나 System>OS>App 3단 중첩 표현이 Graphviz cluster가 더 정교해서 최종적으로 Graphviz를 택함.
+  - `dashboard/topology.py`의 `build_service_topology_graph()`가 서비스에 걸린 WEB vhost/WAS 컨테이너를 **노드**로 만든다(레인이 아니라 진짜 그래프) — 같은 asset을 가리키는 노드는 렌더링 단계에서 자동으로 같은 OS 박스에 합쳐지므로(예: 같은 서버에 WebToB/JEUS가 같이 뜬 경우도 자연스럽게 표현됨) 중복 표시 문제 자체가 구조적으로 안 생긴다. 엣지는 `JeusWebtobConnector`로 실제 연결된 경우만 만든다(라벨은 connector 이름/registration_id).
+  - `render_topology_svg()`가 노드를 asset(OS) → 그 asset의 물리호스트(System, `SystemVm.asset` 매칭) 순으로 묶어 dot 텍스트의 중첩 `subgraph cluster`로 emit하고, `subprocess`로 `dot -Tsvg`를 실행해 SVG 문자열을 받는다(마크업 자체는 `_dot_escape`로 이스케이프 — dot 문법 깨짐 방지). System을 못 찾은 OS는 System 클러스터 없이 OS 박스만 단독으로 나온다(레인 방식 때 쓰던 "미확인" 플레이스홀더 불필요 - 그냥 생략).
+  - **`dot` 바이너리는 Dockerfile에 `apt-get install graphviz`로 이미지에 굽는다** — 이 프로젝트 최초의 apt 설치(기존엔 전부 `vendor/wheels`의 Python wheel만). 폐쇄망은 운영 K8s가 완성된 이미지만 받는 구조라 `docker build` 자체(개발망에서 실행)가 apt 저장소에 접근 못 할 이유가 없어 문제 없음.
+  - 서비스 선택은 `<input list>`(네이티브 datalist, 별도 자동완성 라이브러리 없음)로 하거나 서비스 탭 각 행의 "구성도" 링크(`?name=서비스명`)로 바로 들어온다. Apache/Nginx→WAS 연결은 아직 구조적 데이터가 없어 표시 안 함(프록시 파싱 붙으면 확장).
 
 # 대시보드 디자인 패턴
 화면마다 톤이 갈리지 않도록, 새 대시보드 화면/컴포넌트를 만들 때 아래 패턴을 그대로 따른다(Bulma 기반, `dashboard/templates/dashboard/base.html`이 라이트·고대비 테마로 고정).

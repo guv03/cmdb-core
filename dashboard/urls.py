@@ -29,6 +29,7 @@ from dashboard.views import (
     ServiceExportView,
     ServiceImportConfirmView,
     ServiceImportView,
+    ServiceTopologyView,
     SystemDetailView,
     SystemHostExportView,
     SystemHostImportConfirmView,
@@ -120,6 +121,7 @@ urlpatterns = [
     ),
     path("webconfig/<int:pk>/", WebConfigDetailView.as_view(), name="dashboard-webconfig-detail"),
     path("services/", WebServiceListView.as_view(), name="dashboard-webservice-list"),
+    path("services/topology/", ServiceTopologyView.as_view(), name="dashboard-service-topology"),
     path("services/export/", ServiceExportView.as_view(), name="dashboard-service-export"),
     path("services/import/", ServiceImportView.as_view(), name="dashboard-service-import"),
     path(
