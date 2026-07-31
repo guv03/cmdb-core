@@ -37,6 +37,8 @@ from dashboard.queries import (
     build_jeus_container_rows,
     build_rows,
     build_sort_columns,
+    build_system_host_rows,
+    build_system_host_vm_entries,
     build_webtob_vhost_rows,
     get_apache_vhost_queryset,
     get_asset_queryset,
@@ -48,6 +50,9 @@ from dashboard.queries import (
     get_os_overview_data,
     get_os_version_breakdown,
     get_process_queryset,
+    get_system_host_dynamic_field_definitions,
+    get_system_host_queryset,
+    get_system_hosts_for_vms,
     get_was_config_queryset,
     get_was_history_queryset,
     get_was_overview_data,
@@ -71,6 +76,8 @@ from webconfig.excel_import import (
     export_service_workbook,
     parse_service_workbook,
 )
+from systems.dynamic_fields import is_valid_choice as system_is_valid_choice
+from systems.models import SystemHost, SystemHostFieldDefinition, SystemHostFieldValue
 from was.models import JeusContainer, WasConfigSource
 from webconfig.models import ApacheVhost, NginxVhost, WebConfigSource, WebServiceDomain, WebtobVhost
 
@@ -155,7 +162,62 @@ class AssetDetailView(LoginRequiredMixin, DetailView):
         hostfact = getattr(self.object, "hostfact", None)
         raw_facts = hostfact.raw_facts if hostfact is not None else {}
         context["raw_facts_json"] = json.dumps(raw_facts, indent=2, ensure_ascii=False)
+
+        # "연결된 시스템"은 VM 자신의 하드웨어 정보가 아니라 시스템 목록에 이미 선언된 컬럼
+        # (고정 이름/종류/VM 수 + admin이 등록한 동적 필드)을 그대로 보여준다 - 자산관리
+        # 관점에서 "이 OS가 어느 물리 시스템에 있나"를 보려는 목적이라 시스템 쪽 정보는
+        # 시스템 쪽 정의를 그대로 따라간다(build_system_host_vm_entries와 대칭).
+        linked_vms = list(self.object.system_vms.select_related("host__source"))
+        system_dynamic_field_definitions = list(get_system_host_dynamic_field_definitions())
+        linked_hosts = get_system_hosts_for_vms(linked_vms)
+        context["linked_system_host_rows"] = build_system_host_rows(
+            linked_hosts, system_dynamic_field_definitions
+        )
         return context
+
+
+class SystemHostManualFieldUpdateView(LoginRequiredMixin, View):
+    """"시스템" 목록의 인라인 편집(셀 하나 클릭 → 그 필드 값만 저장)용 엔드포인트 -
+    AssetManualFieldUpdateView와 동일 패턴, SystemHostFieldDefinition/Value 기준."""
+
+    def post(self, request, pk):
+        host = get_object_or_404(SystemHost, pk=pk)
+
+        field_definition = SystemHostFieldDefinition.objects.filter(
+            pk=request.POST.get("field_id"),
+            source=SystemHostFieldDefinition.Source.MANUAL,
+            is_visible=True,
+        ).first()
+        if field_definition is None:
+            return JsonResponse({"error": "수기 입력 필드를 찾을 수 없습니다."}, status=404)
+
+        if field_definition.value_type == SystemHostFieldDefinition.ValueType.BOOL:
+            raw_value = request.POST.get("value") == "true"
+        else:
+            raw_value = request.POST.get("value", "").strip() or None
+
+        if not system_is_valid_choice(field_definition, raw_value):
+            return JsonResponse({"error": "허용되지 않은 값입니다."}, status=400)
+
+        defaults = coerce_fact_value(raw_value, field_definition.value_type)
+        parse_failed = (
+            field_definition.value_type
+            in (SystemHostFieldDefinition.ValueType.NUMBER, SystemHostFieldDefinition.ValueType.DATE)
+            and raw_value is not None
+            and all(v is None for v in defaults.values())
+        )
+        if parse_failed:
+            return JsonResponse({"error": "값 형식이 올바르지 않습니다."}, status=400)
+
+        SystemHostFieldValue.objects.update_or_create(
+            host=host, field_definition=field_definition, defaults=defaults
+        )
+
+        display_value = next(
+            (v for v in (defaults["value_text"], defaults["value_number"], defaults["value_date"]) if v is not None),
+            "",
+        )
+        return JsonResponse({"value": str(display_value)})
 
 
 class AssetManualFieldUpdateView(LoginRequiredMixin, View):
@@ -624,6 +686,74 @@ class JeusContainerServiceUpdateView(LoginRequiredMixin, View):
         container.service_name = request.POST.get("service_name", "").strip()
         container.save(update_fields=["service_name"])
         return JsonResponse({"service_name": container.service_name})
+
+
+class SystemListView(LoginRequiredMixin, ListView):
+    """진짜 물리 장비(ESXi 호스트/AHV 노드) 목록 - SystemHost 하나 = 행 하나. 그 위에 떠있는
+    VM(OS)들은 여기서 안 보여주고 상세 화면에서 관계형으로 나열한다(호스트:VM = 1:N)."""
+
+    template_name = "dashboard/system_list.html"
+    context_object_name = "hosts"
+    paginate_by = 50
+
+    def get_queryset(self):
+        return get_system_host_queryset(self.request)
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        dynamic_field_definitions = list(get_system_host_dynamic_field_definitions())
+        context["rows"] = build_system_host_rows(context["hosts"], dynamic_field_definitions)
+        context["columns"] = build_sort_columns(
+            self.request,
+            ["name", "kind", "vm_count"],
+            default="name",
+        )
+        # MANUAL 셀 편집 모달의 선택형(choice) 입력 구성용 - 자산 목록의
+        # {{ columns|json_script }} 패턴과 같은 이유(JS에서 field_id별 선택지 조회).
+        context["field_choices_json"] = [
+            {
+                "field_id": fd.id,
+                "choices": (
+                    [c.value for c in fd.choices.all()]
+                    if fd.value_type == SystemHostFieldDefinition.ValueType.CHOICE
+                    else None
+                ),
+            }
+            for fd in dynamic_field_definitions
+        ]
+        return context
+
+
+class SystemDetailView(LoginRequiredMixin, DetailView):
+    """물리 호스트 상세 - 자기 하드웨어 스펙 + 그 위에 떠있는 VM(OS) 목록을 관계형으로
+    보여준다(asset이 매칭된 VM은 자산 상세로 링크)."""
+
+    template_name = "dashboard/system_detail.html"
+    context_object_name = "host"
+
+    def get_queryset(self):
+        # vm.asset 자체(hostfact 등)는 여기서 안 쓴다 - build_system_host_vm_entries가
+        # 매칭된 자산을 별도로(OS 목록과 같은 select_related/prefetch로) 다시 조회해서
+        # OS 쪽 컬럼 값을 만든다. 여기선 vm.asset_id/hostname/name만 있으면 충분.
+        return SystemHost.objects.select_related("source").prefetch_related(
+            "vms", "field_values__field_definition"
+        )
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        dynamic_field_definitions = list(get_system_host_dynamic_field_definitions())
+        context["row"] = build_system_host_rows([self.object], dynamic_field_definitions)[0]
+
+        # "이 장비에 떠있는 OS(VM)" 표는 VM 자신의 하드웨어 정보가 아니라 OS 목록에 이미
+        # 선언된 컬럼(고정 Hostname/IP/OS + admin이 등록한 동적 필드)을 그대로 보여준다 -
+        # 자산관리 관점에서 "이 시스템에 어떤 OS가 떠있나"를 보려는 목적이라 OS 쪽 정보는
+        # OS 쪽 정의를 그대로 따라간다.
+        os_dynamic_field_definitions = list(get_dynamic_field_definitions())
+        context["os_columns"] = get_dashboard_columns(self.request)
+        context["vm_entries"] = build_system_host_vm_entries(
+            self.object.vms.all(), os_dynamic_field_definitions
+        )
+        return context
 
 
 class ServiceExportView(LoginRequiredMixin, View):

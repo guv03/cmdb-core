@@ -145,6 +145,8 @@
                href="{% url 'dashboard-was-history' %}">변경 이력</a>
           </div>
         </div>
+        <a class="navbar-item {% if request.resolver_match.url_name == 'dashboard-system-list' %}is-active{% endif %}"
+           href="{% url 'dashboard-system-list' %}">시스템</a>
         <a class="navbar-item {% if request.resolver_match.url_name == 'dashboard-webservice-list' %}is-active{% endif %}"
            href="{% url 'dashboard-webservice-list' %}">서비스</a>
         <a class="navbar-item {% if 'dashboard-process' in request.resolver_match.url_name %}is-active{% endif %}"

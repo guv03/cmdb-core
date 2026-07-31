@@ -9,6 +9,7 @@ urlpatterns = [
     path("api/webconfig/", include("webconfig.urls")),
     path("api/processes/", include("processes.urls")),
     path("api/was/", include("was.urls")),
+    path("api/systems/", include("systems.urls")),
     path("api/", include("core.urls")),
     path("api/", include(dashboard_api_urlpatterns)),
     path("dashboard/", include("dashboard.urls")),

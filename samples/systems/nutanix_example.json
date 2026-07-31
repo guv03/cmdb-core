@@ -1,0 +1,31 @@
+{
+  "kind": "nutanix",
+  "source_name": "pc01.corp.local",
+  "hosts": [
+    {
+      "external_id": "ahv-node-01",
+      "name": "ahv-node-01.corp.local",
+      "extra": {"host": {"cluster_name": "Cluster-A", "num_cpu_cores": 32, "memory_size_bytes": 274877906944, "model": "NX-3060-G7", "power_state": "ON"}}
+    }
+  ],
+  "vms": [
+    {
+      "host_external_id": "ahv-node-01",
+      "name": "drnrap01",
+      "hostname": "drnrap01",
+      "uuid": "5b6a1e2a-0000-4a11-9c1e-aaaaaaaaaaaa",
+      "power_state": "ON",
+      "num_cpu": 8,
+      "memory_mb": 16384,
+      "primary_ip": "10.150.9.165",
+      "tools_status": "installed",
+      "disks": [
+        {"label": "scsi.0", "size_mb": 102400, "storage_name": "container01"}
+      ],
+      "nics": [
+        {"mac_address": "50:6b:8d:e3:de:0d", "ip_address": "10.150.9.165", "network_name": "vlan100", "is_connected": true}
+      ],
+      "extra": {"categories": ["Prod"]}
+    }
+  ]
+}

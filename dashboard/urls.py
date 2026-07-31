@@ -31,6 +31,9 @@ from dashboard.views import (
     ServiceExportView,
     ServiceImportConfirmView,
     ServiceImportView,
+    SystemDetailView,
+    SystemHostManualFieldUpdateView,
+    SystemListView,
     WasConfigExportView,
     WasConfigDetailView,
     WasConfigHistoryExportView,
@@ -166,6 +169,13 @@ urlpatterns = [
         "was/jeus8/container/<int:pk>/service/",
         JeusContainerServiceUpdateView.as_view(),
         name="dashboard-jeus8-container-service",
+    ),
+    path("systems/", SystemListView.as_view(), name="dashboard-system-list"),
+    path("systems/<int:pk>/", SystemDetailView.as_view(), name="dashboard-system-detail"),
+    path(
+        "systems/<int:pk>/manual-fields/",
+        SystemHostManualFieldUpdateView.as_view(),
+        name="dashboard-system-manual-fields-update",
     ),
 ]
 

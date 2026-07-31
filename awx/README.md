@@ -16,6 +16,13 @@
   노드)를 기술할 수 있지만 파일 자체는 admin 서버 호스트에만 있다.
 - `inventory_source_vars.example.yml` — vCenter/Nutanix 인벤토리 소스의 hostvar를
   플레이북이 기대하는 정규화된 변수명으로 매핑하는 예시(참고용, 실제 환경에 맞게 조정 필요).
+- `push_vcenter_systems_to_cmdb.yml` / `push_vcenter_systems_instance_tasks.yml` — vCenter
+  REST API를 직접 호출해 VM 목록을 CMDB(`POST /api/systems/`)로 push하는 플레이북. 위
+  facts/webconfig/was 플레이북과 달리 개별 호스트가 아니라 `hosts: localhost`로 vCenter
+  인스턴스 단위(여러 대 순회 가능)로 딱 한 번씩 실행된다 - CMDB의 `systems` 앱, CLAUDE.md의
+  "시스템" 섹션 참고.
+- `push_nutanix_systems_to_cmdb.yml` / `push_nutanix_systems_instance_tasks.yml` — 위와 같은
+  설계로 Nutanix Prism Central API를 호출해 VM 목록을 CMDB로 push하는 플레이북.
 
 ## AWX 설정
 
@@ -49,6 +56,14 @@ vCenter/Nutanix dynamic inventory 플러그인이 노출하는 hostvar 이름은
 - ansible facts 수집이 실패한 호스트는 이 플레이북 자체가 그 호스트에서 실행되지 않으므로
   (AWX가 연결 실패 호스트를 자동으로 제외) 별도 처리 불필요 — CLAUDE.md 원칙대로
   "facts push 시점에만 반영되면 충분".
+- **AIX/구버전 Linux처럼 기본 Python이 낮은(3.8 미만) 호스트는 `gather_facts`가 실패한다**
+  (AWX의 ansible-core가 요구하는 module_utils 문법이 3.8+, 자세한 내용은 `OS_SPECS.md`
+  참고). AIX Toolbox 등으로 신버전 Python을 별도 경로에 설치했다면(PATH의 `python3`는
+  안 바뀌는 경우가 많음) 그 호스트/그룹의 인벤토리 변수로 인터프리터 경로를 지정 —
+  플레이북 자체는 수정할 필요 없음:
+  ```
+  ansible_python_interpreter=/opt/freeware/bin/python3.9
+  ```
 
 ### 3. Job Template — WebToB 설정 push
 
@@ -122,7 +137,74 @@ vCenter/Nutanix dynamic inventory 플러그인이 노출하는 hostvar 이름은
   일단 자산 미연결 상태로 저장되고, 나중에 그 노드가 facts push되면 다음 JEUS push 때
   자동으로 연결된다.
 
-### 6. 로컬 테스트
+### 6. Job Template — vCenter 시스템 정보 push
+
+- Playbook: `awx/push_vcenter_systems_to_cmdb.yml` (인스턴스별 실제 작업은
+  `awx/push_vcenter_systems_instance_tasks.yml`에 `include_tasks`로 분리)
+- Inventory: 아무 inventory나 상관없음 - `hosts: localhost`로 딱 한 번만 실행되고 관리 대상
+  서버에 SSH 접속하지 않는다(각 호스트 facts push와 완전히 분리된 흐름). vCenter가 여러 대라
+  어느 호스트가 어느 vCenter에 속하는지 미리 알 수 없어서, 호스트별로 조회하는 대신 가진
+  vCenter를 전부 통째로 조회해 VM 목록을 CMDB로 보내고 CMDB가 hostname으로 기존 자산과
+  매칭한다(자세한 설계는 CMDB 리포지토리 `CLAUDE.md`의 "시스템" 섹션 참고).
+- Credential: `cmdb_api_key`는 facts push와 동일한 것 재사용 가능. vCenter 인증 정보
+  (`vcenter_instances`의 username/password)는 평문 Extra Variables에 넣지 말고 Vault-encrypted
+  변수나 Survey password 타입 필드로 주입할 것.
+- Extra Variables 예시:
+  ```yaml
+  cmdb_base_url: http://cmdb.internal:8000
+  cmdb_validate_certs: true
+  vcenter_instances:
+    - name: vcenter01.corp.local
+      base_url: https://vcenter01.corp.local
+      username: svc-cmdb@vsphere.local
+      password: "{{ vault_vcenter01_password }}"
+    - name: vcenter02.corp.local
+      base_url: https://vcenter02.corp.local
+      username: svc-cmdb@vsphere.local
+      password: "{{ vault_vcenter02_password }}"
+  ```
+- CMDB 쪽은 "물리 장비(ESXi 호스트)가 기본 단위, VM은 그 위에 관계형으로 딸린 OS"로
+  모델링돼 있어(`systems` 앱) 이 플레이북은 `GET /api/vcenter/host`(물리 호스트 목록)와
+  `GET /api/vcenter/vm`(VM 목록) 둘 다 조회해서 `hosts`/`vms` 두 배열로 나눠 push한다 -
+  각 VM은 자기 상세 응답의 `host` 필드(호스트 moref)로 어느 물리 호스트에 속하는지 표시.
+- **반입 전 확인 필요**: vSphere REST API 응답 스키마는 vCenter 버전(6.5/7.0/8.0)마다 조금씩
+  다를 수 있어서, 이 플레이북은 공식 문서로 확인된 필드(VM 목록의 name/power_state/cpu_count/
+  memory_size_MiB, 게스트 identity의 host_name/ip_address)만 구조화해서 보내고 **물리
+  호스트의 CPU 코어/메모리 총량/모델 같은 실제 하드웨어 스펙은 구조화하지 않았다** - 호스트
+  목록 응답 항목 전체를 CMDB의 `extra`(참고용 아카이브)에 그대로 실어 보낸다. 디스크·NIC
+  상세도 마찬가지로 VM 상세 응답 원본을 `extra`에 보관. 실제 vCenter의
+  `https://<vcenter>/apiexplorer`로 `GET /api/vcenter/host/{host}` 등의 응답 구조를 확인한
+  뒤 필요하면 `push_vcenter_systems_instance_tasks.yml`의 필드 매핑을 넓히면 된다.
+
+### 7. Job Template — Nutanix 시스템 정보 push
+
+- Playbook: `awx/push_nutanix_systems_to_cmdb.yml` (인스턴스별 실제 작업은
+  `awx/push_nutanix_systems_instance_tasks.yml`에 분리) - 위 vCenter 플레이북과 완전히 같은
+  설계(개별 호스트 facts push와 분리, `hosts: localhost`, Prism Central 여러 대를
+  `nutanix_instances`로 순회, hostname 매칭).
+- Credential: `cmdb_api_key` 재사용 가능. Nutanix 인증은 서비스 계정 API 키(`api_key`,
+  `X-Ntnx-Api-Key` 헤더) 권장 - 없으면 username/password로 Basic 인증도 가능하지만 마찬가지로
+  평문 Extra Variables 대신 Vault-encrypted 변수로 주입할 것.
+- Extra Variables 예시:
+  ```yaml
+  cmdb_base_url: http://cmdb.internal:8000
+  cmdb_validate_certs: true
+  nutanix_instances:
+    - name: pc01.corp.local
+      base_url: https://pc01.corp.local:9440
+      api_key: "{{ vault_nutanix_pc01_api_key }}"
+  ```
+- vCenter 쪽과 같은 이유로 `clustermgmt` 네임스페이스에서 물리 호스트(AHV 노드) 목록을,
+  `vmm` 네임스페이스에서 VM 목록을 따로 조회해 `hosts`/`vms` 두 배열로 push한다 - 각 VM은
+  자기 `host` 참조(`ext_id`)로 어느 물리 호스트에 속하는지 표시.
+- **반입 전 확인 필요**: 호스트 목록 엔드포인트 경로와 VM의 호스트 참조 필드는 Nutanix v4
+  API의 일반적인 네이밍 관례를 따른 추정이라 실제 버전으로 검증되지 않았다 - name/uuid
+  (`ext_id`)/power_state만 구조화하고 호스트 하드웨어 스펙·vCPU/메모리/IP/디스크·NIC은 객체
+  전체를 `extra`에 그대로 보관한다. 실제 Prism Central 응답을
+  `https://developers.nutanix.com/api-reference`로 확인한 뒤
+  `push_nutanix_systems_instance_tasks.yml`의 필드 매핑을 넓히면 된다.
+
+### 8. 로컬 테스트
 
 CMDB를 로컬 Docker Compose로 띄운 상태에서, 임의 값으로 API를 직접 호출해 CMDB 쪽 동작을
 먼저 검증하고 싶다면 CMDB 리포지토리의 `LOCAL_ACCESS.md`를 참고 (facts/webconfig push API 섹션).

@@ -1,0 +1,271 @@
+{% extends "dashboard/base.html" %}
+
+{% block title %}시스템 - CMDB{% endblock %}
+
+{% block content %}
+{% csrf_token %}
+<div class="level">
+  <div class="level-left">
+    <h1 class="title is-4">시스템</h1>
+  </div>
+</div>
+<p class="subtitle is-6 has-text-grey">vCenter/Nutanix가 보고하는 물리 장비(ESXi 호스트/AHV 노드) 하나가 한 행입니다. 그 위에 떠있는 OS(VM)는 행을 클릭하면 상세에서 확인할 수 있습니다. 이름/종류/VM 수 외 나머지 컬럼은 admin의 System host field definitions에 등록한 만큼만 나타나고, 연필 아이콘(✎)이 붙은 값은 클릭해서 직접 수정할 수 있습니다.</p>
+
+<form class="field has-addons" method="get">
+  <div class="control is-expanded">
+    <input class="input" type="text" name="q" value="{{ current_q }}" placeholder="이름/종류 검색">
+  </div>
+  <div class="control">
+    <button class="button is-link" type="submit">검색</button>
+  </div>
+</form>
+
+<div class="table-container">
+  <table class="table is-fullwidth is-hoverable is-striped dash-scroll-table">
+    <thead>
+      <tr>
+        <th class="dash-sticky-col dash-sticky-col-1"><a class="has-text-dark" href="{% querystring sort=columns.name.next_sort page=None %}">이름</a></th>
+        <th class="dash-sticky-col dash-sticky-col-2"><a class="has-text-dark" href="{% querystring sort=columns.kind.next_sort page=None %}">종류</a></th>
+        <th><a class="has-text-dark" href="{% querystring sort=columns.vm_count.next_sort page=None %}">VM 수</a></th>
+        {% if rows %}{% for cell in rows.0.dynamic_cells %}<th>{{ cell.label }}</th>{% endfor %}{% endif %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+      <tr class="system-row" data-detail-url="{% url 'dashboard-system-detail' row.host.pk %}" style="cursor: pointer;">
+        <td class="dash-sticky-col dash-sticky-col-1">{{ row.host.name|default:row.host.external_id }}</td>
+        <td class="dash-sticky-col dash-sticky-col-2">{{ row.host.source.get_kind_display }}</td>
+        <td>{{ row.host.vm_count }}</td>
+        {% for cell in row.dynamic_cells %}
+        {% if cell.is_manual %}
+        <td class="manual-cell dash-editable-cell" data-host-id="{{ row.host.pk }}" data-host-name="{{ row.host.name|default:row.host.external_id }}"
+            data-field-id="{{ cell.field_id }}" data-field-label="{{ cell.label }}" data-value-type="{{ cell.value_type }}">
+          <span class="cell-value">{{ cell.value|default:"" }}</span><span class="dash-manual-icon" aria-hidden="true">✎</span>
+        </td>
+        {% else %}
+        <td>{{ cell.value|default:"" }}</td>
+        {% endif %}
+        {% endfor %}
+      </tr>
+      {% empty %}
+      <tr><td colspan="3" class="has-text-grey">등록된 물리 장비가 없습니다.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="modal" id="systemModal">
+  <div class="modal-background"></div>
+  <div class="modal-card" style="width: 90%; max-width: 960px;">
+    <header class="modal-card-head">
+      <p class="modal-card-title">시스템</p>
+      <button class="delete" aria-label="close" id="systemModalClose"></button>
+    </header>
+    <section class="modal-card-body" id="systemModalBody">불러오는 중...</section>
+  </div>
+</div>
+
+{{ field_choices_json|json_script:"system-field-choices" }}
+<div class="modal" id="manualCellModal">
+  <div class="modal-background"></div>
+  <div class="modal-card" style="width: 90%; max-width: 420px;">
+    <header class="modal-card-head">
+      <p class="modal-card-title" id="manualCellModalTitle">필드 편집</p>
+      <button class="delete" aria-label="close" id="manualCellModalClose"></button>
+    </header>
+    <section class="modal-card-body">
+      <div class="field" id="manualCellInputWrapper"></div>
+      <p class="help is-danger" id="manualCellError" style="display: none;"></p>
+    </section>
+    <footer class="modal-card-foot">
+      <button type="button" class="button is-link" id="manualCellSave">저장</button>
+      <button type="button" class="button" id="manualCellCancel">취소</button>
+    </footer>
+  </div>
+</div>
+
+<nav class="pagination" role="navigation" aria-label="pagination">
+  {% if page_obj.has_previous %}
+    <a class="pagination-previous" href="{% querystring page=page_obj.previous_page_number %}">이전</a>
+  {% else %}
+    <a class="pagination-previous" disabled>이전</a>
+  {% endif %}
+  {% if page_obj.has_next %}
+    <a class="pagination-next" href="{% querystring page=page_obj.next_page_number %}">다음</a>
+  {% else %}
+    <a class="pagination-next" disabled>다음</a>
+  {% endif %}
+  <span class="pagination-list">
+    <span class="pagination-link is-current">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
+  </span>
+</nav>
+{% endblock %}
+
+{% block extra_body %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  var modal = document.getElementById('systemModal');
+  var modalBody = document.getElementById('systemModalBody');
+
+  function closeModal() {
+    modal.classList.remove('is-active');
+  }
+
+  document.querySelectorAll('.system-row').forEach(function (row) {
+    row.addEventListener('click', function () {
+      modalBody.textContent = '불러오는 중...';
+      modal.classList.add('is-active');
+
+      fetch(row.dataset.detailUrl)
+        .then(function (res) { return res.text(); })
+        .then(function (html) {
+          var doc = new DOMParser().parseFromString(html, 'text/html');
+          var content = doc.getElementById('system-content');
+          modalBody.innerHTML = content ? content.innerHTML : '불러오기 실패';
+        })
+        .catch(function () {
+          modalBody.textContent = '불러오기 실패';
+        });
+    });
+  });
+
+  document.getElementById('systemModalClose').addEventListener('click', closeModal);
+  modal.querySelector('.modal-background').addEventListener('click', closeModal);
+
+  function getCsrfToken() {
+    var input = document.querySelector('input[name=csrfmiddlewaretoken]');
+    return input ? input.value : '';
+  }
+
+  var cellModal = document.getElementById('manualCellModal');
+  var cellModalTitle = document.getElementById('manualCellModalTitle');
+  var inputWrapper = document.getElementById('manualCellInputWrapper');
+  var errorEl = document.getElementById('manualCellError');
+  var saveBtn = document.getElementById('manualCellSave');
+  var cancelBtn = document.getElementById('manualCellCancel');
+
+  var activeCell = null;
+  var activeInput = null;
+
+  var choicesByFieldId = {};
+  var choicesDataEl = document.getElementById('system-field-choices');
+  if (choicesDataEl) {
+    JSON.parse(choicesDataEl.textContent).forEach(function (field) {
+      if (field.choices) {
+        choicesByFieldId[field.field_id] = field.choices;
+      }
+    });
+  }
+
+  function closeCellModal() {
+    cellModal.classList.remove('is-active');
+    activeCell = null;
+    activeInput = null;
+  }
+
+  function buildInput(valueType, currentValue, fieldId) {
+    if (valueType === 'bool') {
+      var label = document.createElement('label');
+      label.className = 'checkbox';
+      var checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.checked = currentValue === 'true';
+      label.appendChild(checkbox);
+      label.appendChild(document.createTextNode(' 예'));
+      return { element: label, input: checkbox };
+    }
+
+    if (valueType === 'choice') {
+      var select = document.createElement('select');
+      var blankOption = document.createElement('option');
+      blankOption.value = '';
+      blankOption.textContent = '(선택 안 함)';
+      select.appendChild(blankOption);
+      (choicesByFieldId[fieldId] || []).forEach(function (choiceValue) {
+        var option = document.createElement('option');
+        option.value = choiceValue;
+        option.textContent = choiceValue;
+        if (choiceValue === currentValue) option.selected = true;
+        select.appendChild(option);
+      });
+      var wrapper = document.createElement('div');
+      wrapper.className = 'select';
+      wrapper.appendChild(select);
+      return { element: wrapper, input: select };
+    }
+
+    var input = document.createElement('input');
+    input.className = 'input';
+    input.value = currentValue;
+    if (valueType === 'number') {
+      input.type = 'number';
+      input.step = 'any';
+    } else if (valueType === 'date') {
+      input.type = 'date';
+    } else {
+      input.type = 'text';
+    }
+    return { element: input, input: input };
+  }
+
+  function openCellModal(cell) {
+    activeCell = cell;
+    errorEl.style.display = 'none';
+    cellModalTitle.textContent = cell.dataset.hostName.toUpperCase() + ' · ' + cell.dataset.fieldLabel;
+
+    var currentValue = cell.querySelector('.cell-value').textContent;
+    var built = buildInput(cell.dataset.valueType, currentValue, cell.dataset.fieldId);
+    inputWrapper.innerHTML = '';
+    inputWrapper.appendChild(built.element);
+    activeInput = built.input;
+
+    cellModal.classList.add('is-active');
+    activeInput.focus();
+  }
+
+  function saveActiveCell() {
+    if (!activeCell) return;
+    var valueType = activeCell.dataset.valueType;
+    var newValue = valueType === 'bool' ? (activeInput.checked ? 'true' : 'false') : activeInput.value;
+
+    saveBtn.classList.add('is-loading');
+    fetch('/dashboard/systems/' + activeCell.dataset.hostId + '/manual-fields/', {
+      method: 'POST',
+      headers: {
+        'X-CSRFToken': getCsrfToken(),
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({ field_id: activeCell.dataset.fieldId, value: newValue }),
+    })
+      .then(function (res) { return res.json().then(function (data) { return { ok: res.ok, data: data }; }); })
+      .then(function (result) {
+        saveBtn.classList.remove('is-loading');
+        if (!result.ok) {
+          errorEl.textContent = result.data.error || '저장 실패';
+          errorEl.style.display = 'block';
+          return;
+        }
+        activeCell.querySelector('.cell-value').textContent = result.data.value;
+        closeCellModal();
+      })
+      .catch(function () {
+        saveBtn.classList.remove('is-loading');
+        errorEl.textContent = '저장 실패';
+        errorEl.style.display = 'block';
+      });
+  }
+
+  document.querySelectorAll('.manual-cell').forEach(function (cell) {
+    cell.addEventListener('click', function (e) {
+      e.stopPropagation();
+      openCellModal(cell);
+    });
+  });
+
+  saveBtn.addEventListener('click', saveActiveCell);
+  cancelBtn.addEventListener('click', closeCellModal);
+  document.getElementById('manualCellModalClose').addEventListener('click', closeCellModal);
+  cellModal.querySelector('.modal-background').addEventListener('click', closeCellModal);
+});
+</script>
+{% endblock %}

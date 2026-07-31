@@ -25,6 +25,7 @@ INSTALLED_APPS = [
     "webconfig",
     "processes",
     "was",
+    "systems",
     "dashboard",
 ]
 

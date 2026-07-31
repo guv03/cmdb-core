@@ -1,0 +1,145 @@
+---
+# push_vcenter_systems_to_cmdb.yml에서 vCenter 인스턴스 하나(loop_var: vcenter)에 대해
+# include_tasks로 호출되는 태스크 목록 - 단독 Job Template으로 실행하지 않는다.
+#
+# vSphere Automation API(vAPI) 세션 인증 → 물리 호스트(ESXi) 목록 조회 → VM 목록 조회 →
+# VM별 상세/게스트 정보 조회 → CMDB(POST /api/systems/)로 이 인스턴스 하나의 호스트+VM
+# 전체를 배치 push하는 순서. CMDB 쪽은 "물리 장비가 기본 단위, VM은 그 위에 관계형으로
+# 딸린 OS"로 모델링돼 있어(systems 앱, CLAUDE.md의 "시스템" 섹션 참고) VM 쪽 payload에
+# host_external_id로 자신이 속한 호스트를 표시해야 한다 - vCenter의 VM 상세 응답의 host
+# 필드(호스트 moref)를 그대로 쓴다.
+#
+# 구조화해서 뽑는 필드(공식 문서로 확인된 값): VM의 name/power_state/cpu_count/
+# memory_size_MiB는 VM 목록 조회(GET /api/vcenter/vm) 응답에 바로 있고, 게스트 hostname/IP는
+# GET /api/vcenter/vm/{vm}/guest/identity 응답의 host_name/ip_address에서 온다(VMware
+# Tools가 켜져 있어야 나오므로 조회 실패를 무시하고 진행).
+#
+# 호스트의 CPU 코어 수/메모리 총량/모델 등 실제 하드웨어 스펙은 vCenter 버전마다 정확한
+# 응답 경로가 달라 이번 버전에서는 구조화하지 않았다 - host_summary(GET /api/vcenter/host
+# 목록 항목) 전체를 extra에 그대로 보관하고, cpu_cores/memory_mb/model은 비워둔다. 실제
+# https://<vcenter>/apiexplorer로 GET /api/vcenter/host/{host} 응답을 확인한 뒤 아래
+# "물리 호스트 목록을 CMDB payload 형태로 변환" 태스크에 필드를 추가하면 된다.
+
+- name: 이 인스턴스의 payload 초기화
+  ansible.builtin.set_fact:
+    vcenter_hosts_payload: []
+    vcenter_vms_payload: []
+
+- name: vCenter 세션 인증
+  ansible.builtin.uri:
+    url: "{{ vcenter.base_url }}/api/session"
+    method: POST
+    url_username: "{{ vcenter.username }}"
+    url_password: "{{ vcenter.password }}"
+    force_basic_auth: true
+    validate_certs: "{{ vcenter.validate_certs | default(true) }}"
+    status_code: [200, 201]
+  register: vcenter_session
+  no_log: true
+
+- name: 물리 호스트(ESXi) 목록 조회
+  ansible.builtin.uri:
+    url: "{{ vcenter.base_url }}/api/vcenter/host"
+    method: GET
+    headers:
+      vmware-api-session-id: "{{ vcenter_session.json }}"
+    validate_certs: "{{ vcenter.validate_certs | default(true) }}"
+    status_code: [200]
+  register: vcenter_host_list
+  no_log: true
+
+- name: 물리 호스트 목록을 CMDB payload 형태로 변환
+  # 클러스터/CPU/메모리/모델/전원 상태 등은 CMDB 쪽에 고정 컬럼으로 안 두고 전부
+  # SystemHostFieldDefinition(admin 등록, extra 안의 dot-path)으로 뽑으므로 name/external_id
+  # 외에는 별도로 안 뽑고 esxi_host 원본 전체를 extra에 실어 보낸다.
+  ansible.builtin.set_fact:
+    vcenter_hosts_payload: >-
+      {{ vcenter_hosts_payload + [{
+        'external_id': esxi_host.host,
+        'name': esxi_host.name | default(''),
+        'extra': {'host_summary': esxi_host},
+      }] }}
+  loop: "{{ vcenter_host_list.json }}"
+  loop_control:
+    loop_var: esxi_host
+
+- name: VM 목록 조회
+  ansible.builtin.uri:
+    url: "{{ vcenter.base_url }}/api/vcenter/vm"
+    method: GET
+    headers:
+      vmware-api-session-id: "{{ vcenter_session.json }}"
+    validate_certs: "{{ vcenter.validate_certs | default(true) }}"
+    status_code: [200]
+  register: vcenter_vm_list
+  no_log: true
+
+- name: VM별 상세/게스트 정보 조회 및 payload 구성
+  vars:
+    vm_detail_url: "{{ vcenter.base_url }}/api/vcenter/vm/{{ vm_summary.vm }}"
+  block:
+    - name: VM 상세 조회
+      ansible.builtin.uri:
+        url: "{{ vm_detail_url }}"
+        method: GET
+        headers:
+          vmware-api-session-id: "{{ vcenter_session.json }}"
+        validate_certs: "{{ vcenter.validate_certs | default(true) }}"
+        status_code: [200]
+      register: vm_detail
+      no_log: true
+
+    - name: 게스트 식별 정보 조회(VMware Tools 없으면 실패할 수 있어 무시)
+      ansible.builtin.uri:
+        url: "{{ vm_detail_url }}/guest/identity"
+        method: GET
+        headers:
+          vmware-api-session-id: "{{ vcenter_session.json }}"
+        validate_certs: "{{ vcenter.validate_certs | default(true) }}"
+        status_code: [200]
+      register: vm_guest_identity
+      failed_when: false
+      no_log: true
+
+    - name: 이 VM을 payload에 추가
+      # vm_guest_identity는 VMware Tools 미설치/미실행 시 조회 자체가 실패할 수 있는데
+      # (failed_when: false로 play는 안 멈추지만 .json이 아예 없을 수 있음), Jinja에서
+      # Undefined 객체의 속성에 바로 체이닝하면 에러가 나므로 ".json | default({})"로
+      # 한 번 감싼 뒤에 하위 필드에 접근한다.
+      ansible.builtin.set_fact:
+        vcenter_vms_payload: >-
+          {{ vcenter_vms_payload + [{
+            'host_external_id': vm_detail.json.host | default(''),
+            'name': vm_summary.name,
+            'hostname': ((vm_guest_identity.json | default({})).host_name | default('')) or vm_summary.name,
+            'uuid': vm_summary.vm,
+            'power_state': vm_summary.power_state | default(''),
+            'num_cpu': vm_summary.cpu_count | default(none),
+            'memory_mb': vm_summary.memory_size_MiB | default(none),
+            'primary_ip': (vm_guest_identity.json | default({})).ip_address | default(none),
+            'extra': {'vm_detail': vm_detail.json | default({}), 'guest_identity': vm_guest_identity.json | default({})},
+          }] }}
+  loop: "{{ vcenter_vm_list.json }}"
+  loop_control:
+    loop_var: vm_summary
+
+- name: CMDB로 시스템 정보 push  # noqa: no-changed-when
+  ansible.builtin.uri:
+    url: "{{ cmdb_base_url }}/api/systems/"
+    method: POST
+    headers:
+      X-API-Key: "{{ cmdb_api_key }}"
+    body_format: json
+    body:
+      kind: vcenter
+      source_name: "{{ vcenter.name }}"
+      hosts: "{{ vcenter_hosts_payload }}"
+      vms: "{{ vcenter_vms_payload }}"
+    status_code: [200, 201]
+    validate_certs: "{{ cmdb_validate_certs }}"
+  no_log: true
+  register: cmdb_push_result
+
+- name: push 결과 출력
+  ansible.builtin.debug:
+    msg: "CMDB 시스템 push 완료: {{ vcenter.name }}, hosts={{ cmdb_push_result.json.host_count }}, vms={{ cmdb_push_result.json.vm_count }}"

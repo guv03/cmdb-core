@@ -16,6 +16,7 @@ from django.db.models import (
 from core.models import Asset
 from facts.models import FactFieldDefinition, HostFact, HostFactValue, PendingChange
 from processes.models import ProcessSnapshot
+from systems.models import SystemHost, SystemHostFieldDefinition, SystemSource
 from was.models import JeusContainer, WasConfigSource, WasConfigSourceRevision
 from webconfig.models import (
     ApacheVhost,
@@ -767,3 +768,116 @@ def get_process_queryset(request):
     lookup = PROCESS_SORT_LOOKUPS.get(sort_key, "asset__hostname")
 
     return queryset.order_by(f"{direction}{lookup}")
+
+
+SYSTEM_HOST_SORT_LOOKUPS = {
+    "name": "name",
+    "kind": "source__kind",
+    "vm_count": "vm_count",
+    "last_pushed_at": "source__last_pushed_at",
+}
+
+
+def get_system_host_queryset(request):
+    # extra/raw_response(JSONField, Oracle에서 대용량으로 다뤄질 수 있음)는 목록에서 안 쓰므로
+    # defer. 검색 필터가 own 필드/forward FK만 참조해 to-many 조인이 없으므로(vm_count의
+    # Count(distinct=True) 자체는 annotate라 검색 결과 행 중복과는 무관) .distinct()는 불필요.
+    queryset = (
+        SystemHost.objects.select_related("source")
+        .defer("extra", "source__raw_response")
+        .annotate(vm_count=Count("vms", distinct=True))
+        .prefetch_related("field_values__field_definition")
+    )
+
+    q = _request_param(request, "q", "search")
+    if q:
+        queryset = queryset.filter(
+            Q(name__icontains=q)
+            | Q(external_id__icontains=q)
+            | _kind_search_q(SystemSource.Kind, "source__kind", q)
+        )
+
+    sort = _request_param(request, "sort", "ordering", default="name")
+    direction = "-" if sort.startswith("-") else ""
+    sort_key = sort.lstrip("-")
+    lookup = SYSTEM_HOST_SORT_LOOKUPS.get(sort_key, "name")
+
+    return queryset.order_by(f"{direction}{lookup}")
+
+
+def get_system_host_dynamic_field_definitions():
+    """SystemHost 목록 컬럼으로 노출하는 필드 정의(AUTO+MANUAL 둘 다) - facts의
+    get_dynamic_field_definitions()와 같은 목적, systems 앱 전용 모델(SystemHostFieldDefinition)
+    기준. FIXED가 없어 별도 exclude는 불필요."""
+    return (
+        SystemHostFieldDefinition.objects.filter(is_visible=True)
+        .prefetch_related("choices")
+        .order_by("sort_order", "id")
+    )
+
+
+def build_system_host_rows(hosts, dynamic_field_definitions):
+    """자산 목록의 build_rows()와 같은 패턴 - 고정 컬럼(이름/종류/VM 수)에 admin이 등록한
+    동적 컬럼(AUTO/MANUAL)을 이어붙인다. 정렬은 아직 지원하지 않음(값이 EAV 테이블에 있어
+    자산 목록처럼 Subquery 정렬이 필요한데, 필요해지면 get_asset_queryset의 방식을 그대로
+    가져오면 됨)."""
+    rows = []
+    for host in hosts:
+        values_by_field_id = {}
+        for value in host.field_values.all():
+            candidates = (value.value_text, value.value_number, value.value_date)
+            values_by_field_id[value.field_definition_id] = next(
+                (v for v in candidates if v not in (None, "")), None
+            )
+
+        dynamic_cells = [
+            {
+                "value": values_by_field_id.get(fd.id),
+                "field_id": fd.id,
+                "label": fd.label,
+                "is_manual": fd.source == SystemHostFieldDefinition.Source.MANUAL,
+                "value_type": fd.value_type,
+            }
+            for fd in dynamic_field_definitions
+        ]
+        rows.append({"host": host, "dynamic_cells": dynamic_cells})
+    return rows
+
+
+def build_system_host_vm_entries(vms, os_dynamic_field_definitions):
+    """물리 호스트 상세 화면의 "이 장비에 떠있는 OS(VM)" 표 - 자산관리 관점에서 "이 시스템에
+    어떤 OS가 떠있나"를 보려는 목적이라, VM 자신의 하드웨어 정보(전원 상태/vCPU/디스크/NIC
+    등)가 아니라 OS 목록에 이미 선언된 컬럼(고정 Hostname/IP/OS + admin이 등록한 동적 필드)을
+    그대로 재사용해서 보여준다 - build_rows()와 같은 값을 자산 하나짜리로 재사용. 자산
+    매칭이 안 된 VM은 보여줄 OS 정보 자체가 없으므로 hostname만 표시."""
+    asset_ids = [vm.asset_id for vm in vms if vm.asset_id]
+    assets = (
+        Asset.objects.filter(id__in=asset_ids)
+        .select_related("hostfact")
+        .prefetch_related(
+            Prefetch("hostfact__values", queryset=HostFactValue.objects.select_related("field_definition"))
+        )
+        if asset_ids
+        else Asset.objects.none()
+    )
+    asset_rows_by_id = {r["asset"].id: r for r in build_rows(assets, os_dynamic_field_definitions)}
+
+    entries = []
+    for vm in vms:
+        row = asset_rows_by_id.get(vm.asset_id) if vm.asset_id else None
+        entries.append({"matched": row is not None, "row": row, "name": vm.hostname or vm.name})
+    return entries
+
+
+def get_system_hosts_for_vms(vms):
+    """자산 상세의 "연결된 시스템" 섹션용 - VM들이 속한 SystemHost를 vm_count까지 annotate해서
+    가져온다(목록 화면과 동일한 값을 보여주기 위해 get_system_host_queryset과 같은 annotate)."""
+    host_ids = [vm.host_id for vm in vms if vm.host_id]
+    if not host_ids:
+        return SystemHost.objects.none()
+    return (
+        SystemHost.objects.filter(id__in=host_ids)
+        .select_related("source")
+        .annotate(vm_count=Count("vms", distinct=True))
+        .prefetch_related("field_values__field_definition")
+    )

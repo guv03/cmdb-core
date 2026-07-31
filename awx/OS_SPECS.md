@@ -24,7 +24,7 @@ is not defined`로 실패한다(현재 AWX의 ansible-core 버전이 `module_uti
 |---|---|---|---|
 | (미상) | 3.6.x | ✕ 실패 확인 | POPSAP01(nginx)에서 발견 — 업그레이드 필요, 아직 미조치 |
 | (미상) | 3.9.x | ✓ 정상 | 어떤 OS인지 추가 확인 필요 |
-| AIX | (미확인) | (미확인) | 아직 실제로 push해본 적 없음 — Linux와 동일 취급하되(SSH+Python 방식) 실제 기본 Python 버전은 서버별 확인 필요 |
+| AIX | 3.7.x(IBM 공식 지원 버전) | ✕ 기본값으론 실패(3.8 미달) | 기본 `python3`는 3.7이라 그대로는 AWX 요구사항(3.8+)을 못 채움. AIX Toolbox에서 `python3.9` rpm을 추가 설치해 해결(2026-07-31 확인) — `/opt/freeware/bin/python3.9`에 설치되고 PATH의 `python3`는 그대로 3.7을 보므로, 인벤토리 호스트/그룹 변수로 `ansible_python_interpreter=/opt/freeware/bin/python3.9` 지정 필요(`awx/README.md`의 "Job Template — facts push" 참고). rpm 설치 시 `libcrypto`/`libssl`/`liblzma`/`ncurses` 등 의존 라이브러리가 개별 설치로는 누락되기 쉬워, dnf(가능하면 오프라인 번들)로 의존성까지 한 번에 해결하는 걸 권장 |
 
 ## Windows — Python이 아니라 PowerShell 기반(개념이 다름)
 

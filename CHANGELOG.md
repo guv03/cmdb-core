@@ -5,6 +5,14 @@
 
 1.0.6까지의 이력은 이 파일 도입 전이라 별도 기록 없음 — `WORKLOG.md`의 해당 날짜 항목 참고.
 
+## 1.0.21
+
+- **"시스템" 신규** — vCenter/Nutanix가 보고하는 물리 장비(ESXi 호스트/AHV 노드) 인벤토리를 시각화하는 `systems` 앱 추가. 개별 호스트 facts push와 완전히 분리된 흐름으로, AWX가 `hosts: localhost`에서 vCenter/Nutanix API를 직접 호출해 물리 호스트+VM 목록을 배치로 CMDB(`POST /api/systems/`)에 push하고, VM은 hostname으로 기존 facts 자산과 매칭한다(자산 신규 생성은 안 함)
+  - 모델: `SystemHost`(물리 장비, "시스템" 탭 기본 단위) ← `SystemVm`(VM=OS 인스턴스, host/asset 둘 다 매칭 실패 시 null 허용) ← `SystemDisk`/`SystemNic`
+  - `SystemHost`도 facts처럼 admin 등록만으로 컬럼을 늘리는 동적 필드(`SystemHostFieldDefinition`/`SystemHostFieldValue`) 지원 — AUTO(extra에서 dot-path 추출, kind별 경로 override 가능)/MANUAL(선택형 포함) 둘 다 지원
+  - 자산관리 관점에서 "어떤 OS가 어느 물리 시스템에 있나"를 보기 쉽도록, 시스템 상세의 VM 표는 OS 목록과 동일한 컬럼으로, 자산 상세의 "연결된 시스템" 표는 시스템 목록과 동일한 컬럼으로 서로의 화면을 그대로 재사용해서 보여줌
+  - AWX 플레이북 신규: `push_vcenter_systems_to_cmdb.yml`/`push_nutanix_systems_to_cmdb.yml`(여러 인스턴스 순회 가능) — vCenter/Nutanix 응답의 세부 스키마(호스트 하드웨어 스펙 등)는 버전마다 달라 실측 검증 전이라 우선 `extra`에 원본을 보관하고 필요한 만큼만 admin에서 동적 필드로 노출하는 구조로 시작
+
 ## 1.0.20
 
 - 자산 엑셀 다운로드에 IP/OS 컬럼 누락 수정 — `hostname`+동적 필드(AUTO/MANUAL)만 내보내던 기존 로직에 `IP`(`primary_ip`)/`OS`(`os_family`)를 참고용 컬럼으로 추가(hostname 바로 뒤). AUTO 필드와 같은 취지로 업로드 시엔 항상 무시(편집 대상 아님) — 다운로드 그대로 재업로드해도 에러 없이 통과
