@@ -44,7 +44,7 @@
       {% for update in result.service_name_updates %}
       <tr>
         <td>{{ update.row_number }}</td>
-        <td>{{ update.hostname }}</td>
+        <td class="dash-hostname">{{ update.hostname }}</td>
         <td>{{ update.vhost_name }}</td>
         <td>{{ update.old_value }}</td>
         <td>{{ update.new_value }}</td>
@@ -62,7 +62,7 @@
     <thead><tr><th>행</th><th>Hostname</th><th>vhost</th></tr></thead>
     <tbody>
       {% for row in result.unmatched_rows %}
-      <tr><td>{{ row.row_number }}</td><td>{{ row.hostname }}</td><td>{{ row.vhost_name }}</td></tr>
+      <tr><td>{{ row.row_number }}</td><td class="dash-hostname">{{ row.hostname }}</td><td>{{ row.vhost_name }}</td></tr>
       {% endfor %}
     </tbody>
   </table>

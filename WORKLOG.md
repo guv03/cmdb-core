@@ -2,6 +2,23 @@
 
 일 단위로 진행한 작업을 기록한다. 새 날짜는 위에 추가한다.
 
+## 2026-07-31
+
+- **Windows 자산 OS/IP 필드 오적재 수정(1.0.18)**: `samples/awx/windows.json`(실제 Windows facts 샘플)을 대시보드에서 확인해보니 OS 컬럼에 "Microsoft Windows Server 2022 Standard"(풀네임)가 찍히고 os_version은 커널 빌드번호("10.0.20348.0"), IP는 빈 값으로 나오는 문제 발견 — 코딩 전 원인 검토부터 진행
+  - `HostFact.os_family`가 `ansible_facts.distribution`을 그대로 썼는데, 리눅스는 이 값이 우연히 family와 같아(`RedHat`) 안 드러났을 뿐 윈도우는 풀네임이라 어긋남 — ansible 표준 `os_family` 키로 교체
+  - `os_version`은 윈도우의 `distribution_version`이 사람이 읽는 버전이 아니라 커널 빌드번호라, `os_family=="Windows"`일 때만 `distribution`(마케팅명)을 쓰도록 분기 — `facts/views.py`/`facts/approval.py` 두 곳에 따로 있던 추출 경로 정의를 `facts/approval.py`의 `FIXED_FIELD_EXTRACTORS`/`compute_fixed_values()` 한 곳으로 통합(승인 diff와 실제 반영이 어긋날 위험 제거)
+  - `Asset.primary_ip`는 윈도우 facts에 아예 없는 `default_ipv4`에만 의존하던 걸, 없으면 `interfaces[].default_gateway`가 걸린 인터페이스의 `ipv4.address`로 폴백하도록 수정
+  - 이어서 "대시보드에 실제 보이는 os_version 컬럼"이 방금 고친 `HostFact.os_version`이 아니라 완전히 별개의 AUTO 동적 필드(`ansible_facts.distribution_version`)라는 걸 재확인 과정에서 발견 — AUTO는 dot-path 하나만 지원해 OS별 분기가 안 되는 구조적 한계 확인
+  - "리눅스 종류(RHEL 외)/AIX도 늘어날 텐데 화면 구성을 어떻게 할지" 고민에 대해서는, ansible의 `os_family`가 이미 RHEL/CentOS/Rocky 등을 "RedHat"으로, Ubuntu/Debian을 "Debian"으로 묶어주므로 화면 구조 변경은 불필요하다고 판단 — 다만 필드 값 자체가 OS별로 다른 raw facts 키에서 와야 하는 경우가 있어 `FactFieldDefinition.os_family_key_overrides`(JSON) 신규: os_family별로 다른 경로가 필요한 필드만 override를 채우고, 값이 같은 OS는 기존 `key`를 그대로 씀. 사용자 요청으로 admin help_text에 override 1개/2개 이상 예시 둘 다 명시
+  - "OS 목록의 고정 컬럼이 Hostname/IP만이어야 하는지" 재확인 요청에는 실제로 코드를 확인해 "OS(os_family)도 고정 컬럼이 맞다"고 사용자가 최종 확인 — 변경 없이 유지
+  - 실제 push(`/api/facts/`)와 백필(`backfill_field`) 둘 다로 Windows(`iawxap01`)/Linux(`drnrap01`) 검증, `manage.py check` 통과 확인 후 릴리즈
+- **대시보드 hostname 대문자 표시**: "hostname에 들어가는 영문은 대시보드 종류 구분 없이 대문자로 보이게" 요청 — 저장값(소문자 정규화)은 그대로 두고 표시만 바꿔야 검색/API 매칭이 안 깨진다고 판단해 CSS(`dash-hostname` 공용 클래스, `text-transform: uppercase`)로 처리, `base.html`에 한 번만 정의
+  - hostname이 나오는 화면 18개(자산/WEB/WAS 목록·상세·변경이력, vhost 목록 3종, 서비스 조회, 어플리케이션, 엑셀 업로드 결과) 전수 확인 후 적용 — vhost 자체의 `hostname`(도메인) 필드는 별개 개념이라 제외
+  - CSS가 안 먹는 `<title>`(브라우저 탭)은 `|upper` 필터, JS로 모달 제목을 조립하는 곳(`asset_list.html`)은 `.toUpperCase()`로 별도 처리
+  - Playwright로 실제 로그인 세션 쿠키를 주입해 OS 목록/상세 화면 스크린샷까지 찍어서 시각 확인
+- **검색 규칙 확장**: "OS 목록도 os_family로 검색되게" 요청으로 `dashboard/queries.py`의 자산 검색 조건에 `hostfact__os_family__icontains` 추가(1:1 관계라 기존 `.distinct()` 로직에 영향 없음). 이어서 "WEB/WAS도 종류로 검색되게" 요청에 `_kind_search_q()` 공용 헬퍼 신설 — `kind` 원시값(webtob/apache/nginx/jeus8)뿐 아니라 표시 라벨("JEUS 8"처럼 원시값과 다른 경우)도 매칭되게 처리, 두 목록 화면 검색창 placeholder도 갱신. 실제 검색 결과로 각각 검증(회귀 없음)
+- **AIX Python 버전 이슈 검토(코드 변경 없음)**: AWX facts 수집 시 AIX가 Python 3.7까지만 공식 지원한다는 제약 관련 논의 — 실제로는 AIX Toolbox에 3.9 패키지가 있어 완전히 막힌 건 아니라는 점, `ansible_python_interpreter` 경로 지정 패턴(`awx/OS_SPECS.md`에 이미 있는 관례), 툴박스 rpm 수동 설치 시 흔한 의존성 누락(openssl/xz-libs/ncurses) 등을 조사해 공유. 사용자가 "아직 검토 단계"라고 해서 문서 반영은 보류 — 실제로 테스트해보면 `OS_SPECS.md`에 결과 기록 예정
+
 ## 2026-07-30
 
 - **WebToB vhost의 Logging/ErrorLog가 실제 경로를 보여주도록 수정**: 웹 목록 모달에서 이 두 값이 `*LOGGING`절 엔트리 이름(`log1`, `log2`처럼)만 보여서 알아보기 어렵다는 지적. 코딩 전 검토 → `parse_webtob`이 이미 모든 절을 범용 파싱해서 `*LOGGING`절 데이터(FileName 포함) 자체는 파싱 결과에 있지만 `sync_webtob`이 이름값만 그대로 저장하고 있었던 게 원인

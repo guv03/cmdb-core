@@ -17,7 +17,7 @@
 
 <form class="field has-addons" method="get">
   <div class="control is-expanded">
-    <input class="input" type="text" name="q" value="{{ request.GET.q }}" placeholder="hostname/도메인 검색">
+    <input class="input" type="text" name="q" value="{{ request.GET.q }}" placeholder="hostname/도메인/종류 검색">
   </div>
   <div class="control">
     <button class="button is-link" type="submit">검색</button>
@@ -40,7 +40,7 @@
     <tbody>
       {% for source in sources %}
       <tr class="webconfig-row" data-detail-url="{% url 'dashboard-webconfig-detail' source.pk %}" style="cursor: pointer;">
-        <td class="dash-sticky-col dash-sticky-col-1">{{ source.asset.hostname }}</td>
+        <td class="dash-sticky-col dash-sticky-col-1 dash-hostname">{{ source.asset.hostname }}</td>
         <td class="dash-sticky-col dash-sticky-col-2">{{ source.get_kind_display }}</td>
         <td>{{ source.solution_version|default:"" }}</td>
         <td>{{ source.solution_fix|default:"" }}</td>

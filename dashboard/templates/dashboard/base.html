@@ -41,6 +41,12 @@
     font-size: 0.85em;
     margin-left: 0.35em;
   }
+  /* 자산(서버) hostname은 저장은 소문자로 정규화되지만 화면엔 대문자로 표시 - 전 화면 공통.
+     text-transform은 시각적 표시만 바꾸고 실제 텍스트는 그대로라, 검색창 자동완성/복사-붙여넣기 등은
+     영향 없음(data-hostname 같은 JS용 속성엔 이 클래스를 붙이지 않음) */
+  .dash-hostname {
+    text-transform: uppercase;
+  }
   /* 웹설정 변경 이력의 unified diff 표시 - git diff와 같은 관례로 추가=녹색/삭제=빨강 */
   .dash-diff {
     font-family: "Consolas", "Courier New", monospace;

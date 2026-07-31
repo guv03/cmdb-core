@@ -49,7 +49,7 @@
       {% for update in result.updates %}
       <tr>
         <td>{{ update.row_number }}</td>
-        <td>{{ update.hostname }}</td>
+        <td class="dash-hostname">{{ update.hostname }}</td>
         <td>{{ update.field_label }}</td>
         <td>{{ update.old_value }}</td>
         <td>{{ update.new_value }}</td>
@@ -67,7 +67,7 @@
     <thead><tr><th>행</th><th>Hostname</th></tr></thead>
     <tbody>
       {% for row_number, hostname in result.unmatched_hostnames %}
-      <tr><td>{{ row_number }}</td><td>{{ hostname }}</td></tr>
+      <tr><td>{{ row_number }}</td><td class="dash-hostname">{{ hostname }}</td></tr>
       {% endfor %}
     </tbody>
   </table>
@@ -81,7 +81,7 @@
     <thead><tr><th>행</th><th>Hostname</th><th>필드</th><th>입력값</th></tr></thead>
     <tbody>
       {% for cell in result.invalid_cells %}
-      <tr><td>{{ cell.row_number }}</td><td>{{ cell.hostname }}</td><td>{{ cell.field_label }}</td><td>{{ cell.raw_value }}</td></tr>
+      <tr><td>{{ cell.row_number }}</td><td class="dash-hostname">{{ cell.hostname }}</td><td>{{ cell.field_label }}</td><td>{{ cell.raw_value }}</td></tr>
       {% endfor %}
     </tbody>
   </table>

@@ -50,7 +50,7 @@
     <tbody>
       {% for row in rows %}
       <tr>
-        <td class="dash-sticky-col dash-sticky-col-1">{{ row.vhost.source.asset.hostname }}</td>
+        <td class="dash-sticky-col dash-sticky-col-1 dash-hostname">{{ row.vhost.source.asset.hostname }}</td>
         <td class="dash-sticky-col dash-sticky-col-2">{{ row.vhost.name }}</td>
         <td>{{ row.vhost.hostname|default:"" }}</td>
         <td>{{ row.vhost.hostalias|default:"" }}</td>
@@ -66,7 +66,7 @@
         <td>{{ row.vhost.logging|default:"" }}</td>
         <td>{{ row.vhost.errorlog|default:"" }}</td>
         <td class="editable-cell dash-editable-cell" data-url="/dashboard/webconfig/vhost/{{ row.vhost.pk }}/service/"
-            data-param="service_name" data-title="{{ row.vhost.source.asset.hostname }} / {{ row.vhost.name }} - 서비스명">
+            data-param="service_name" data-title="{{ row.vhost.source.asset.hostname|upper }} / {{ row.vhost.name }} - 서비스명">
           <span class="cell-value">{{ row.vhost.service_name|default:"" }}</span><span class="dash-manual-icon" aria-hidden="true">✎</span>
         </td>
         <td>{{ row.svrgroup_summary }}</td>

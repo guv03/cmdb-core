@@ -48,7 +48,7 @@
           {% if row.aliases %}<br><span class="is-size-7 has-text-grey">{{ row.aliases }}</span>{% endif %}
         </td>
         <td>{{ row.port|default:"" }}</td>
-        <td>{{ row.source.asset.hostname }}</td>
+        <td class="dash-hostname">{{ row.source.asset.hostname }}</td>
         <td>{{ row.source.get_kind_display }}</td>
       </tr>
       {% empty %}

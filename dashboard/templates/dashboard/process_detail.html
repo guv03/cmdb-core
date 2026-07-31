@@ -1,10 +1,10 @@
 {% extends "dashboard/base.html" %}
 
-{% block title %}{{ snapshot.asset.hostname }} 어플리케이션 - CMDB{% endblock %}
+{% block title %}{{ snapshot.asset.hostname|upper }} 어플리케이션 - CMDB{% endblock %}
 
 {% block content %}
 <div id="process-content">
-<h1 class="title is-4">{{ snapshot.asset.hostname }} - 어플리케이션</h1>
+<h1 class="title is-4 dash-hostname">{{ snapshot.asset.hostname }} - 어플리케이션</h1>
 <p class="subtitle is-6">최근 반영: {{ snapshot.collected_at }}</p>
 
 <h2 class="title is-6">감지된 어플리케이션</h2>

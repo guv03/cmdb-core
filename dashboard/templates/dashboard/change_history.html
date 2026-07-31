@@ -72,7 +72,7 @@
             <input type="checkbox" name="pk" value="{{ change.pk }}" class="pc-checkbox">
             {% endif %}
           </td>
-          <td>{{ change.asset.hostname }}</td>
+          <td class="dash-hostname">{{ change.asset.hostname }}</td>
           <td>{{ change.field_definition.label }}</td>
           <td>{{ change.old_value|default:"" }}</td>
           <td>{{ change.new_value|default:"" }}</td>

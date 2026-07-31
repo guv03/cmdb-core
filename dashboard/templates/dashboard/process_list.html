@@ -37,7 +37,7 @@
     <tbody>
       {% for snapshot in snapshots %}
       <tr class="process-row" data-detail-url="{% url 'dashboard-process-detail' snapshot.pk %}" style="cursor: pointer;">
-        <td>{{ snapshot.asset.hostname }}</td>
+        <td class="dash-hostname">{{ snapshot.asset.hostname }}</td>
         <td>
           {% for detected in snapshot.detected_applications.all %}
           <span class="tag is-light">{{ detected.definition.name }}</span>

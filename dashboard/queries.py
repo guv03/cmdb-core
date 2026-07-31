@@ -98,6 +98,17 @@ def _parse_date(value):
         return None
 
 
+def _kind_search_q(choices_class, field_name, q):
+    """kind 필드 검색 조건. 원시값(webtob/jeus8 등)뿐 아니라 표시 라벨("JEUS 8"처럼 원시값과
+    다르게 공백/대소문자가 섞인 경우가 있어)로 검색해도 매칭되게 라벨이 q를 포함하는 원시값들도
+    같이 묶는다."""
+    matching_keys = [key for key, label in choices_class.choices if q.lower() in label.lower()]
+    q_obj = Q(**{f"{field_name}__icontains": q})
+    if matching_keys:
+        q_obj |= Q(**{f"{field_name}__in": matching_keys})
+    return q_obj
+
+
 # 통합대시보드 각 섹션(OS/WEB/WAS)에서 카테고리별로 각자 색을 받는 최대 개수 - dataviz
 # 원칙상 카테고리 색은 고정 개수만 배정하고 그 이상은 "기타"로 접는다(9번째 색을 새로
 # 만들지 않음). 세 섹션이 전부 같은 색 순서를 공유해도 서로 다른 카테고리 축(OS Family vs
@@ -221,7 +232,11 @@ def get_asset_queryset(request):
 
     q = _request_param(request, "q", "search")
     if q:
-        search_q = Q(hostname__icontains=q) | Q(primary_ip__icontains=q)
+        search_q = (
+            Q(hostname__icontains=q)
+            | Q(primary_ip__icontains=q)
+            | Q(hostfact__os_family__icontains=q)
+        )
         for field_definition in dynamic_fields:
             if not field_definition.is_searchable:
                 continue
@@ -407,6 +422,7 @@ def get_webconfig_queryset(request):
             | Q(apache_vhosts__hostalias__icontains=q)
             | Q(nginx_vhosts__hostname__icontains=q)
             | Q(nginx_vhosts__hostalias__icontains=q)
+            | _kind_search_q(WebConfigSource.Kind, "kind", q)
         ).distinct()
 
     sort = _request_param(request, "sort", "ordering", default="hostname")
@@ -616,6 +632,7 @@ def get_was_config_queryset(request):
             Q(asset__hostname__icontains=q)
             | Q(containers__node_name__icontains=q)
             | Q(containers__name__icontains=q)
+            | _kind_search_q(WasConfigSource.Kind, "kind", q)
         ).distinct()
 
     sort = _request_param(request, "sort", "ordering", default="hostname")

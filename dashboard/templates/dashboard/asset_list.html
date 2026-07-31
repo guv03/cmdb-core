@@ -18,7 +18,7 @@
 
 <form class="field has-addons" method="get">
   <div class="control is-expanded">
-    <input class="input" type="text" name="q" value="{{ current_q }}" placeholder="hostname/IP 검색">
+    <input class="input" type="text" name="q" value="{{ current_q }}" placeholder="hostname/IP/OS 검색">
   </div>
   <div class="control">
     <button class="button is-link" type="submit">검색</button>
@@ -39,7 +39,7 @@
     <tbody>
       {% for row in rows %}
       <tr class="asset-row" style="cursor: pointer;" data-detail-url="{% url 'dashboard-asset-detail' row.asset.id %}">
-        <td class="dash-sticky-col dash-sticky-col-1">{{ row.asset.hostname }}</td>
+        <td class="dash-sticky-col dash-sticky-col-1 dash-hostname">{{ row.asset.hostname }}</td>
         <td class="dash-sticky-col dash-sticky-col-2">{{ row.asset.primary_ip|default:"" }}</td>
         <td>{{ row.hostfact.os_family|default:"" }}</td>
         {% for cell in row.dynamic_cells %}
@@ -219,7 +219,7 @@ document.addEventListener('DOMContentLoaded', function () {
   function openCellModal(cell) {
     activeCell = cell;
     errorEl.style.display = 'none';
-    cellModalTitle.textContent = cell.dataset.hostname + ' · ' + cell.dataset.fieldLabel;
+    cellModalTitle.textContent = cell.dataset.hostname.toUpperCase() + ' · ' + cell.dataset.fieldLabel;
 
     var currentValue = cell.querySelector('.cell-value').textContent;
     var built = buildInput(cell.dataset.valueType, currentValue, cell.dataset.fieldId);

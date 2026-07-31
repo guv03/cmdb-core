@@ -5,6 +5,12 @@
 
 1.0.6까지의 이력은 이 파일 도입 전이라 별도 기록 없음 — `WORKLOG.md`의 해당 날짜 항목 참고.
 
+## 1.0.19
+
+- 대시보드 전 화면(자산/WEB/WAS 목록·상세, 변경 이력, 엑셀 업로드 결과 등 18개 템플릿) 공통으로 자산 hostname을 대문자로 표시 — 저장값은 기존처럼 소문자 그대로 유지하고 화면 표시만 CSS(`dash-hostname`, `text-transform: uppercase`)로 바꿔서 검색/API 매칭에는 영향 없음. 브라우저 탭 제목처럼 CSS가 안 먹히는 곳은 `|upper` 필터, JS로 조립하는 모달 제목은 `.toUpperCase()`로 처리. vhost 자체의 `hostname`(도메인) 필드는 별개 개념이라 대상에서 제외
+- OS 목록 검색에 `os_family` 추가(예: "Windows"/"RedHat"으로 검색 가능) — 검색창 placeholder도 "hostname/IP/OS"로 갱신
+- WEB/WAS 목록 검색에 종류(`kind`) 추가 — 원시값(webtob/apache/nginx/jeus8)뿐 아니라 표시 라벨("JEUS 8"처럼 원시값과 다른 경우)로 검색해도 매칭되는 공용 헬퍼(`_kind_search_q`) 신설
+
 ## 1.0.18
 
 - Windows 자산의 OS 관련 필드 오적재 수정: `HostFact.os_family`가 `ansible_facts.distribution`(윈도우에선 "Microsoft Windows Server 2022 Standard" 같은 풀네임) 대신 표준 `os_family` 키를 쓰도록 변경, `os_version`은 Windows일 때만 `distribution`(마케팅명)을 쓰고 그 외엔 기존처럼 `distribution_version`을 쓰도록 분기 — 관련 추출 로직을 `facts/views.py`/`facts/approval.py` 두 곳 중복 정의에서 `facts/approval.py`의 `FIXED_FIELD_EXTRACTORS`/`compute_fixed_values()` 한 곳으로 통합

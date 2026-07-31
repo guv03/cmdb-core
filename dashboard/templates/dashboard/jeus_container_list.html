@@ -42,7 +42,7 @@
     <tbody>
       {% for row in rows %}
       <tr>
-        <td class="dash-sticky-col dash-sticky-col-1">{{ row.container.asset.hostname|default:"(미등록)" }}</td>
+        <td class="dash-sticky-col dash-sticky-col-1 dash-hostname">{{ row.container.asset.hostname|default:"(미등록)" }}</td>
         <td class="dash-sticky-col dash-sticky-col-2">{{ row.container.name }}</td>
         <td>{{ row.container.node_name }}</td>
         <td>{{ row.container.listen_port|default:"" }}</td>
@@ -50,7 +50,7 @@
         <td>{{ row.container.deployed_apps_summary|default:"" }}</td>
         <td>{{ row.webtob_connector_summary }}</td>
         <td class="editable-cell dash-editable-cell" data-url="/dashboard/was/jeus8/container/{{ row.container.pk }}/service/"
-            data-param="service_name" data-title="{{ row.container.asset.hostname|default:row.container.node_name }} / {{ row.container.name }} - 서비스명">
+            data-param="service_name" data-title="{{ row.container.asset.hostname|default:row.container.node_name|upper }} / {{ row.container.name }} - 서비스명">
           <span class="cell-value">{{ row.container.service_name|default:"" }}</span><span class="dash-manual-icon" aria-hidden="true">✎</span>
         </td>
       </tr>

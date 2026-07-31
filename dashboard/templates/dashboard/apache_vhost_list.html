@@ -47,7 +47,7 @@
     <tbody>
       {% for vhost in vhosts %}
       <tr>
-        <td class="dash-sticky-col dash-sticky-col-1">{{ vhost.source.asset.hostname }}</td>
+        <td class="dash-sticky-col dash-sticky-col-1 dash-hostname">{{ vhost.source.asset.hostname }}</td>
         <td class="dash-sticky-col dash-sticky-col-2">{{ vhost.hostname|default:"" }}</td>
         <td>{{ vhost.hostalias|default:"" }}</td>
         <td>{{ vhost.port|default:"" }}</td>
@@ -60,7 +60,7 @@
         <td>{{ vhost.errorlog|default:"" }}</td>
         <td>{{ vhost.proxy_summary|default:"" }}</td>
         <td class="editable-cell dash-editable-cell" data-url="/dashboard/webconfig/apache/vhost/{{ vhost.pk }}/service/"
-            data-param="service_name" data-title="{{ vhost.source.asset.hostname }} / {{ vhost.hostname }} - 서비스명">
+            data-param="service_name" data-title="{{ vhost.source.asset.hostname|upper }} / {{ vhost.hostname }} - 서비스명">
           <span class="cell-value">{{ vhost.service_name|default:"" }}</span><span class="dash-manual-icon" aria-hidden="true">✎</span>
         </td>
       </tr>

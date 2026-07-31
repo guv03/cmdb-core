@@ -1,11 +1,11 @@
 {% extends "dashboard/base.html" %}
 
-{% block title %}{{ source.asset.hostname }} WEB - CMDB{% endblock %}
+{% block title %}{{ source.asset.hostname|upper }} WEB - CMDB{% endblock %}
 
 {% block content %}
 <div id="webconfig-content">
 {% csrf_token %}
-<h1 class="title is-4">{{ source.asset.hostname }} - {{ source.get_kind_display }} 설정</h1>
+<h1 class="title is-4"><span class="dash-hostname">{{ source.asset.hostname }}</span> - {{ source.get_kind_display }} 설정</h1>
 <p class="subtitle is-6">
   {% if source.solution_version %}버전: {{ source.solution_version }}{% if source.solution_fix %} · Fix: {{ source.solution_fix }}{% endif %}<br>{% endif %}
   최근 반영: {{ source.last_pushed_at }}
