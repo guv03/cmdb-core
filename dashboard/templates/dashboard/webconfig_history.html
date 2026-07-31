@@ -107,32 +107,6 @@ document.addEventListener('DOMContentLoaded', function () {
 
   document.getElementById('webconfigModalClose').addEventListener('click', closeModal);
   modal.querySelector('.modal-background').addEventListener('click', closeModal);
-
-  function getCsrfToken() {
-    var input = document.querySelector('input[name=csrfmiddlewaretoken]');
-    return input ? input.value : '';
-  }
-
-  document.addEventListener('click', function (e) {
-    var cell = e.target.closest('.vhost-service-cell');
-    if (!cell) return;
-    var vhostId = cell.dataset.vhostId;
-    var valueEl = cell.querySelector('.vhost-service-value');
-    var next = prompt('서비스명', valueEl.textContent.trim());
-    if (next === null) return;
-
-    fetch('/dashboard/webconfig/vhost/' + vhostId + '/service/', {
-      method: 'POST',
-      headers: {
-        'X-CSRFToken': getCsrfToken(),
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: new URLSearchParams({ service_name: next }),
-    })
-      .then(function (res) { return res.json(); })
-      .then(function (data) { valueEl.textContent = data.service_name; })
-      .catch(function () { alert('저장 실패'); });
-  });
 });
 </script>
 {% endblock %}

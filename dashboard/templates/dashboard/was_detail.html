@@ -4,7 +4,6 @@
 
 {% block content %}
 <div id="was-content">
-{% csrf_token %}
 <h1 class="title is-4"><span class="dash-hostname">{{ source.asset.hostname }}</span> - {{ source.get_kind_display }} 설정</h1>
 <p class="subtitle is-6">
   {% if source.solution_version %}버전: {{ source.solution_version }}<br>{% endif %}
@@ -23,9 +22,7 @@
     <tbody>
       <tr>
         <th style="width: 12em;">서비스명</th>
-        <td class="container-service-cell dash-editable-cell" data-service-url="/dashboard/was/jeus8/container/{{ container.id }}/service/">
-          <span class="container-service-value">{{ container.service.name|default:"" }}</span><span class="dash-manual-icon" aria-hidden="true">✎</span>
-        </td>
+        <td>{{ container.service.name|default:"" }}</td>
       </tr>
       <tr><th>Node</th><td>{{ container.node_name }}</td></tr>
       <tr><th>Listen Port</th><td>{{ container.listen_port }}</td></tr>
@@ -66,35 +63,4 @@
   <pre style="white-space: pre-wrap; word-break: break-all; max-height: 70vh; overflow-y: auto;">{{ source.raw_content }}</pre>
 </details>
 </div>
-{% endblock %}
-
-{% block extra_body %}
-<script>
-document.addEventListener('DOMContentLoaded', function () {
-  function getCsrfToken() {
-    var input = document.querySelector('input[name=csrfmiddlewaretoken]');
-    return input ? input.value : '';
-  }
-
-  document.addEventListener('click', function (e) {
-    var cell = e.target.closest('.container-service-cell');
-    if (!cell) return;
-    var valueEl = cell.querySelector('.container-service-value');
-    var next = prompt('서비스명', valueEl.textContent.trim());
-    if (next === null) return;
-
-    fetch(cell.dataset.serviceUrl, {
-      method: 'POST',
-      headers: {
-        'X-CSRFToken': getCsrfToken(),
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: new URLSearchParams({ service_name: next }),
-    })
-      .then(function (res) { return res.json(); })
-      .then(function (data) { valueEl.textContent = data.service_name; })
-      .catch(function () { alert('저장 실패'); });
-  });
-});
-</script>
 {% endblock %}

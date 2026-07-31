@@ -382,6 +382,24 @@ def get_web_service_queryset(request):
     return queryset.order_by(f"{direction}{lookup}")
 
 
+def get_service_container_queryset(request):
+    """서비스 탭의 WAS(컨테이너) 표 - WEB(WebServiceDomain) 표와 같은 검색창(q)을 공유한다.
+    WAS 설치 규모는 WEB vhost 대비 훨씬 작은 게 보통이라(이 프로젝트 실측 기준) 별도
+    정렬/페이지네이션 없이 이름순으로 전부 보여준다 - 필요해지면 그때 추가."""
+    queryset = JeusContainer.objects.select_related("asset", "source", "service")
+
+    q = _request_param(request, "q", "search")
+    if q:
+        queryset = queryset.filter(
+            Q(asset__hostname__icontains=q)
+            | Q(node_name__icontains=q)
+            | Q(name__icontains=q)
+            | Q(service__name__icontains=q)
+        )
+
+    return queryset.order_by("name")
+
+
 WEBCONFIG_SORT_LOOKUPS = {
     "hostname": "asset__hostname",
     "ip": "asset__primary_ip",

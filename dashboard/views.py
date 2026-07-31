@@ -50,6 +50,7 @@ from dashboard.queries import (
     get_os_overview_data,
     get_os_version_breakdown,
     get_process_queryset,
+    get_service_container_queryset,
     get_system_host_dynamic_field_definitions,
     get_system_host_queryset,
     get_system_hosts_for_vms,
@@ -85,8 +86,9 @@ from systems.excel_import import (
     parse_system_host_workbook,
 )
 from systems.models import SystemHost, SystemHostFieldDefinition, SystemHostFieldValue
+from was.linkage import apply_container_service, apply_vhost_service
 from was.models import JeusContainer, WasConfigSource
-from webconfig.models import ApacheVhost, NginxVhost, WebConfigSource, WebServiceDomain, WebtobVhost
+from webconfig.models import WebConfigSource, WebServiceDomain, WebtobVhost
 
 
 def _resolve_service(name: str) -> Service | None:
@@ -527,19 +529,6 @@ class WebtobVhostExportView(LoginRequiredMixin, View):
         return export_webtob_vhost_workbook()
 
 
-class WebtobVhostServiceUpdateView(LoginRequiredMixin, View):
-    """vhost 카드의 "서비스명" 수기 입력. 승인 절차 없이 즉시 반영(자산 MANUAL 필드와 동일 원칙)."""
-
-    def post(self, request, pk):
-        vhost = get_object_or_404(WebtobVhost, pk=pk)
-        vhost.service = _resolve_service(request.POST.get("service_name", ""))
-        vhost.save(update_fields=["service"])
-        WebServiceDomain.objects.filter(source=vhost.source, vhost_name=vhost.name).update(
-            service_name=vhost.service.name if vhost.service_id else ""
-        )
-        return JsonResponse({"service_name": vhost.service.name if vhost.service_id else ""})
-
-
 class ApacheVhostListView(LoginRequiredMixin, ListView):
     """WebtobVhostListView와 같은 취지의 Apache 전용 목록 - SvrGroup/URI 개념이 없어
     build_webtob_vhost_rows 같은 요약 단계 없이 vhost를 그대로 렌더링한다."""
@@ -567,17 +556,6 @@ class ApacheVhostExportView(LoginRequiredMixin, View):
         return export_apache_vhost_workbook()
 
 
-class ApacheVhostServiceUpdateView(LoginRequiredMixin, View):
-    def post(self, request, pk):
-        vhost = get_object_or_404(ApacheVhost, pk=pk)
-        vhost.service = _resolve_service(request.POST.get("service_name", ""))
-        vhost.save(update_fields=["service"])
-        WebServiceDomain.objects.filter(source=vhost.source, vhost_name=vhost.name).update(
-            service_name=vhost.service.name if vhost.service_id else ""
-        )
-        return JsonResponse({"service_name": vhost.service.name if vhost.service_id else ""})
-
-
 class NginxVhostListView(LoginRequiredMixin, ListView):
     template_name = "dashboard/nginx_vhost_list.html"
     context_object_name = "vhosts"
@@ -600,17 +578,6 @@ class NginxVhostListView(LoginRequiredMixin, ListView):
 class NginxVhostExportView(LoginRequiredMixin, View):
     def get(self, request):
         return export_nginx_vhost_workbook()
-
-
-class NginxVhostServiceUpdateView(LoginRequiredMixin, View):
-    def post(self, request, pk):
-        vhost = get_object_or_404(NginxVhost, pk=pk)
-        vhost.service = _resolve_service(request.POST.get("service_name", ""))
-        vhost.save(update_fields=["service"])
-        WebServiceDomain.objects.filter(source=vhost.source, vhost_name=vhost.name).update(
-            service_name=vhost.service.name if vhost.service_id else ""
-        )
-        return JsonResponse({"service_name": vhost.service.name if vhost.service_id else ""})
 
 
 class WasConfigListView(LoginRequiredMixin, ListView):
@@ -700,14 +667,6 @@ class JeusContainerListView(LoginRequiredMixin, ListView):
 class JeusContainerExportView(LoginRequiredMixin, View):
     def get(self, request):
         return export_jeus_container_workbook()
-
-
-class JeusContainerServiceUpdateView(LoginRequiredMixin, View):
-    def post(self, request, pk):
-        container = get_object_or_404(JeusContainer, pk=pk)
-        container.service = _resolve_service(request.POST.get("service_name", ""))
-        container.save(update_fields=["service"])
-        return JsonResponse({"service_name": container.service.name if container.service_id else ""})
 
 
 class SystemListView(LoginRequiredMixin, ListView):
@@ -890,6 +849,11 @@ class ServiceImportConfirmView(LoginRequiredMixin, View):
 
 
 class WebServiceListView(LoginRequiredMixin, ListView):
+    """WEB(도메인 기준, WebServiceDomain)과 WAS(컨테이너 기준, JeusContainer)를 한 화면에
+    나란히 보여준다 - 서비스 배정을 여기서만 편집하고(vhost/컨테이너 목록 화면은 읽기 전용)
+    한곳에서 WEB/WAS 전체 서비스 현황을 확인할 수 있게. WAS 표는 검색만 WEB과 공유하고
+    (같은 q) 별도 정렬/페이지네이션은 두지 않는다(get_service_container_queryset 참고)."""
+
     template_name = "dashboard/webservice_list.html"
     context_object_name = "service_domains"
     paginate_by = 50
@@ -902,30 +866,76 @@ class WebServiceListView(LoginRequiredMixin, ListView):
         context["columns"] = build_sort_columns(
             self.request, ["service_name", "domain", "port", "hostname", "kind"], default="domain"
         )
+        context["was_rows"] = get_service_container_queryset(self.request)
         return context
 
 
 class WebServiceDomainServiceUpdateView(LoginRequiredMixin, View):
-    """서비스 조회 화면에서의 서비스명 인라인 편집. 원본은 kind별 vhost 쪽(VHOST_MODELS로
-    kind->모델 매핑)이라 거기에 먼저 반영하고, 같은 vhost가 걸친 나머지 도메인 행도 함께
-    맞춘다(도메인별로 서비스명이 갈리면 안 되므로 vhost 단위로 동기화)."""
+    """서비스 조회 화면(WEB 표)에서의 서비스명 인라인 편집. 원본은 kind별 vhost 쪽
+    (VHOST_MODELS로 kind->모델 매핑)이라 거기에 먼저 반영하고, 같은 vhost가 걸친 나머지
+    도메인 행도 함께 맞춘다(도메인별로 서비스명이 갈리면 안 되므로 vhost 단위로 동기화).
+    WebToB는 JeusWebtobConnector로 실제 연결된 JeusContainer가 있으면 같은 서비스로 함께
+    맞춘다(was.linkage.apply_vhost_service) - 연결된 쪽에 이미 다른 서비스가 있으면 저장
+    전에 충돌 정보만 돌려주고, force=1로 재요청하면 그대로 덮어쓴다. Apache/Nginx는 아직
+    이런 구조적 연결이 없어 자기 자신만 반영한다."""
 
     def post(self, request, pk):
         service_domain = get_object_or_404(WebServiceDomain, pk=pk)
         service = _resolve_service(request.POST.get("service_name", ""))
-        service_name = service.name if service else ""
+        force = request.POST.get("force") == "1"
 
-        model = VHOST_MODELS.get(service_domain.source.kind)
-        if model is not None:
-            model.objects.filter(
+        if service_domain.source.kind == WebConfigSource.Kind.WEBTOB:
+            vhost = WebtobVhost.objects.filter(
                 source=service_domain.source, name=service_domain.vhost_name
-            ).update(service=service)
+            ).first()
+            if vhost is not None:
+                result = apply_vhost_service(vhost, service, force=force)
+                if result["conflict"]:
+                    return JsonResponse(
+                        {
+                            "conflict": True,
+                            "peer_labels": result["peer_labels"],
+                            "message": "연결된 WAS 컨테이너가 이미 다른 서비스명을 갖고 있습니다: "
+                            + ", ".join(result["peer_labels"]),
+                        }
+                    )
+        else:
+            model = VHOST_MODELS.get(service_domain.source.kind)
+            if model is not None:
+                model.objects.filter(
+                    source=service_domain.source, name=service_domain.vhost_name
+                ).update(service=service)
 
+        service_name = service.name if service else ""
         WebServiceDomain.objects.filter(
             source=service_domain.source, vhost_name=service_domain.vhost_name
         ).update(service_name=service_name)
 
         return JsonResponse({"service_name": service_name})
+
+
+class ServiceContainerUpdateView(LoginRequiredMixin, View):
+    """서비스 탭(WAS 표)에서의 서비스명 인라인 편집 - WebServiceDomainServiceUpdateView의
+    반대 방향(was.linkage.apply_container_service). 연결된 WebtobVhost가 이미 다른
+    서비스명을 갖고 있으면 저장 전에 충돌 정보만 돌려주고, force=1로 재요청하면 덮어쓴다."""
+
+    def post(self, request, pk):
+        container = get_object_or_404(JeusContainer, pk=pk)
+        service = _resolve_service(request.POST.get("service_name", ""))
+        force = request.POST.get("force") == "1"
+
+        result = apply_container_service(container, service, force=force)
+        if result["conflict"]:
+            return JsonResponse(
+                {
+                    "conflict": True,
+                    "peer_labels": result["peer_labels"],
+                    "message": "연결된 WEB vhost가 이미 다른 서비스명을 갖고 있습니다: "
+                    + ", ".join(result["peer_labels"]),
+                }
+            )
+
+        return JsonResponse({"service_name": service.name if service else ""})
 
 
 class ProcessListView(LoginRequiredMixin, ListView):

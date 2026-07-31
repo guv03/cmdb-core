@@ -4,7 +4,6 @@ from django.urls import path
 from dashboard.views import (
     ApacheVhostExportView,
     ApacheVhostListView,
-    ApacheVhostServiceUpdateView,
     AssetDetailView,
     AssetExportView,
     AssetListAPIView,
@@ -16,18 +15,17 @@ from dashboard.views import (
     DashboardLoginView,
     JeusContainerExportView,
     JeusContainerListView,
-    JeusContainerServiceUpdateView,
     ManualFieldImportConfirmView,
     ManualFieldImportView,
     NginxVhostExportView,
     NginxVhostListView,
-    NginxVhostServiceUpdateView,
     OverviewDrilldownView,
     OverviewView,
     PendingChangeDecisionView,
     ProcessDetailView,
     ProcessExportView,
     ProcessListView,
+    ServiceContainerUpdateView,
     ServiceExportView,
     ServiceImportConfirmView,
     ServiceImportView,
@@ -51,7 +49,6 @@ from dashboard.views import (
     WebServiceListView,
     WebtobVhostExportView,
     WebtobVhostListView,
-    WebtobVhostServiceUpdateView,
 )
 
 urlpatterns = [
@@ -122,21 +119,6 @@ urlpatterns = [
         name="dashboard-nginx-vhost-export",
     ),
     path("webconfig/<int:pk>/", WebConfigDetailView.as_view(), name="dashboard-webconfig-detail"),
-    path(
-        "webconfig/vhost/<int:pk>/service/",
-        WebtobVhostServiceUpdateView.as_view(),
-        name="dashboard-webconfig-vhost-service",
-    ),
-    path(
-        "webconfig/apache/vhost/<int:pk>/service/",
-        ApacheVhostServiceUpdateView.as_view(),
-        name="dashboard-apache-vhost-service",
-    ),
-    path(
-        "webconfig/nginx/vhost/<int:pk>/service/",
-        NginxVhostServiceUpdateView.as_view(),
-        name="dashboard-nginx-vhost-service",
-    ),
     path("services/", WebServiceListView.as_view(), name="dashboard-webservice-list"),
     path("services/export/", ServiceExportView.as_view(), name="dashboard-service-export"),
     path("services/import/", ServiceImportView.as_view(), name="dashboard-service-import"),
@@ -149,6 +131,11 @@ urlpatterns = [
         "services/<int:pk>/service/",
         WebServiceDomainServiceUpdateView.as_view(),
         name="dashboard-webservice-update",
+    ),
+    path(
+        "services/container/<int:pk>/service/",
+        ServiceContainerUpdateView.as_view(),
+        name="dashboard-service-container-update",
     ),
     path("processes/", ProcessListView.as_view(), name="dashboard-process-list"),
     path("processes/export/", ProcessExportView.as_view(), name="dashboard-process-export"),
@@ -168,11 +155,6 @@ urlpatterns = [
         name="dashboard-jeus8-container-export",
     ),
     path("was/<int:pk>/", WasConfigDetailView.as_view(), name="dashboard-was-detail"),
-    path(
-        "was/jeus8/container/<int:pk>/service/",
-        JeusContainerServiceUpdateView.as_view(),
-        name="dashboard-jeus8-container-service",
-    ),
     path("systems/", SystemListView.as_view(), name="dashboard-system-list"),
     path("systems/<int:pk>/", SystemDetailView.as_view(), name="dashboard-system-detail"),
     path(

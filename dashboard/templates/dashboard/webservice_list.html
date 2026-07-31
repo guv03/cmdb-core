@@ -15,6 +15,7 @@
     </div>
   </div>
 </div>
+<p class="subtitle is-6 has-text-grey">서비스 배정은 여기서만 편집합니다 — WEB/WAS 목록 화면은 읽기 전용입니다. WebToB↔JEUS처럼 실제로 연결된 쪽은 한쪽만 고쳐도 반대쪽까지 같이 맞춰집니다(연결된 쪽이 이미 다른 서비스명을 갖고 있으면 먼저 확인을 받습니다).</p>
 
 <form class="field has-addons" method="get">
   <div class="control is-expanded">
@@ -25,6 +26,7 @@
   </div>
 </form>
 
+<p class="title is-5">WEB (도메인 기준)</p>
 <div class="table-container">
   <table class="table is-fullwidth is-hoverable is-striped">
     <thead>
@@ -39,7 +41,7 @@
     <tbody>
       {% for row in service_domains %}
       <tr>
-        <td class="editable-cell dash-editable-cell" data-kind="service" data-url="/dashboard/services/{{ row.pk }}/service/"
+        <td class="editable-cell dash-editable-cell" data-url="/dashboard/services/{{ row.pk }}/service/"
             data-param="service_name" data-title="{{ row.domain }} - 서비스명">
           <span class="cell-value">{{ row.service_name|default:"" }}</span><span class="dash-manual-icon" aria-hidden="true">✎</span>
         </td>
@@ -73,6 +75,37 @@
     <span class="pagination-link is-current">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
   </span>
 </nav>
+
+<p class="title is-5">WAS (컨테이너 기준)</p>
+<div class="table-container">
+  <table class="table is-fullwidth is-hoverable is-striped">
+    <thead>
+      <tr>
+        <th>서비스명</th>
+        <th>컨테이너</th>
+        <th>Node</th>
+        <th>Hostname</th>
+        <th>종류</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for container in was_rows %}
+      <tr>
+        <td class="editable-cell dash-editable-cell" data-url="/dashboard/services/container/{{ container.pk }}/service/"
+            data-param="service_name" data-title="{{ container.name }} - 서비스명">
+          <span class="cell-value">{{ container.service.name|default:"" }}</span><span class="dash-manual-icon" aria-hidden="true">✎</span>
+        </td>
+        <td>{{ container.name }}</td>
+        <td>{{ container.node_name }}</td>
+        <td class="dash-hostname">{{ container.asset.hostname|default:"(미등록)" }}</td>
+        <td>{{ container.source.get_kind_display }}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="5" class="has-text-grey">등록된 컨테이너가 없습니다.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
 
 <div class="modal" id="serviceCellModal">
   <div class="modal-background"></div>
@@ -126,23 +159,42 @@ document.addEventListener('DOMContentLoaded', function () {
     input.focus();
   }
 
-  function saveActiveCell() {
-    if (!activeCell) return;
+  function postService(force) {
     var param = activeCell.dataset.param;
+    var body = [[param, input.value]];
+    if (force) body.push(['force', '1']);
 
-    saveBtn.classList.add('is-loading');
-    fetch(activeCell.dataset.url, {
+    return fetch(activeCell.dataset.url, {
       method: 'POST',
       headers: {
         'X-CSRFToken': getCsrfToken(),
         'Content-Type': 'application/x-www-form-urlencoded',
       },
-      body: new URLSearchParams([[param, input.value]]),
-    })
-      .then(function (res) { return res.json(); })
+      body: new URLSearchParams(body),
+    }).then(function (res) { return res.json(); });
+  }
+
+  function saveActiveCell() {
+    if (!activeCell) return;
+    var cell = activeCell;
+
+    saveBtn.classList.add('is-loading');
+    postService(false)
       .then(function (data) {
+        if (data.conflict) {
+          saveBtn.classList.remove('is-loading');
+          if (confirm(data.message + '\n그래도 바꿀까요?')) {
+            saveBtn.classList.add('is-loading');
+            postService(true).then(function (data2) {
+              saveBtn.classList.remove('is-loading');
+              cell.querySelector('.cell-value').textContent = data2.service_name;
+              closeModal();
+            });
+          }
+          return;
+        }
         saveBtn.classList.remove('is-loading');
-        activeCell.querySelector('.cell-value').textContent = data[param];
+        cell.querySelector('.cell-value').textContent = data.service_name;
         closeModal();
       })
       .catch(function () {

@@ -3,7 +3,6 @@
 {% block title %}JEUS8 목록 - CMDB{% endblock %}
 
 {% block content %}
-{% csrf_token %}
 <div class="level">
   <div class="level-left">
     <h1 class="title is-4">JEUS8 목록</h1>
@@ -14,7 +13,7 @@
     </div>
   </div>
 </div>
-<p class="subtitle is-6 has-text-grey">컨테이너(&lt;server&gt;) 하나가 한 행입니다 — 여러 도메인을 가로질러 컨테이너 단위로 검색·정렬합니다. Hostname은 이 컨테이너 자신의 node-name으로 연결된 자산입니다(설정을 push한 admin 호스트와 다를 수 있음) — 아직 자산으로 등록 안 된 노드는 "(미등록)"으로 표시됩니다.</p>
+<p class="subtitle is-6 has-text-grey">컨테이너(&lt;server&gt;) 하나가 한 행입니다 — 여러 도메인을 가로질러 컨테이너 단위로 검색·정렬합니다. Hostname은 이 컨테이너 자신의 node-name으로 연결된 자산입니다(설정을 push한 admin 호스트와 다를 수 있음) — 아직 자산으로 등록 안 된 노드는 "(미등록)"으로 표시됩니다. 서비스명은 여기서 수정할 수 없습니다 — <a href="{% url 'dashboard-webservice-list' %}">서비스</a> 화면에서 편집하세요.</p>
 
 <form class="field has-addons" method="get">
   <div class="control is-expanded">
@@ -51,10 +50,7 @@
         <td>{{ row.container.ssl_port|default:"" }}</td>
         <td>{{ row.container.deployed_apps_summary|default:"" }}</td>
         <td>{{ row.webtob_connector_summary }}</td>
-        <td class="editable-cell dash-editable-cell" data-url="/dashboard/was/jeus8/container/{{ row.container.pk }}/service/"
-            data-param="service_name" data-title="{{ row.container.asset.hostname|default:row.container.node_name|upper }} / {{ row.container.name }} - 서비스명">
-          <span class="cell-value">{{ row.container.service.name|default:"" }}</span><span class="dash-manual-icon" aria-hidden="true">✎</span>
-        </td>
+        <td>{{ row.container.service.name|default:"" }}</td>
       </tr>
       {% empty %}
       <tr><td colspan="9" class="has-text-grey">등록된 컨테이너가 없습니다.</td></tr>
@@ -78,95 +74,4 @@
     <span class="pagination-link is-current">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
   </span>
 </nav>
-
-<div class="modal" id="serviceCellModal">
-  <div class="modal-background"></div>
-  <div class="modal-card" style="width: 90%; max-width: 420px;">
-    <header class="modal-card-head">
-      <p class="modal-card-title" id="serviceCellModalTitle">서비스명 편집</p>
-      <button class="delete" aria-label="close" id="serviceCellModalClose"></button>
-    </header>
-    <section class="modal-card-body">
-      <div class="field">
-        <input class="input" type="text" id="serviceCellInput">
-      </div>
-      <p class="help is-danger" id="serviceCellError" style="display: none;"></p>
-    </section>
-    <footer class="modal-card-foot">
-      <button type="button" class="button is-link" id="serviceCellSave">저장</button>
-      <button type="button" class="button" id="serviceCellCancel">취소</button>
-    </footer>
-  </div>
-</div>
-{% endblock %}
-
-{% block extra_body %}
-<script>
-document.addEventListener('DOMContentLoaded', function () {
-  function getCsrfToken() {
-    var input = document.querySelector('input[name=csrfmiddlewaretoken]');
-    return input ? input.value : '';
-  }
-
-  var modal = document.getElementById('serviceCellModal');
-  var modalTitle = document.getElementById('serviceCellModalTitle');
-  var input = document.getElementById('serviceCellInput');
-  var errorEl = document.getElementById('serviceCellError');
-  var saveBtn = document.getElementById('serviceCellSave');
-  var cancelBtn = document.getElementById('serviceCellCancel');
-
-  var activeCell = null;
-
-  function closeModal() {
-    modal.classList.remove('is-active');
-    activeCell = null;
-  }
-
-  function openModal(cell) {
-    activeCell = cell;
-    errorEl.style.display = 'none';
-    modalTitle.textContent = cell.dataset.title;
-    input.value = cell.querySelector('.cell-value').textContent.trim();
-    modal.classList.add('is-active');
-    input.focus();
-  }
-
-  function saveActiveCell() {
-    if (!activeCell) return;
-    var param = activeCell.dataset.param;
-
-    saveBtn.classList.add('is-loading');
-    fetch(activeCell.dataset.url, {
-      method: 'POST',
-      headers: {
-        'X-CSRFToken': getCsrfToken(),
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: new URLSearchParams([[param, input.value]]),
-    })
-      .then(function (res) { return res.json(); })
-      .then(function (data) {
-        saveBtn.classList.remove('is-loading');
-        activeCell.querySelector('.cell-value').textContent = data[param];
-        closeModal();
-      })
-      .catch(function () {
-        saveBtn.classList.remove('is-loading');
-        errorEl.textContent = '저장 실패';
-        errorEl.style.display = 'block';
-      });
-  }
-
-  document.querySelectorAll('.editable-cell').forEach(function (cell) {
-    cell.addEventListener('click', function () {
-      openModal(cell);
-    });
-  });
-
-  saveBtn.addEventListener('click', saveActiveCell);
-  cancelBtn.addEventListener('click', closeModal);
-  document.getElementById('serviceCellModalClose').addEventListener('click', closeModal);
-  modal.querySelector('.modal-background').addEventListener('click', closeModal);
-});
-</script>
 {% endblock %}
