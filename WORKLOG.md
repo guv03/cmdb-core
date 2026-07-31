@@ -21,6 +21,16 @@
 - **자산 엑셀 다운로드 IP/OS 컬럼 누락 수정(1.0.20)**: "OS 목록 엑셀 추출 시 Hostname만 보이고 IP/OS가 빠진다"는 제보 — 확인해보니 `export_manual_field_workbook`(`dashboard/excel_import.py`)이 `hostname`+동적 필드(`FactFieldDefinition`)만 내보내게 짜여 있었고, IP(`primary_ip`)/OS(`os_family`)는 `LEADING_FIXED_COLUMNS`(대시보드 화면 전용 하드코딩 컬럼)라 원래부터 이 함수가 모르는 값이었음(신규 버그 아님)
   - 그냥 컬럼만 추가하면 업로드 파서가 "모르는 컬럼"으로 걸어 파일 전체를 에러 처리하는 문제가 있어, AUTO 필드와 같은 패턴(참고용으로 싣되 업로드 시 항상 무시)으로 `FIXED_REFERENCE_LABELS`(`["IP", "OS"]`) 추가해 헤더 매칭에서 자동으로 스킵되게 처리
   - 다운로드 헤더/값 확인 + 그대로 재업로드해서 에러 없이 반영 0건으로 통과하는 것까지 검증
+- **"구성도"(WEB↔WAS↔시스템 연결 시각화) 신규(1.0.23)**: "OS와 WEB/WAS/시스템이 매핑되는 인프라 구성도를 자동으로 그려서 서비스 단위로 보고 싶다"는 아이디어로 시작, 코딩 전 검토부터 여러 차례 진행
+  - **전제 작업 — 서비스명을 `core.Service` FK로 전환**: 지금까지 `service_name`이 `WebtobVhost`/`ApacheVhost`/`NginxVhost`/`JeusContainer`에 각자 자유 텍스트로 있어서, WebToB↔JEUS처럼 실제로 연결된 것끼리도 오타로 서비스명이 어긋날 수 있다는 문제를 먼저 해결. 새 `Service` 모델(`core` 앱) 도입 + 데이터 마이그레이션으로 기존 값 이관(같은 이름 문자열은 하나의 Service로 합침). 부수적으로 서비스 조회 화면에서 Apache/Nginx 서비스명 수정이 원본 vhost에 반영 안 되던 잠재 버그도 같이 수정
+  - **편집 창구를 "서비스" 탭 하나로 통합**: 도메인 기준 WEB 표(기존 `WebServiceDomain`)와 컨테이너 기준 WAS 표(신규)를 한 페이지에 배치하고 여기서만 편집, WebToB/Apache/Nginx vhost 목록·JEUS8 컨테이너 목록·상세 모달의 인라인 편집(연필 아이콘)은 전부 제거해 읽기 전용으로 전환 — 더 이상 안 쓰는 `*ServiceUpdateView` 4개와 관련 URL/모달/JS도 완전 삭제
+  - **WebToB↔JEUS 연결 전파**: 실제로 연결된 vhost/컨테이너는 한쪽만 고쳐도 반대쪽까지 즉시 같이 맞춰지게(`was/linkage.py`) — 연결된 쪽에 이미 다른 서비스명이 있으면 사용자가 "다르면 경고 후 확인 받기" 방식을 선택해서, 저장 전 확인창을 띄우고 동의하면 `force=1`로 덮어씀
+  - **구성도 시안 검토**: 처음엔 표/레인 방식(WEB vhost-WAS 컨테이너 한 쌍 = 한 줄)으로 구현했는데, 사용자가 "실제로 그림(System 위에 OS, OS 위에 WEB/WAS가 쌓이고 화살표로 호출 방향 표시)을 원한다"고 명확히 해서 재검토 → 박스 스택 목업을 만들어 보여줬으나 "OS가 이중화되면 이 방식으로는 애매하다, 오픈소스 그래프 라이브러리도 검토해달라"는 피드백을 받음
+  - 실제로 Docker 컨테이너에 graphviz를 임시 설치해 WebToB 2대×JEUS 2대(2×2 이중화, 커넥터 4개) 시나리오를 Graphviz/Mermaid/표 세 가지로 렌더링해 비교하는 아티팩트를 만들어 제시 — 사용자가 Graphviz안 선택
+  - **최종 구현**: `dashboard/topology.py` 신규 — 레인이 아니라 진짜 그래프(노드+엣지)로 데이터를 만들어서, 같은 물리 서버(asset)를 가리키는 노드는 렌더링 단계에서 자동으로 같은 OS 박스에 합쳐지게 설계(이중화 문제의 근본 해결). `subprocess`로 `dot -Tsvg` 실행해 서버에서 SVG를 그려 내려줌(클라이언트 JS 불필요). `Dockerfile`에 `apt-get install graphviz` 추가(이 프로젝트 최초의 apt 설치) — 로컬 이미지 재빌드해서 실제 앱 안에서 렌더링까지 확인
+  - 이어서 "도메인/포트 정보가 안 보인다, TLS면 https/아니면 http를 붙여달라"는 요청으로 WEB vhost 노드 라벨에 `프로토콜://도메인:포트` 추가(`ssl_flag` 기준 프로토콜 결정)
+  - **"서비스 위에 더 상위 그룹 개념도 있어야 할 것 같다"는 아이디어 논의**: `core.ServiceGroup` + `Service.group` FK로 구조적으로는 어렵지 않다고 확인. 다만 "그룹을 조회/필터용 라벨로만 쓸지, 구성도에서 여러 서비스를 한 그림에 합쳐서 그리는 것까지 포함할지"가 구현 난이도를 크게 가르는 갈림길이라고 짚어줌 — 사용자가 후자까지 염두에 둔 아이디어라고 확인했으나 지금은 아이디어 단계로 보류, 구현 착수 안 함
+  - 1.0.23으로 릴리즈(VERSION/CHANGELOG/Docker 이미지 빌드/GitHub Release, graphviz 포함된 이미지에서 `dot` 정상 동작 확인 후 배포)
 
 ## 2026-07-30
 

@@ -99,6 +99,7 @@ Django + DRF 기반 CMDB. 자산 자체(신규 생성)는 AWX push 경로 하나
   - `render_topology_svg()`가 노드를 asset(OS) → 그 asset의 물리호스트(System, `SystemVm.asset` 매칭) 순으로 묶어 dot 텍스트의 중첩 `subgraph cluster`로 emit하고, `subprocess`로 `dot -Tsvg`를 실행해 SVG 문자열을 받는다(마크업 자체는 `_dot_escape`로 이스케이프 — dot 문법 깨짐 방지). System을 못 찾은 OS는 System 클러스터 없이 OS 박스만 단독으로 나온다(레인 방식 때 쓰던 "미확인" 플레이스홀더 불필요 - 그냥 생략).
   - **`dot` 바이너리는 Dockerfile에 `apt-get install graphviz`로 이미지에 굽는다** — 이 프로젝트 최초의 apt 설치(기존엔 전부 `vendor/wheels`의 Python wheel만). 폐쇄망은 운영 K8s가 완성된 이미지만 받는 구조라 `docker build` 자체(개발망에서 실행)가 apt 저장소에 접근 못 할 이유가 없어 문제 없음.
   - 서비스 선택은 `<input list>`(네이티브 datalist, 별도 자동완성 라이브러리 없음)로 하거나 서비스 탭 각 행의 "구성도" 링크(`?name=서비스명`)로 바로 들어온다. Apache/Nginx→WAS 연결은 아직 구조적 데이터가 없어 표시 안 함(프록시 파싱 붙으면 확장).
+  - **WEB vhost 노드에는 도메인/포트/TLS 여부까지 같이 보여준다** — `_vhost_endpoint_label()`이 `vhost.hostname`(도메인)이 있으면 `ssl_flag`로 프로토콜을 정해(`https`/`http`) `프로토콜://도메인:포트` 문자열을 만든다. 도메인이 없는 WebToB 내부 전용 vhost는 이 줄 없이 이름만 나온다. WebToB만 커넥터/SvrGroup이 참조하는 내부 식별자(`vhost.name`, 예: `v_cmp`)를 도메인과 별개로 항상 같이 보여주고(Apache/Nginx의 `name`은 `hostname:port` 합성값이라 endpoint와 중복이라 생략), OS 박스 라벨의 hostname은 다른 화면과 동일하게 대문자로 표시(`asset.hostname.upper()`).
 
 # 대시보드 디자인 패턴
 화면마다 톤이 갈리지 않도록, 새 대시보드 화면/컴포넌트를 만들 때 아래 패턴을 그대로 따른다(Bulma 기반, `dashboard/templates/dashboard/base.html`이 라이트·고대비 테마로 고정).
