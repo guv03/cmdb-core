@@ -18,6 +18,9 @@
   - Playwright로 실제 로그인 세션 쿠키를 주입해 OS 목록/상세 화면 스크린샷까지 찍어서 시각 확인
 - **검색 규칙 확장**: "OS 목록도 os_family로 검색되게" 요청으로 `dashboard/queries.py`의 자산 검색 조건에 `hostfact__os_family__icontains` 추가(1:1 관계라 기존 `.distinct()` 로직에 영향 없음). 이어서 "WEB/WAS도 종류로 검색되게" 요청에 `_kind_search_q()` 공용 헬퍼 신설 — `kind` 원시값(webtob/apache/nginx/jeus8)뿐 아니라 표시 라벨("JEUS 8"처럼 원시값과 다른 경우)도 매칭되게 처리, 두 목록 화면 검색창 placeholder도 갱신. 실제 검색 결과로 각각 검증(회귀 없음)
 - **AIX Python 버전 이슈 검토(코드 변경 없음)**: AWX facts 수집 시 AIX가 Python 3.7까지만 공식 지원한다는 제약 관련 논의 — 실제로는 AIX Toolbox에 3.9 패키지가 있어 완전히 막힌 건 아니라는 점, `ansible_python_interpreter` 경로 지정 패턴(`awx/OS_SPECS.md`에 이미 있는 관례), 툴박스 rpm 수동 설치 시 흔한 의존성 누락(openssl/xz-libs/ncurses) 등을 조사해 공유. 사용자가 "아직 검토 단계"라고 해서 문서 반영은 보류 — 실제로 테스트해보면 `OS_SPECS.md`에 결과 기록 예정
+- **자산 엑셀 다운로드 IP/OS 컬럼 누락 수정(1.0.20)**: "OS 목록 엑셀 추출 시 Hostname만 보이고 IP/OS가 빠진다"는 제보 — 확인해보니 `export_manual_field_workbook`(`dashboard/excel_import.py`)이 `hostname`+동적 필드(`FactFieldDefinition`)만 내보내게 짜여 있었고, IP(`primary_ip`)/OS(`os_family`)는 `LEADING_FIXED_COLUMNS`(대시보드 화면 전용 하드코딩 컬럼)라 원래부터 이 함수가 모르는 값이었음(신규 버그 아님)
+  - 그냥 컬럼만 추가하면 업로드 파서가 "모르는 컬럼"으로 걸어 파일 전체를 에러 처리하는 문제가 있어, AUTO 필드와 같은 패턴(참고용으로 싣되 업로드 시 항상 무시)으로 `FIXED_REFERENCE_LABELS`(`["IP", "OS"]`) 추가해 헤더 매칭에서 자동으로 스킵되게 처리
+  - 다운로드 헤더/값 확인 + 그대로 재업로드해서 에러 없이 반영 0건으로 통과하는 것까지 검증
 
 ## 2026-07-30
 

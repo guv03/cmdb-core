@@ -13,6 +13,11 @@ from facts.models import FactFieldDefinition, HostFactValue
 HOSTNAME_HEADER = "hostname"
 MAX_ROWS = 2000
 
+# hostname처럼 첫 컬럼은 아니지만, FactFieldDefinition이 아니라 LEADING_FIXED_COLUMNS(대시보드
+# 전용 하드코딩 컬럼)라 동적 필드 목록엔 안 걸리는 참고용 컬럼. AUTO 필드와 같은 취지로 다운로드엔
+# 싣되 업로드 시엔 항상 무시(편집 대상 아님, 값 자체가 push/재계산으로만 바뀜).
+FIXED_REFERENCE_LABELS = ["IP", "OS"]
+
 
 class ImportFileError(Exception):
     """헤더가 잘못됐거나 컬럼을 매칭할 수 없는 등, 파일 자체를 거부해야 하는 경우."""
@@ -98,7 +103,7 @@ def export_manual_field_workbook() -> HttpResponse:
     workbook = openpyxl.Workbook()
     sheet = workbook.active
     sheet.title = "자산"
-    sheet.append([HOSTNAME_HEADER] + [fd.label for fd in dynamic_fields])
+    sheet.append([HOSTNAME_HEADER, *FIXED_REFERENCE_LABELS, *[fd.label for fd in dynamic_fields]])
 
     assets = (
         Asset.objects.select_related("hostfact")
@@ -109,7 +114,12 @@ def export_manual_field_workbook() -> HttpResponse:
     )
     for asset in assets:
         host_fact = getattr(asset, "hostfact", None)
-        sheet.append([asset.hostname] + [_current_value_display(host_fact, fd) for fd in dynamic_fields])
+        sheet.append([
+            asset.hostname,
+            asset.primary_ip or "",
+            getattr(host_fact, "os_family", "") or "",
+            *[_current_value_display(host_fact, fd) for fd in dynamic_fields],
+        ])
 
     response = HttpResponse(
         content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -141,7 +151,7 @@ def parse_manual_field_workbook(uploaded_file) -> ImportResult:
     unknown_headers = []
     for col_header in header[1:]:
         col_header = str(col_header).strip() if col_header is not None else ""
-        if not col_header:
+        if not col_header or col_header in FIXED_REFERENCE_LABELS:
             column_fields.append(None)
             continue
         field_definition = fields_by_label.get(col_header)
