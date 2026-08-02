@@ -92,7 +92,6 @@ def build_service_topology_graph(service) -> dict:
                 webtob_server__svrgroup__vhosts__in=webtob_vhosts,
                 container_id__in=container_ids,
             )
-            .select_related("container")
             .prefetch_related("webtob_server__svrgroup__vhosts")
             .distinct()
         )

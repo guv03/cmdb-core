@@ -5,6 +5,10 @@
 
 1.0.6까지의 이력은 이 파일 도입 전이라 별도 기록 없음 — `WORKLOG.md`의 해당 날짜 항목 참고.
 
+## 1.0.24
+
+- **구성도 화면 500 에러(ORA-00932) 수정** — `build_service_topology_graph`의 `JeusWebtobConnector` 조회가 `select_related("container")`로 `JeusContainer.deployed_apps_summary`(TextField→Oracle NCLOB)를 SELECT 컬럼에 끌어온 채 `.distinct()`를 걸어 폐쇄망(Oracle)에서만 500이 나던 문제. 코드상 `connector.container_id`만 쓰고 `connector.container`는 참조하지 않아 `select_related("container")` 자체가 불필요했던 것 확인 후 제거(`.distinct()`는 M2M 조인으로 인한 중복 제거에 계속 필요해 유지).
+
 ## 1.0.23
 
 - **서비스명이 자유 텍스트에서 `core.Service` FK로 전환** — WebtobVhost/ApacheVhost/NginxVhost/JeusContainer가 같은 Service 행을 참조하게 해서 WEB/WAS 양쪽 서비스명이 오타로 어긋나는 걸 원천 차단(기존 값은 데이터 마이그레이션으로 이관). 부수적으로 서비스 조회 화면에서 Apache/Nginx 서비스명 수정이 원본 vhost에 반영 안 되던 버그도 수정.

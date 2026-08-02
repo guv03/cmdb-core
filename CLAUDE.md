@@ -128,6 +128,7 @@ Django + DRF 기반 CMDB. 자산 자체(신규 생성)는 AWX push 경로 하나
 
 # 테스트/검증
 - 자동화 테스트 스위트는 사실상 없다(`*/tests.py`는 있지만 비어있음, `manage.py test` 실행해도 0건). 변경 검증은 로컬 Docker Compose에서 curl로 실제 API를 호출하거나 `manage.py shell`로 재현해 직접 확인하는 방식이 관례.
+- **로컬(Postgres)에서 에러 없이 통과했다는 것과 "폐쇄망(Oracle)에서도 안전하다"는 건 별개다.** DB 방언 차이로 로컬 테스트로는 원천적으로 못 잡는 버그가 실제로 여러 번 있었다(1.0.12 `dashboard/queries.py`, 1.0.24 `dashboard/topology.py` — 둘 다 `TextField`→NCLOB이 `.distinct()`/집계/정렬에 걸려 `ORA-00932`, 위 "환경" 섹션 참고). 새 쿼리를 짜거나 기존 쿼리에 `select_related()`/`annotate()`/`.distinct()`/`order_by()`/집계 함수를 추가·변경할 때는, 로컬 실행 결과와 별개로 **관련 모델에 TextField가 있는지, 그게 select_related로 SELECT 컬럼에 끌려 들어오는지 코드를 직접 읽고 점검**하는 걸 검증 절차의 일부로 삼을 것 — 로컬 통과만으로 "확인 완료"라고 보고하지 말 것.
 - `samples/facts/`에 실제 AWX facts push 페이로드 샘플을 모아둔다(`README.md`에 재push용 curl 명령 포함). 동적 필드/승인 흐름 등을 검증할 때 새로 지어내지 말고 여기 있는 걸 재사용할 것. 웹서버 설정 샘플은 `samples/webtob/`(호스트네임_http.m 원본 파일), `samples/apache/`(httpd 설정), `samples/nginx/`(nginx.conf) — apache/nginx는 `POST /api/webconfig/`에 `hostname` 필드(기존 자산의 hostname)를 같이 실어야 한다(설정 내용만으로는 자산을 못 찾음, 위 "웹 서버 설정" 참고). WAS 설정 샘플은 `samples/jeus8/domain.xml`(`POST /api/was/`, `kind=jeus8` — hostname 필드는 불필요, admin-server-name에서 자동 판별) — `samples/jeus6/`는 아직 파서가 없어 지금은 못 씀. 시스템(vCenter/Nutanix VM 인벤토리) 샘플은 `samples/systems/`(`POST /api/systems/`) — 매칭 확인을 위해 `samples/facts/`로 이미 등록된 자산과 같은 hostname을 씀.
 
 # 배포
