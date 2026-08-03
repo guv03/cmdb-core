@@ -2,6 +2,32 @@
 
 일 단위로 진행한 작업을 기록한다. 새 날짜는 위에 추가한다.
 
+## 2026-08-03
+
+- **구성도 화면 500 에러(ORA-00932) 수정(1.0.24)**: 폐쇄망에 반입 후 구성도 화면을 누르면 500 에러가 난다는 제보 — 트레이스백 확인해 원인부터 분석
+  - `build_service_topology_graph`의 `JeusWebtobConnector` 조회가 `select_related("container")`로 `JeusContainer.deployed_apps_summary`(TextField→Oracle NCLOB)를 SELECT 컬럼에 끌어온 채 `.distinct()`를 걸어서 발생 — 코드 확인 결과 루프에서 `connector.container_id`만 쓰고 `connector.container`는 참조하지 않아 `select_related("container")` 자체가 애초에 불필요했던 것 확인, 제거
+  - 이 사례를 계기로 CLAUDE.md에 "로컬(Postgres) 통과 ≠ Oracle에서도 안전"을 명시적으로 추가 — DB 쿼리 변경 시 TextField/NCLOB 위험을 코드 레벨로 재점검하는 걸 검증 절차에 포함시키기로 함(사용자 요청)
+- **서비스 탭 UI 개선(1.0.25)**: "서비스명 셀 안에 구성도 링크가 같이 있어서 클릭 영역이 헷갈린다"는 지적으로 코딩 전 검토
+  - "구성도" 텍스트 링크를 서비스명 왼쪽 별도 버튼 컬럼(`is-light is-small`)으로 분리 — 인라인 편집 클릭 영역과 페이지 이동 액션을 분리
+  - 이어서 "Hostname/솔루션도 클릭하면 상세 모달 뜨게 해달라"는 요청으로, 웹설정/WAS 목록 화면이 이미 쓰던 행 클릭→AJAX fetch→모달 패턴을 셀 단위로 재사용해 자산 상세/WEB 설정 상세/WAS 설정 상세 모달 추가
+- **구성도 기능 확장(1.0.26 → 최종 1.0.27로 통합 릴리즈)**: "구성도 그림 안에서도 클릭하면 모달 뜨게 가능할지" 검토 요청
+  - Graphviz의 `URL` 속성(노드/클러스터에 지정하면 SVG 출력에서 해당 도형이 `<a>`로 감싸짐)을 실제로 테스트해 확인 후, WEB/WAS 박스·OS 박스·System 박스 전부 같은 fetch+모달 패턴으로 클릭 가능하게 구현(URL 경로 패턴으로 어떤 상세인지 판별)
+  - "OS 박스에 'OS' 대신 종류(AIX/RHEL 등), Hostname 옆에 IP도 보여달라"는 요청으로 `asset.hostfact.os_family`/`asset.primary_ip` 반영
+  - "구성도 크기 조절이 화면에서 가능한지" 검토 → SVG는 벡터라 화질 저하 없이 가능하다고 판단, 저시력 사용자 고려해 마우스 휠 대신 `−`/`기본값`/`+` 버튼으로 구현(버튼 텍스트도 "100%" 대신 "기본값" 고정 문자열로 사용자 요청에 따라 수정)
+  - **주의**: 이 작업(1.0.26)은 빌드까지 해두고 커밋 확인을 받기 전에 다음 요청(WAS kind 재정리)으로 넘어가 실제로 커밋/릴리즈되지 않았음 — 이후 1.0.27에 합쳐서 릴리즈
+- **WAS `kind` 재정리: `jeus8` → `jeus`(1.0.27)**: "JEUS6/7/8/9 지원을 고민 중인데 kind를 어떻게 나눌지" 검토 요청
+  - domain.xml 레이아웃이 같은 JEUS 7/8/8.5/9는 `kind=jeus` 하나로 묶고, 파일 구조가 완전히 다른 JEUS 6는 향후 `kind=jeus6`로 분리하기로 결정 — kind 문자열에 버전이 일부 겹치는 것(jeus6/jeus)은 kind가 파서 선택용 키이고 실제 세부 버전은 `solution_version`이 따로 담당해 역할이 안 겹친다고 판단해 문제 삼지 않음
+  - 기존 `kind=jeus8` 데이터를 마이그레이션으로 일괄 전환, 관련 URL/AWX 플레이북(파일명 `push_jeus8_config_to_cmdb.yml`→`push_jeus_config_to_cmdb.yml`)/화면 라벨 전부 개명 — 폐쇄망 반입 시 AWX Job Template의 플레이북 경로 갱신 필요함을 안내
+  - 샘플(`samples/jeus8/domain.xml`) 재push로 기능 검증 + `sqlmigrate`로 choices 변경이 실제 DB에 no-op임을 확인해 Oracle 안전성 재확인
+- **WAS/WEB kind 표시 라벨 단순화(1.0.28)**: "JEUS 7+" 대신 "JEUS"로(jeus6만 구분되면 충분), "WebtoB" 대신 "WEBTOB"(대문자)로 요청 — 구성도의 WEB 노드 라벨도 하드코딩 문자열 대신 `source.get_kind_display()`로 통일해서 이후 라벨이 또 바뀌어도 모델 한 곳만 고치면 되게 정리
+- **AUTO 필드 dot-path 리스트 인덱스 지원(1.0.29)**: "Windows MAC 주소를 facts 컬럼에 추가했는데 표시가 안 된다"는 제보 — raw facts 확인해보니 Windows는 Linux의 `default_ipv4`(dict) 같은 평평한 경로가 없고 MAC이 `interfaces`라는 **리스트** 안에만 있어서, `extract_json_path`가 리스트를 만나면 무조건 `None`을 반환하는 기존 문서화된 한계에 걸린 것으로 확인
+  - `extract_json_path`(`facts/dynamic_fields.py`)에 숫자 인덱스 세그먼트 지원 추가(`interfaces.0.macaddress`) — 조건 필터링/전체 순회는 여전히 미지원("필드 하나=값 하나" 원칙 유지), `systems` 앱도 같은 순수 함수를 재사용하고 있어 vCenter/Nutanix 쪽에도 자동으로 적용됨
+  - `samples/awx/windows.json`(사용자가 준비해둔 미커밋 샘플) 재push로 검증 — 이 파일에 최상위 `hostname` 키가 없어 API 직접 호출 시 안 먹히는 것도 함께 확인, 사용자에게 안내
+  - 실제 운영 환경의 `FactFieldDefinition`(MAC 주소, `os_family_key_overrides`)은 admin 데이터라 코드로 못 고침 — `{"Windows": "ansible_facts.interfaces.0.macaddress"}`로 직접 수정 후 소급 백필하도록 안내
+- **서비스 탭 저장 시 ORA-00932 추가 발견 및 수정(1.0.29에 포함)**: "서비스명 수정/등록하려고 하면 오류난다"는 제보 스크린샷으로 확인
+  - `was/linkage.py`의 `get_connected_containers`(WebToB↔JEUS 서비스 전파용)가 `JeusContainer.objects.filter(...).distinct()`를 쓰는데 `JeusContainer.deployed_apps_summary`(TextField→NCLOB)가 SELECT에 포함돼 발생 — 이번엔 SvrGroup-vhost M2M 조인 때문에 `.distinct()` 자체는 필요해서 `defer("deployed_apps_summary")`로 그 컬럼만 제외
+  - 로컬에서 `apply_vhost_service()` 직접 호출해 정상 동작 확인(Postgres라 NCLOB 에러 자체는 재현 안 됨 — 코드 검토로 원인 확정)
+
 ## 2026-07-31
 
 - **Windows 자산 OS/IP 필드 오적재 수정(1.0.18)**: `samples/awx/windows.json`(실제 Windows facts 샘플)을 대시보드에서 확인해보니 OS 컬럼에 "Microsoft Windows Server 2022 Standard"(풀네임)가 찍히고 os_version은 커널 빌드번호("10.0.20348.0"), IP는 빈 값으로 나오는 문제 발견 — 코딩 전 원인 검토부터 진행

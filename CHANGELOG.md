@@ -5,6 +5,11 @@
 
 1.0.6까지의 이력은 이 파일 도입 전이라 별도 기록 없음 — `WORKLOG.md`의 해당 날짜 항목 참고.
 
+## 1.0.29
+
+- **AUTO 필드 dot-path가 리스트 중간 경로를 숫자 인덱스로 진입 가능하도록 확장** — `extract_json_path`(`facts/dynamic_fields.py`)가 지금까지 경로 중간에 JSON 리스트가 나오면 무조건 `None`을 반환해(인덱싱 미지원) Windows facts의 MAC 주소(`ansible_facts.interfaces`가 리스트라 `default_ipv4` 같은 평평한 경로가 없음)를 못 뽑는 문제가 있었음. `interfaces.0.macaddress`처럼 숫자 세그먼트로 리스트 인덱스 진입을 지원(조건 필터링/전체 순회는 여전히 미지원 — "필드 하나=값 하나" 원칙 유지). `systems` 앱도 같은 순수 함수를 재사용하고 있어 vCenter/Nutanix의 리스트 기반 원본에도 동일하게 적용됨. `samples/awx/windows.json` 재push로 검증.
+- **서비스 탭에서 서비스명 저장 시 ORA-00932 수정** — WebToB↔JEUS 서비스 전파(`was/linkage.py`의 `get_connected_containers`)가 `JeusContainer.objects.filter(...).distinct()`를 쓰는데 `JeusContainer.deployed_apps_summary`(TextField→Oracle NCLOB)가 SELECT 컬럼에 그대로 포함돼 폐쇄망(Oracle)에서만 저장 시 500이 나던 문제. SvrGroup-vhost M2M 조인이라 `.distinct()` 자체는 필요해 이번엔 `defer("deployed_apps_summary")`로 그 컬럼만 뺌(이 함수는 해당 값을 쓰지 않음).
+
 ## 1.0.28
 
 - **WAS kind=jeus 표시 라벨을 "JEUS 7+"에서 "JEUS"로 단순화** — jeus6만 구분되면 충분하다는 판단, "7+" 범위 표기 불필요.

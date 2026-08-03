@@ -11,12 +11,14 @@ from webconfig.models import WebServiceDomain, WebtobVhost
 
 
 def get_connected_containers(vhost: WebtobVhost):
-    """이 vhost가 걸린 SvrGroup의 Server(WebToB)에 연결된 JeusContainer 전체(중복 제거)."""
+    """이 vhost가 걸린 SvrGroup의 Server(WebToB)에 연결된 JeusContainer 전체(중복 제거).
+    SvrGroup-vhost M2M 조인이라 .distinct()가 필요한데, JeusContainer.deployed_apps_summary가
+    TextField(Oracle NCLOB)라 그대로 두면 ORA-00932가 남 - 여기서 그 값을 쓰지 않으므로 defer."""
     from was.models import JeusContainer
 
     return JeusContainer.objects.filter(
         webtob_connectors__webtob_server__svrgroup__vhosts=vhost
-    ).distinct()
+    ).defer("deployed_apps_summary").distinct()
 
 
 def get_connected_vhosts(container) -> "list[WebtobVhost]":

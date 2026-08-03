@@ -5,8 +5,17 @@ from facts.models import FactFieldDefinition, HostFact, HostFactValue
 
 
 def extract_json_path(data: dict, path: str):
+    """dot-path를 따라가며 dict는 키로, 리스트는 숫자 인덱스 세그먼트로 진입한다(예:
+    "interfaces.0.macaddress" - Windows facts처럼 interfaces가 리스트인 경우). 리스트인데
+    다음 세그먼트가 숫자가 아니거나 범위를 벗어나면 None(조건 필터링/전체 순회는 지원하지
+    않음 - "필드 하나=값 하나" 원칙 유지, 딱 인덱스 진입만 추가)."""
     current = data
     for part in path.split("."):
+        if isinstance(current, list):
+            if not part.isdigit() or int(part) >= len(current):
+                return None
+            current = current[int(part)]
+            continue
         if not isinstance(current, dict) or part not in current:
             return None
         current = current[part]

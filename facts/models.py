@@ -49,7 +49,8 @@ class FactFieldDefinition(TimeStampedModel):
         unique=True,
         help_text=(
             "AUTO: raw_facts 안의 dot-path(os_family_key_overrides에 없는 os_family는 이 경로를 씀), "
-            "예: ansible_facts.ansible_memtotal_mb / "
+            "예: ansible_facts.ansible_memtotal_mb. 경로 중간에 JSON 리스트가 나오면 숫자 인덱스로 "
+            "진입 가능(예: ansible_facts.interfaces.0.macaddress) - 조건 필터링은 지원 안 함 / "
             "MANUAL: raw_facts와 무관한 고유 식별자 / "
             "FIXED: HostFact 고정 컬럼명(facts.approval.FIXED_FIELD_EXTRACTORS 참고)"
         ),
