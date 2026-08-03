@@ -7,7 +7,7 @@ class WebConfigSource(TimeStampedModel):
     """웹서버 설정 원본. 종류(kind)별로 자산당 1개, push마다 통째로 교체된다."""
 
     class Kind(models.TextChoices):
-        WEBTOB = "webtob", "WebtoB"
+        WEBTOB = "webtob", "WEBTOB"
         APACHE = "apache", "Apache"
         NGINX = "nginx", "Nginx"
 

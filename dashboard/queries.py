@@ -100,7 +100,7 @@ def _parse_date(value):
 
 
 def _kind_search_q(choices_class, field_name, q):
-    """kind 필드 검색 조건. 원시값(webtob/jeus 등)뿐 아니라 표시 라벨("JEUS 7+"처럼 원시값과
+    """kind 필드 검색 조건. 원시값(webtob/jeus 등)뿐 아니라 표시 라벨("WebToB"처럼 원시값과
     다르게 공백/대소문자가 섞인 경우가 있어)로 검색해도 매칭되게 라벨이 q를 포함하는 원시값들도
     같이 묶는다."""
     matching_keys = [key for key, label in choices_class.choices if q.lower() in label.lower()]

@@ -55,15 +55,15 @@ def build_service_topology_graph(service) -> dict:
 
     nodes = []
     web_node_id_by_vhost = {}
-    for kind, label_prefix, vhosts in (
-        ("webtob", "WebToB", webtob_vhosts),
-        ("apache", "Apache", apache_vhosts),
-        ("nginx", "Nginx", nginx_vhosts),
+    for kind, vhosts in (
+        ("webtob", webtob_vhosts),
+        ("apache", apache_vhosts),
+        ("nginx", nginx_vhosts),
     ):
         for vhost in vhosts:
             node_id = f"web_{kind}_{vhost.id}"
             endpoint = _vhost_endpoint_label(vhost)
-            label_lines = [label_prefix]
+            label_lines = [vhost.source.get_kind_display()]
             if kind == "webtob":
                 # WebToB는 SvrGroup/커넥터가 참조하는 내부 식별자(vhost.name)가 도메인과
                 # 별개로 의미 있어 항상 같이 보여준다(apache/nginx의 name은 "hostname:port"
