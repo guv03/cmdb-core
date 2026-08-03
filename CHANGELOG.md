@@ -5,6 +5,10 @@
 
 1.0.6까지의 이력은 이 파일 도입 전이라 별도 기록 없음 — `WORKLOG.md`의 해당 날짜 항목 참고.
 
+## 1.0.30
+
+- **서비스 탭 저장 후 화면 갱신 안 되는 문제 수정** — WebToB↔JEUS로 연결된 쪽은 저장 시 반대쪽 표(WEB↔WAS)의 행도 서버에서 같이 바뀌는데, 지금까지는 편집한 셀 하나만 JS로 patch해서 반대쪽 표는 새로고침 전까지 예전 값으로 보였음. 저장 성공 시(일반/충돌 확인 후 강제 저장 둘 다) 셀 patch 대신 페이지를 새로고침해 두 표 모두 최신 상태로 맞춤.
+
 ## 1.0.29
 
 - **AUTO 필드 dot-path가 리스트 중간 경로를 숫자 인덱스로 진입 가능하도록 확장** — `extract_json_path`(`facts/dynamic_fields.py`)가 지금까지 경로 중간에 JSON 리스트가 나오면 무조건 `None`을 반환해(인덱싱 미지원) Windows facts의 MAC 주소(`ansible_facts.interfaces`가 리스트라 `default_ipv4` 같은 평평한 경로가 없음)를 못 뽑는 문제가 있었음. `interfaces.0.macaddress`처럼 숫자 세그먼트로 리스트 인덱스 진입을 지원(조건 필터링/전체 순회는 여전히 미지원 — "필드 하나=값 하나" 원칙 유지). `systems` 앱도 같은 순수 함수를 재사용하고 있어 vCenter/Nutanix의 리스트 기반 원본에도 동일하게 적용됨. `samples/awx/windows.json` 재push로 검증.

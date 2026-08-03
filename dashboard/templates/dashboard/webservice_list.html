@@ -211,7 +211,6 @@ document.addEventListener('DOMContentLoaded', function () {
 
   function saveActiveCell() {
     if (!activeCell) return;
-    var cell = activeCell;
 
     saveBtn.classList.add('is-loading');
     postService(false)
@@ -220,17 +219,15 @@ document.addEventListener('DOMContentLoaded', function () {
           saveBtn.classList.remove('is-loading');
           if (confirm(data.message + '\n그래도 바꿀까요?')) {
             saveBtn.classList.add('is-loading');
-            postService(true).then(function (data2) {
-              saveBtn.classList.remove('is-loading');
-              cell.querySelector('.cell-value').textContent = data2.service_name;
-              closeModal();
+            // 연결된 반대쪽 표(WEB<->WAS)의 행도 같이 바뀌므로 해당 셀만 patch하지 않고
+            // 페이지 전체를 새로고침해 두 표 모두 최신 상태로 맞춘다.
+            postService(true).then(function () {
+              window.location.reload();
             });
           }
           return;
         }
-        saveBtn.classList.remove('is-loading');
-        cell.querySelector('.cell-value').textContent = data.service_name;
-        closeModal();
+        window.location.reload();
       })
       .catch(function () {
         saveBtn.classList.remove('is-loading');
