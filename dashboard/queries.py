@@ -100,7 +100,7 @@ def _parse_date(value):
 
 
 def _kind_search_q(choices_class, field_name, q):
-    """kind 필드 검색 조건. 원시값(webtob/jeus8 등)뿐 아니라 표시 라벨("JEUS 8"처럼 원시값과
+    """kind 필드 검색 조건. 원시값(webtob/jeus 등)뿐 아니라 표시 라벨("JEUS 7+"처럼 원시값과
     다르게 공백/대소문자가 섞인 경우가 있어)로 검색해도 매칭되게 라벨이 q를 포함하는 원시값들도
     같이 묶는다."""
     matching_keys = [key for key, label in choices_class.choices if q.lower() in label.lower()]
@@ -205,9 +205,9 @@ WAS_KIND_LABELS = dict(WasConfigSource.Kind.choices)
 
 
 def get_was_overview_data():
-    """통합대시보드 WAS 섹션 - get_web_overview_data와 동일 구조(지금은 kind가 jeus8
+    """통합대시보드 WAS 섹션 - get_web_overview_data와 동일 구조(지금은 kind가 jeus
     하나뿐이라 타일도 하나뿐이지만, 확장성을 위해 WEB과 똑같이 kind 축을 그대로 둔다 -
-    JEUS6 등 새 kind가 추가되면 코드 변경 없이 타일이 자동으로 늘어남)."""
+    jeus6 등 새 kind가 추가되면 코드 변경 없이 타일이 자동으로 늘어남)."""
     total = WasConfigSource.objects.count()
     rows = [
         {"key": row["kind"], "name": WAS_KIND_LABELS.get(row["kind"], row["kind"]), "count": row["count"]}

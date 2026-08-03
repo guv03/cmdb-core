@@ -10,10 +10,12 @@
 - `push_apache_config_to_cmdb.yml` / `push_nginx_config_to_cmdb.yml` — Apache/nginx 설정 파일을
   CMDB(`POST /api/webconfig/`)로 push하는 플레이북. WebToB와 달리 설정 파일 안에 서버 자신을
   가리키는 절이 없어(`*NODE` 같은 게 없음) `inventory_hostname`을 payload에 직접 실어 보낸다.
-- `push_jeus8_config_to_cmdb.yml` — JEUS 8 도메인 설정 파일(`domain.xml`)을 CMDB
-  (`POST /api/was/`)로 push하는 플레이북. WAS는 `webconfig`와 다른 별도 앱(`was`)이다.
-  **admin 서버가 떠있는 호스트에서만 실행할 것** — domain.xml은 도메인 전체(여러 물리
-  노드)를 기술할 수 있지만 파일 자체는 admin 서버 호스트에만 있다.
+- `push_jeus_config_to_cmdb.yml` — JEUS 7/8/8.5/9(domain.xml 레이아웃 공통, `kind=jeus`)
+  도메인 설정 파일(`domain.xml`)을 CMDB(`POST /api/was/`)로 push하는 플레이북. WAS는
+  `webconfig`와 다른 별도 앱(`was`)이다. **admin 서버가 떠있는 호스트에서만 실행할 것** —
+  domain.xml은 도메인 전체(여러 물리 노드)를 기술할 수 있지만 파일 자체는 admin 서버
+  호스트에만 있다. JEUS 6는 파일 구조가 달라 이 플레이북 대상이 아님(`kind=jeus6`, 아직
+  파서 미구현).
 - `inventory_source_vars.example.yml` — vCenter/Nutanix 인벤토리 소스의 hostvar를
   플레이북이 기대하는 정규화된 변수명으로 매핑하는 예시(참고용, 실제 환경에 맞게 조정 필요).
 - `push_vcenter_systems_to_cmdb.yml` / `push_vcenter_systems_instance_tasks.yml` — vCenter
@@ -115,9 +117,9 @@ vCenter/Nutanix dynamic inventory 플러그인이 노출하는 hostvar 이름은
   기본적으로 stderr로 나가는 출력을 우선 사용 — 조회가 실패해도 push 자체는 그대로 진행되고
   이 경우 solution_version은 기존 값 유지.
 
-### 5. Job Template — JEUS8 설정 push
+### 5. Job Template — JEUS(7~9) 설정 push
 
-- Playbook: `awx/push_jeus8_config_to_cmdb.yml`
+- Playbook: `awx/push_jeus_config_to_cmdb.yml`
 - Inventory: **각 JEUS 도메인의 admin 서버가 떠있는 호스트만**(워커/매니지드 노드는 대상에
   넣지 말 것 — domain.xml 사본이 없거나, 있어도 같은 도메인이 중복 push됨). facts push가
   먼저 한 번은 돌아 있어야 함.

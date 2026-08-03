@@ -643,7 +643,7 @@ class WasConfigHistoryExportView(LoginRequiredMixin, View):
 
 
 class JeusContainerListView(LoginRequiredMixin, ListView):
-    """WebtobVhostListView와 같은 취지의 JEUS8 전용 목록 - 다만 Hostname 컬럼은
+    """WebtobVhostListView와 같은 취지의 JEUS 전용 목록 - 다만 Hostname 컬럼은
     container.asset(컨테이너 자신의 node-name으로 해석된 자산)을 쓴다. source.asset(=push를
     보낸 admin 호스트)과 다를 수 있어서 소스 쪽 hostname을 쓰면 틀린 정보가 된다."""
 

@@ -9,16 +9,16 @@ from core.reconciliation import normalize_hostname
 from was.models import WasConfigSource, WasConfigSourceRevision
 from was.parsers import PARSERS
 from was.serializers import WasConfigIngestSerializer
-from was.sync import sync_jeus8
+from was.sync import sync_jeus
 
-SYNC_FUNCS = {WasConfigSource.Kind.JEUS8: sync_jeus8}
+SYNC_FUNCS = {WasConfigSource.Kind.JEUS: sync_jeus}
 
 
 def _extract_admin_hostname(kind: str, parsed: dict) -> str | None:
     """WebToB의 *NODE절과 같은 원리 - content 안에서 결정적으로 뽑는다(AWX가 별도
     hostname을 보낼 필요 없음). admin-server-name에 해당하는 컨테이너의 node-name이
     이 push를 보낸(=admin 서버가 떠있는) 호스트의 hostname이다."""
-    if kind == WasConfigSource.Kind.JEUS8:
+    if kind == WasConfigSource.Kind.JEUS:
         admin_server_name = parsed.get("admin_server_name")
         if not admin_server_name:
             return None

@@ -271,10 +271,10 @@ def export_jeus_container_workbook() -> HttpResponse:
         for row in build_jeus_container_rows(containers)
     ]
     return _workbook_response(
-        "JEUS8 컨테이너",
+        "JEUS 컨테이너",
         ["Hostname", "컨테이너", "Node", "Listen Port", "SSL Port", "배포된 앱", "WebToB 연결", "서비스명"],
         rows,
-        "cmdb_jeus8_containers.xlsx",
+        "cmdb_jeus_containers.xlsx",
     )
 
 

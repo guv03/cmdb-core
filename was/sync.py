@@ -54,7 +54,7 @@ def _resolve_webtob_service(webtob_servers: list[WebtobServer]):
 
 
 @transaction.atomic
-def sync_jeus8(source: WasConfigSource, parsed: dict) -> None:
+def sync_jeus(source: WasConfigSource, parsed: dict) -> None:
     """파싱된 컨테이너 목록으로 이 source에 딸린 JeusContainer/JeusWebtobConnector를
     재생성한다. 컨테이너는 이름으로 upsert(수기 입력한 service_name 보존), webtob 커넥터는
     MANUAL 필드가 없어 컨테이너별로 통짜 재생성."""

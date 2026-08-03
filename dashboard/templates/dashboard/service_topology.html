@@ -27,7 +27,12 @@
   {% if render_error %}
   <p class="notification is-danger is-light">구성도를 그리지 못했습니다: {{ render_error }}</p>
   {% elif topology_svg %}
-  <div class="table-container">
+  <div class="buttons has-addons mb-2">
+    <button type="button" class="button is-light" id="topologyZoomOut">−</button>
+    <button type="button" class="button is-light" id="topologyZoomReset">기본값</button>
+    <button type="button" class="button is-light" id="topologyZoomIn">+</button>
+  </div>
+  <div class="table-container" id="topologySvgWrapper" style="max-height: 75vh; overflow-y: auto;">
     {{ topology_svg|safe }}
   </div>
   {% else %}
@@ -35,4 +40,97 @@
   {% endif %}
   {% endif %}
 {% endif %}
+
+<div class="modal" id="topologyDetailModal">
+  <div class="modal-background"></div>
+  <div class="modal-card" style="width: 90%; max-width: 960px;">
+    <header class="modal-card-head">
+      <p class="modal-card-title" id="topologyDetailModalTitle">상세</p>
+      <button class="delete" aria-label="close" id="topologyDetailModalClose"></button>
+    </header>
+    <section class="modal-card-body" id="topologyDetailModalBody">불러오는 중...</section>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_body %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  var wrapper = document.getElementById('topologySvgWrapper');
+  if (!wrapper) return;
+
+  var modal = document.getElementById('topologyDetailModal');
+  var modalTitle = document.getElementById('topologyDetailModalTitle');
+  var modalBody = document.getElementById('topologyDetailModalBody');
+
+  function closeModal() {
+    modal.classList.remove('is-active');
+  }
+
+  function contentIdFor(href) {
+    if (href.indexOf('/dashboard/assets/') !== -1) return { id: 'asset-content', title: '자산 상세' };
+    if (href.indexOf('/dashboard/webconfig/') !== -1) return { id: 'webconfig-content', title: 'WEB 설정 상세' };
+    if (href.indexOf('/dashboard/was/') !== -1) return { id: 'was-content', title: 'WAS 설정 상세' };
+    if (href.indexOf('/dashboard/systems/') !== -1) return { id: 'system-content', title: '시스템 상세' };
+    return null;
+  }
+
+  wrapper.querySelectorAll('a').forEach(function (link) {
+    var href = link.getAttribute('xlink:href') || link.getAttribute('href');
+    var target = href ? contentIdFor(href) : null;
+    if (!target) return;
+
+    link.style.cursor = 'pointer';
+    link.addEventListener('click', function (event) {
+      event.preventDefault();
+      modalTitle.textContent = target.title;
+      modalBody.textContent = '불러오는 중...';
+      modal.classList.add('is-active');
+
+      fetch(href)
+        .then(function (res) { return res.text(); })
+        .then(function (html) {
+          var doc = new DOMParser().parseFromString(html, 'text/html');
+          var content = doc.getElementById(target.id);
+          modalBody.innerHTML = content ? content.innerHTML : '불러오기 실패';
+        })
+        .catch(function () {
+          modalBody.textContent = '불러오기 실패';
+        });
+    });
+  });
+
+  document.getElementById('topologyDetailModalClose').addEventListener('click', closeModal);
+  modal.querySelector('.modal-background').addEventListener('click', closeModal);
+
+  var svgEl = wrapper.querySelector('svg');
+  var zoomInBtn = document.getElementById('topologyZoomIn');
+  var zoomOutBtn = document.getElementById('topologyZoomOut');
+  var zoomResetBtn = document.getElementById('topologyZoomReset');
+
+  if (svgEl && zoomInBtn && zoomOutBtn && zoomResetBtn) {
+    var baseWidth = parseFloat(svgEl.getAttribute('width'));
+    var baseHeight = parseFloat(svgEl.getAttribute('height'));
+    var scale = 1;
+
+    function applyZoom() {
+      svgEl.style.width = (baseWidth * scale) + 'pt';
+      svgEl.style.height = (baseHeight * scale) + 'pt';
+    }
+
+    zoomInBtn.addEventListener('click', function () {
+      scale = Math.min(scale + 0.25, 3);
+      applyZoom();
+    });
+    zoomOutBtn.addEventListener('click', function () {
+      scale = Math.max(scale - 0.25, 0.25);
+      applyZoom();
+    });
+    zoomResetBtn.addEventListener('click', function () {
+      scale = 1;
+      applyZoom();
+    });
+  }
+});
+</script>
 {% endblock %}

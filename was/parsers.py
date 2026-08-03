@@ -49,10 +49,10 @@ def _parse_listeners(server_elem: ET.Element) -> tuple[str, str]:
     return listen_port, ssl_port
 
 
-def parse_jeus8(content: str) -> dict:
-    """JEUS 8 domain.xml을 {"admin_server_name", "domain_version", "containers": [...]}로
-    변환. 컨테이너(<server>) 하나당 name/node_name/listen_port/ssl_port/
-    deployed_apps_summary/webtob_connectors를 담는다."""
+def parse_jeus(content: str) -> dict:
+    """JEUS(7/8/8.5/9 - domain.xml 레이아웃 공통) domain.xml을 {"admin_server_name",
+    "domain_version", "containers": [...]}로 변환. 컨테이너(<server>) 하나당
+    name/node_name/listen_port/ssl_port/deployed_apps_summary/webtob_connectors를 담는다."""
     root = ET.fromstring(content)
     _strip_namespace(root)
 
@@ -97,4 +97,4 @@ def parse_jeus8(content: str) -> dict:
     }
 
 
-PARSERS = {"jeus8": parse_jeus8}
+PARSERS = {"jeus": parse_jeus}

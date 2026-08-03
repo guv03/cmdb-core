@@ -9,6 +9,8 @@ System>OS>App 3단 중첩 표현이 Graphviz cluster가 더 정교해서 이쪽�
 
 import subprocess
 
+from django.urls import reverse
+
 from systems.models import SystemVm
 from was.models import JeusContainer, JeusWebtobConnector
 from webconfig.models import ApacheVhost, NginxVhost, WebtobVhost
@@ -74,6 +76,7 @@ def build_service_topology_graph(service) -> dict:
                     "id": node_id,
                     "label": label,
                     "asset": vhost.source.asset,
+                    "detail_url": reverse("dashboard-webconfig-detail", args=[vhost.source_id]),
                 }
             )
             if kind == "webtob":
@@ -82,7 +85,14 @@ def build_service_topology_graph(service) -> dict:
     was_node_id_by_container = {}
     for container in containers:
         node_id = f"was_{container.id}"
-        nodes.append({"id": node_id, "label": f"JEUS 8\n{container.name}", "asset": container.asset})
+        nodes.append(
+            {
+                "id": node_id,
+                "label": f"{container.source.get_kind_display()}\n{container.name}",
+                "asset": container.asset,
+                "detail_url": reverse("dashboard-was-detail", args=[container.source_id]),
+            }
+        )
         was_node_id_by_container[container.id] = node_id
 
     edges = []
@@ -147,17 +157,29 @@ def render_topology_svg(graph: dict) -> str:
             label = f"System · {system.name or system.external_id} ({system.source.get_kind_display()})"
             lines.append(f"{indent}  label={_dot_escape(label)};")
             lines.append(f'{indent}  style="dashed"; color="#999999"; fontsize=10; fontcolor="#666666";')
+            lines.append(f'{indent}  URL={_dot_escape(reverse("dashboard-system-detail", args=[system.pk]))};')
             indent = "    "
 
         for asset_group in system_group["assets"].values():
             asset = asset_group["asset"]
             lines.append(f"{indent}subgraph cluster_{cluster_idx} {{")
             cluster_idx += 1
-            label = f"OS · {asset.hostname.upper()}" if asset else "OS · (미등록)"
+            if asset is not None:
+                hostfact = getattr(asset, "hostfact", None)
+                os_family = hostfact.os_family if hostfact and hostfact.os_family else "OS"
+                hostname_part = asset.hostname.upper()
+                if asset.primary_ip:
+                    hostname_part = f"{hostname_part} ({asset.primary_ip})"
+                label = f"{os_family} · {hostname_part}"
+            else:
+                label = "OS · (미등록)"
             lines.append(f"{indent}  label={_dot_escape(label)};")
             lines.append(f'{indent}  style="filled"; color="#cccccc"; fillcolor="#f2f2f2"; fontsize=10;')
+            if asset is not None:
+                lines.append(f'{indent}  URL={_dot_escape(reverse("dashboard-asset-detail", args=[asset.pk]))};')
             for node in asset_group["nodes"]:
-                lines.append(f'{indent}  {node["id"]} [label={_dot_escape(node["label"])}];')
+                url_attr = f', URL={_dot_escape(node["detail_url"])}' if node.get("detail_url") else ""
+                lines.append(f'{indent}  {node["id"]} [label={_dot_escape(node["label"])}{url_attr}];')
             lines.append(f"{indent}}}")
 
         if system is not None:
