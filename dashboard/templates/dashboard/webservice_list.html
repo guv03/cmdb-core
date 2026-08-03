@@ -31,6 +31,7 @@
   <table class="table is-fullwidth is-hoverable is-striped">
     <thead>
       <tr>
+        <th></th>
         <th><a class="has-text-dark" href="{% querystring sort=columns.service_name.next_sort page=None %}">서비스명</a></th>
         <th><a class="has-text-dark" href="{% querystring sort=columns.domain.next_sort page=None %}">도메인</a></th>
         <th><a class="has-text-dark" href="{% querystring sort=columns.port.next_sort page=None %}">포트</a></th>
@@ -42,22 +43,30 @@
       {% for row in service_domains %}
       <tr>
         <td>
+          {% if row.service_name %}<a class="button is-light is-small" href="{% url 'dashboard-service-topology' %}?name={{ row.service_name|urlencode }}">구성도</a>{% endif %}
+        </td>
+        <td>
           <span class="editable-cell dash-editable-cell" data-url="/dashboard/services/{{ row.pk }}/service/"
               data-param="service_name" data-title="{{ row.domain }} - 서비스명">
             <span class="cell-value">{{ row.service_name|default:"" }}</span><span class="dash-manual-icon" aria-hidden="true">✎</span>
           </span>
-          {% if row.service_name %}<a class="is-size-7" href="{% url 'dashboard-service-topology' %}?name={{ row.service_name|urlencode }}">구성도</a>{% endif %}
         </td>
         <td>
           {{ row.domain }}
           {% if row.aliases %}<br><span class="is-size-7 has-text-grey">{{ row.aliases }}</span>{% endif %}
         </td>
         <td>{{ row.port|default:"" }}</td>
-        <td class="dash-hostname">{{ row.source.asset.hostname }}</td>
-        <td>{{ row.source.get_kind_display }}</td>
+        <td class="dash-hostname">
+          {% if row.source.asset %}
+          <span class="has-text-link" style="cursor: pointer;" data-detail-url="{% url 'dashboard-asset-detail' row.source.asset.pk %}" data-content-id="asset-content" data-detail-title="자산 상세">{{ row.source.asset.hostname }}</span>
+          {% endif %}
+        </td>
+        <td>
+          <span class="has-text-link" style="cursor: pointer;" data-detail-url="{% url 'dashboard-webconfig-detail' row.source.pk %}" data-content-id="webconfig-content" data-detail-title="WEB 설정 상세">{{ row.source.get_kind_display }}</span>
+        </td>
       </tr>
       {% empty %}
-      <tr><td colspan="5" class="has-text-grey">등록된 서비스가 없습니다.</td></tr>
+      <tr><td colspan="6" class="has-text-grey">등록된 서비스가 없습니다.</td></tr>
       {% endfor %}
     </tbody>
   </table>
@@ -84,6 +93,7 @@
   <table class="table is-fullwidth is-hoverable is-striped">
     <thead>
       <tr>
+        <th></th>
         <th>서비스명</th>
         <th>컨테이너</th>
         <th>Node</th>
@@ -95,22 +105,41 @@
       {% for container in was_rows %}
       <tr>
         <td>
+          {% if container.service %}<a class="button is-light is-small" href="{% url 'dashboard-service-topology' %}?name={{ container.service.name|urlencode }}">구성도</a>{% endif %}
+        </td>
+        <td>
           <span class="editable-cell dash-editable-cell" data-url="/dashboard/services/container/{{ container.pk }}/service/"
               data-param="service_name" data-title="{{ container.name }} - 서비스명">
             <span class="cell-value">{{ container.service.name|default:"" }}</span><span class="dash-manual-icon" aria-hidden="true">✎</span>
           </span>
-          {% if container.service %}<a class="is-size-7" href="{% url 'dashboard-service-topology' %}?name={{ container.service.name|urlencode }}">구성도</a>{% endif %}
         </td>
         <td>{{ container.name }}</td>
         <td>{{ container.node_name }}</td>
-        <td class="dash-hostname">{{ container.asset.hostname|default:"(미등록)" }}</td>
-        <td>{{ container.source.get_kind_display }}</td>
+        <td class="dash-hostname">
+          {% if container.asset %}
+          <span class="has-text-link" style="cursor: pointer;" data-detail-url="{% url 'dashboard-asset-detail' container.asset.pk %}" data-content-id="asset-content" data-detail-title="자산 상세">{{ container.asset.hostname }}</span>
+          {% else %}(미등록){% endif %}
+        </td>
+        <td>
+          <span class="has-text-link" style="cursor: pointer;" data-detail-url="{% url 'dashboard-was-detail' container.source.pk %}" data-content-id="was-content" data-detail-title="WAS 설정 상세">{{ container.source.get_kind_display }}</span>
+        </td>
       </tr>
       {% empty %}
-      <tr><td colspan="5" class="has-text-grey">등록된 컨테이너가 없습니다.</td></tr>
+      <tr><td colspan="6" class="has-text-grey">등록된 컨테이너가 없습니다.</td></tr>
       {% endfor %}
     </tbody>
   </table>
+</div>
+
+<div class="modal" id="serviceDetailModal">
+  <div class="modal-background"></div>
+  <div class="modal-card" style="width: 90%; max-width: 960px;">
+    <header class="modal-card-head">
+      <p class="modal-card-title" id="serviceDetailModalTitle">상세</p>
+      <button class="delete" aria-label="close" id="serviceDetailModalClose"></button>
+    </header>
+    <section class="modal-card-body" id="serviceDetailModalBody">불러오는 중...</section>
+  </div>
 </div>
 
 <div class="modal" id="serviceCellModal">
@@ -220,6 +249,36 @@ document.addEventListener('DOMContentLoaded', function () {
   cancelBtn.addEventListener('click', closeModal);
   document.getElementById('serviceCellModalClose').addEventListener('click', closeModal);
   modal.querySelector('.modal-background').addEventListener('click', closeModal);
+
+  var detailModal = document.getElementById('serviceDetailModal');
+  var detailModalTitle = document.getElementById('serviceDetailModalTitle');
+  var detailModalBody = document.getElementById('serviceDetailModalBody');
+
+  function closeDetailModal() {
+    detailModal.classList.remove('is-active');
+  }
+
+  document.querySelectorAll('[data-detail-url]').forEach(function (el) {
+    el.addEventListener('click', function () {
+      detailModalTitle.textContent = el.dataset.detailTitle;
+      detailModalBody.textContent = '불러오는 중...';
+      detailModal.classList.add('is-active');
+
+      fetch(el.dataset.detailUrl)
+        .then(function (res) { return res.text(); })
+        .then(function (html) {
+          var doc = new DOMParser().parseFromString(html, 'text/html');
+          var content = doc.getElementById(el.dataset.contentId);
+          detailModalBody.innerHTML = content ? content.innerHTML : '불러오기 실패';
+        })
+        .catch(function () {
+          detailModalBody.textContent = '불러오기 실패';
+        });
+    });
+  });
+
+  document.getElementById('serviceDetailModalClose').addEventListener('click', closeDetailModal);
+  detailModal.querySelector('.modal-background').addEventListener('click', closeDetailModal);
 });
 </script>
 {% endblock %}

@@ -5,6 +5,11 @@
 
 1.0.6까지의 이력은 이 파일 도입 전이라 별도 기록 없음 — `WORKLOG.md`의 해당 날짜 항목 참고.
 
+## 1.0.25
+
+- **서비스 탭 "구성도" 이동을 버튼 컬럼으로 분리** — 지금까지 서비스명 편집 셀 안에 작은 텍스트 링크로 같이 있던 "구성도"를 서비스명 왼쪽 별도 컬럼의 버튼(`is-light is-small`)으로 이동. 편집용 클릭 영역과 페이지 이동 액션이 한 셀에 섞여 있던 걸 분리(WEB/WAS 표 둘 다 적용, 서비스 미배정 행은 버튼 숨김).
+- **서비스 탭에서 Hostname/솔루션 클릭 시 상세 모달 신규** — WEB 표의 Hostname은 자산 상세(`asset-content`), 솔루션은 WEB 설정 상세(`webconfig-content`)를, WAS 표의 Hostname은 자산 상세, 종류는 WAS 설정 상세(`was-content`)를 각각 AJAX로 fetch해 모달로 보여준다(웹설정/WAS 목록 화면이 이미 쓰던 행 클릭→모달 패턴을 셀 단위로 재사용). 자산 미매칭 컨테이너(`asset=null`)는 기존처럼 "(미등록)" 텍스트만 표시.
+
 ## 1.0.24
 
 - **구성도 화면 500 에러(ORA-00932) 수정** — `build_service_topology_graph`의 `JeusWebtobConnector` 조회가 `select_related("container")`로 `JeusContainer.deployed_apps_summary`(TextField→Oracle NCLOB)를 SELECT 컬럼에 끌어온 채 `.distinct()`를 걸어 폐쇄망(Oracle)에서만 500이 나던 문제. 코드상 `connector.container_id`만 쓰고 `connector.container`는 참조하지 않아 `select_related("container")` 자체가 불필요했던 것 확인 후 제거(`.distinct()`는 M2M 조인으로 인한 중복 제거에 계속 필요해 유지).
