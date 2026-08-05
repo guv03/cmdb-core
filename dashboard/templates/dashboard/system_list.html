@@ -10,12 +10,13 @@
   </div>
   <div class="level-right">
     <div class="buttons">
+      <button class="button is-link" type="button" id="physicalHostCreateOpen">+ 물리 장비 등록</button>
       <a class="button is-light" href="{% url 'dashboard-system-export' %}">엑셀 다운로드</a>
       <a class="button is-light" href="{% url 'dashboard-system-import' %}">엑셀 업로드</a>
     </div>
   </div>
 </div>
-<p class="subtitle is-6 has-text-grey">vCenter/Nutanix가 보고하는 물리 장비(ESXi 호스트/AHV 노드) 하나가 한 행입니다. 같은 이름의 호스트가 서로 다른 vCenter/Nutanix 인스턴스에 있을 수 있어 "소스"(어느 인스턴스인지)를 이름보다 앞에 둡니다. 그 위에 떠있는 OS(VM)는 행을 클릭하면 상세에서 확인할 수 있습니다. 소스/이름/종류/VM 수 외 나머지 컬럼은 admin의 System host field definitions에 등록한 만큼만 나타나고, 연필 아이콘(✎)이 붙은 값은 클릭해서 직접 수정할 수 있습니다.</p>
+<p class="subtitle is-6 has-text-grey">vCenter/Nutanix가 보고하는 물리 장비(ESXi 호스트/AHV 노드) 하나가 한 행입니다. 같은 이름의 호스트가 서로 다른 vCenter/Nutanix 인스턴스에 있을 수 있어 "소스"(어느 인스턴스인지)를 이름보다 앞에 둡니다. 그 위에 떠있는 OS(VM)는 행을 클릭하면 상세에서 확인할 수 있습니다. 소스/이름/종류/VM 수 외 나머지 컬럼은 admin의 System host field definitions에 등록한 만큼만 나타나고, 연필 아이콘(✎)이 붙은 값은 클릭해서 직접 수정할 수 있습니다. vCenter/Nutanix가 보고하지 않는 베어메탈 장비는 "물리 장비 등록"으로 직접 추가할 수 있습니다(관리 컬럼에서 편집/삭제).</p>
 
 <form class="field has-addons" method="get">
   <div class="control is-expanded">
@@ -35,6 +36,7 @@
         <th><a class="has-text-dark" href="{% querystring sort=columns.kind.next_sort page=None %}">종류</a></th>
         <th><a class="has-text-dark" href="{% querystring sort=columns.vm_count.next_sort page=None %}">VM 수</a></th>
         {% if rows %}{% for cell in rows.0.dynamic_cells %}<th>{{ cell.label }}</th>{% endfor %}{% endif %}
+        <th>관리</th>
       </tr>
     </thead>
     <tbody>
@@ -54,9 +56,15 @@
         <td>{{ cell.value|default:"" }}</td>
         {% endif %}
         {% endfor %}
+        <td>
+          {% if row.host.source.kind == "physical" %}
+          <a href="#" class="physical-host-edit" data-host-id="{{ row.host.pk }}" data-name="{{ row.host.name }}" data-source="{{ row.host.source.name }}" data-hostname="{{ row.host.vms.first.hostname|default:'' }}">편집</a>
+          · <a href="#" class="physical-host-delete has-text-danger" data-host-id="{{ row.host.pk }}" data-name="{{ row.host.name|default:row.host.external_id }}">삭제</a>
+          {% endif %}
+        </td>
       </tr>
       {% empty %}
-      <tr><td colspan="4" class="has-text-grey">등록된 물리 장비가 없습니다.</td></tr>
+      <tr><td colspan="5" class="has-text-grey">등록된 물리 장비가 없습니다.</td></tr>
       {% endfor %}
     </tbody>
   </table>
@@ -70,6 +78,49 @@
       <button class="delete" aria-label="close" id="systemModalClose"></button>
     </header>
     <section class="modal-card-body" id="systemModalBody">불러오는 중...</section>
+  </div>
+</div>
+
+<datalist id="assetHostnameOptions">
+  {% for hostname in asset_hostnames %}<option value="{{ hostname }}">{% endfor %}
+</datalist>
+<datalist id="physicalSourceOptions">
+  {% for source_name in physical_source_names %}<option value="{{ source_name }}">{% endfor %}
+</datalist>
+<div class="modal" id="physicalHostModal">
+  <div class="modal-background"></div>
+  <div class="modal-card" style="width: 90%; max-width: 480px;">
+    <header class="modal-card-head">
+      <p class="modal-card-title" id="physicalHostModalTitle">물리 장비 등록</p>
+      <button class="delete" aria-label="close" id="physicalHostModalClose"></button>
+    </header>
+    <section class="modal-card-body">
+      <div class="field">
+        <label class="label">소스 (전산실/그룹명)</label>
+        <div class="control">
+          <input class="input" type="text" id="physicalHostSource" list="physicalSourceOptions" placeholder="예: 본사 전산실">
+        </div>
+        <p class="help">기존 소스 이름을 입력하면 그 그룹에 묶이고, 새 이름을 입력하면 새 그룹이 만들어집니다.</p>
+      </div>
+      <div class="field">
+        <label class="label">이름</label>
+        <div class="control">
+          <input class="input" type="text" id="physicalHostName" placeholder="예: RACK03-SVR12">
+        </div>
+      </div>
+      <div class="field">
+        <label class="label">연결할 자산 (Hostname, 선택)</label>
+        <div class="control">
+          <input class="input" type="text" id="physicalHostHostname" list="assetHostnameOptions" placeholder="아직 OS가 없으면 비워두세요">
+        </div>
+        <p class="help">이미 facts push로 등록된 자산의 hostname을 입력하면 연결됩니다. 아직 OS가 없는 장비(발주/랙 설치만 된 상태)는 비워두고, 나중에 여기서 다시 연결할 수 있습니다.</p>
+      </div>
+      <p class="help is-danger" id="physicalHostError" style="display: none;"></p>
+    </section>
+    <footer class="modal-card-foot">
+      <button type="button" class="button is-link" id="physicalHostSave">저장</button>
+      <button type="button" class="button" id="physicalHostCancel">취소</button>
+    </footer>
   </div>
 </div>
 
@@ -274,6 +325,112 @@ document.addEventListener('DOMContentLoaded', function () {
   cancelBtn.addEventListener('click', closeCellModal);
   document.getElementById('manualCellModalClose').addEventListener('click', closeCellModal);
   cellModal.querySelector('.modal-background').addEventListener('click', closeCellModal);
+
+  // 물리 장비 등록/편집/삭제 - vCenter/Nutanix push 없이 대시보드에서 직접 SystemHost를 만드는
+  // 유일한 경로. 등록/편집을 같은 모달로 처리(physicalHostId가 비어있으면 등록, 있으면 편집).
+  var physicalModal = document.getElementById('physicalHostModal');
+  var physicalTitle = document.getElementById('physicalHostModalTitle');
+  var physicalSourceInput = document.getElementById('physicalHostSource');
+  var physicalNameInput = document.getElementById('physicalHostName');
+  var physicalHostnameInput = document.getElementById('physicalHostHostname');
+  var physicalError = document.getElementById('physicalHostError');
+  var physicalSaveBtn = document.getElementById('physicalHostSave');
+  var physicalHostId = null;
+  var defaultPhysicalSourceName = "{{ default_physical_source_name|escapejs }}";
+
+  function closePhysicalModal() {
+    physicalModal.classList.remove('is-active');
+    physicalHostId = null;
+  }
+
+  function openPhysicalModal(title, hostId, sourceName, name, hostname) {
+    physicalTitle.textContent = title;
+    physicalHostId = hostId;
+    physicalSourceInput.value = sourceName || '';
+    physicalNameInput.value = name || '';
+    physicalHostnameInput.value = hostname || '';
+    physicalError.style.display = 'none';
+    physicalModal.classList.add('is-active');
+    physicalNameInput.focus();
+  }
+
+  document.getElementById('physicalHostCreateOpen').addEventListener('click', function () {
+    openPhysicalModal('물리 장비 등록', null, defaultPhysicalSourceName, '', '');
+  });
+
+  document.querySelectorAll('.physical-host-edit').forEach(function (link) {
+    link.addEventListener('click', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      openPhysicalModal('물리 장비 편집', link.dataset.hostId, link.dataset.source, link.dataset.name, link.dataset.hostname);
+    });
+  });
+
+  document.querySelectorAll('.physical-host-delete').forEach(function (link) {
+    link.addEventListener('click', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!confirm(link.dataset.name + '을(를) 삭제할까요? 연결된 자산 매칭 정보도 함께 지워집니다.')) return;
+      fetch('/dashboard/systems/' + link.dataset.hostId + '/physical/delete/', {
+        method: 'POST',
+        headers: { 'X-CSRFToken': getCsrfToken() },
+      }).then(function (res) {
+        if (res.ok) { window.location.reload(); } else { alert('삭제 실패'); }
+      });
+    });
+  });
+
+  physicalSaveBtn.addEventListener('click', function () {
+    var sourceName = physicalSourceInput.value.trim();
+    var name = physicalNameInput.value.trim();
+    if (!sourceName) {
+      physicalError.textContent = '소스를 입력하세요.';
+      physicalError.style.display = 'block';
+      return;
+    }
+    if (!name) {
+      physicalError.textContent = '이름을 입력하세요.';
+      physicalError.style.display = 'block';
+      return;
+    }
+
+    var url = physicalHostId
+      ? '/dashboard/systems/' + physicalHostId + '/physical/update/'
+      : '/dashboard/systems/physical/create/';
+
+    physicalSaveBtn.classList.add('is-loading');
+    fetch(url, {
+      method: 'POST',
+      headers: {
+        'X-CSRFToken': getCsrfToken(),
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({
+        source_name: sourceName,
+        name: name,
+        hostname: physicalHostnameInput.value.trim(),
+      }),
+    })
+      .then(function (res) { return res.json().then(function (data) { return { ok: res.ok, data: data }; }); })
+      .then(function (result) {
+        physicalSaveBtn.classList.remove('is-loading');
+        if (!result.ok) {
+          physicalError.textContent = result.data.error || '저장 실패';
+          physicalError.style.display = 'block';
+          return;
+        }
+        window.location.reload();
+      })
+      .catch(function () {
+        physicalSaveBtn.classList.remove('is-loading');
+        physicalError.textContent = '저장 실패';
+        physicalError.style.display = 'block';
+      });
+  });
+
+  document.getElementById('physicalHostModalClose').addEventListener('click', closePhysicalModal);
+  document.getElementById('physicalHostCancel').addEventListener('click', closePhysicalModal);
+  physicalModal.querySelector('.modal-background').addEventListener('click', closePhysicalModal);
 });
 </script>
 {% endblock %}

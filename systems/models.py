@@ -14,6 +14,10 @@ class SystemSource(TimeStampedModel):
     class Kind(models.TextChoices):
         VCENTER = "vcenter", "vCenter"
         NUTANIX = "nutanix", "Nutanix"
+        # push가 아니라 대시보드에서 사람이 직접 등록하는 베어메탈 장비용. vCenter/Nutanix처럼
+        # "인스턴스"가 여러 개일 이유가 없어 (kind=physical, name="수기 등록") 싱글톤 하나만
+        # 쓴다(systems/sync.py의 get_physical_source 참고).
+        PHYSICAL = "physical", "물리(수기 등록)"
 
     kind = models.CharField(max_length=20, choices=Kind.choices)
     # vCenter/Prism Central 인스턴스 식별자(예: vcenter01.corp.local) - 같은 kind 안에서도

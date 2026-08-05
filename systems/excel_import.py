@@ -5,7 +5,7 @@ from django.db.models import Prefetch
 from django.http import HttpResponse
 
 from facts.dynamic_fields import coerce_fact_value
-from systems.models import SystemHost, SystemHostFieldDefinition, SystemHostFieldValue
+from systems.models import SystemHost, SystemHostFieldDefinition, SystemHostFieldValue, SystemSource
 
 # SystemHost는 Asset.hostname 같은 단일 고유 식별자가 없다(external_id는 유일하지만
 # vCenter/Nutanix 내부 식별자라 사람이 엑셀에 옮겨 적기엔 부적합) - source_name+name 조합을
@@ -51,9 +51,10 @@ class ImportResult:
 
 
 def _dynamic_fields() -> list[SystemHostFieldDefinition]:
-    """다운로드에는 AUTO+MANUAL 둘 다 참고용으로 실어서 대시보드 화면과 같은 값을 보여주고,
-    실제 반영 대상은 이 중 MANUAL만이다(아래 parse_system_host_workbook) - facts 앱의
-    dashboard/excel_import.py와 같은 패턴."""
+    """다운로드에는 AUTO+MANUAL 둘 다 참고용으로 실어서 대시보드 화면과 같은 값을 보여준다.
+    반영 대상은 기본적으로 MANUAL뿐이지만, kind=physical(수기 등록) 호스트는 AUTO도 반영
+    대상이다(아래 parse_system_host_workbook) - facts 앱의 dashboard/excel_import.py와
+    비슷한 패턴이되, push 자체가 없는 kind라 AUTO를 잠글 이유가 없다는 점이 다름."""
     return list(
         SystemHostFieldDefinition.objects.filter(is_visible=True).order_by("sort_order", "id")
     )
@@ -92,8 +93,9 @@ def _current_value_display(host, field_definition: SystemHostFieldDefinition) ->
 
 def export_system_host_workbook() -> HttpResponse:
     """전체 물리 장비의 source_name+name(매칭 키) + 동적 필드(AUTO+MANUAL) 현재 값을 xlsx로
-    내려준다. AUTO 필드는 참고용으로 같이 싣지만 편집 대상이 아니라서, 값을 고쳐서 올려도
-    parse_system_host_workbook이 조용히 무시한다."""
+    내려준다. vCenter/Nutanix 행의 AUTO 필드는 참고용으로 같이 싣지만 편집 대상이 아니라서
+    값을 고쳐서 올려도 parse_system_host_workbook이 조용히 무시한다 - kind=physical(수기
+    등록) 행은 예외로 AUTO도 반영된다."""
     dynamic_fields = _dynamic_fields()
 
     workbook = openpyxl.Workbook()
@@ -212,15 +214,22 @@ def parse_system_host_workbook(uploaded_file) -> ImportResult:
             continue
 
         host_label = f"{source_name} / {name}"
+        # kind=physical은 push 자체가 없어 sync_host_fields()가 절대 안 돌기 때문에, AUTO
+        # 필드도 다음 push에 덮어써질 위험이 없다 - 셀 클릭 편집(dashboard/queries.py의
+        # build_system_host_rows)과 같은 예외를 여기서도 적용한다.
+        is_physical = host.source.kind == SystemSource.Kind.PHYSICAL
 
         for field_definition, cell_value in zip(column_fields, values):
             if (
                 field_definition is None
-                or field_definition.source != SystemHostFieldDefinition.Source.MANUAL
                 or cell_value in (None, "")
+                or (
+                    field_definition.source != SystemHostFieldDefinition.Source.MANUAL
+                    and not is_physical
+                )
             ):
-                # AUTO 필드는 참고용으로만 실려있는 컬럼이라 값이 있어도 반영하지 않는다 -
-                # 어차피 다음 push 때 조용히 덮어써지므로.
+                # vCenter/Nutanix의 AUTO 필드는 참고용으로만 실려있는 컬럼이라 값이 있어도
+                # 반영하지 않는다 - 어차피 다음 push 때 조용히 덮어써지므로.
                 continue
 
             defaults = coerce_fact_value(cell_value, field_definition.value_type)
@@ -266,15 +275,20 @@ def parse_system_host_workbook(uploaded_file) -> ImportResult:
 
 
 def apply_updates(payload: list[dict]) -> tuple[int, int]:
-    """미리보기에서 확정된 항목을 실제로 반영. (반영된 값 개수, 영향받은 호스트 수)를 반환."""
+    """미리보기에서 확정된 항목을 실제로 반영. (반영된 값 개수, 영향받은 호스트 수)를 반환.
+
+    parse_system_host_workbook과 같은 예외(kind=physical은 AUTO도 반영)를 여기서도 다시
+    검사한다 - payload는 미리보기 화면을 거쳐 브라우저에서 그대로 돌아오는 값이라, parse
+    단계의 필터링만 믿지 않고 반영 시점에도 한 번 더 확인해야 vCenter/Nutanix 호스트의 AUTO
+    값이 실수로라도 덮어써지지 않는다."""
     field_definitions = {
-        fd.id: fd
-        for fd in SystemHostFieldDefinition.objects.filter(
-            source=SystemHostFieldDefinition.Source.MANUAL, is_visible=True
-        )
+        fd.id: fd for fd in SystemHostFieldDefinition.objects.filter(is_visible=True)
     }
     host_ids = {item["host_id"] for item in payload}
-    hosts = {host.id: host for host in SystemHost.objects.filter(id__in=host_ids)}
+    hosts = {
+        host.id: host
+        for host in SystemHost.objects.filter(id__in=host_ids).select_related("source")
+    }
 
     changed_host_ids = set()
     applied = 0
@@ -282,6 +296,9 @@ def apply_updates(payload: list[dict]) -> tuple[int, int]:
         field_definition = field_definitions.get(item["field_id"])
         host = hosts.get(item["host_id"])
         if field_definition is None or host is None:
+            continue
+        is_physical = host.source.kind == SystemSource.Kind.PHYSICAL
+        if field_definition.source != SystemHostFieldDefinition.Source.MANUAL and not is_physical:
             continue
 
         defaults = coerce_fact_value(item["new_value"], field_definition.value_type)

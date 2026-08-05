@@ -5,6 +5,13 @@
 
 1.0.6까지의 이력은 이 파일 도입 전이라 별도 기록 없음 — `WORKLOG.md`의 해당 날짜 항목 참고.
 
+## 1.0.31
+
+- **시스템 목록에 베어메탈(물리) 장비 수기 등록 기능 추가** — vCenter/Nutanix push로만 채워지던 "시스템" 탭에, push 경로가 없는 베어메탈 장비를 대시보드에서 직접 등록/편집/삭제하는 기능 신설(`SystemSource.Kind.PHYSICAL`). 소스 이름은 전산실/그룹별로 직접 입력해 관리하고, 자산 미확정 상태(발주/랙 설치만 된 장비)로 먼저 등록한 뒤 나중에 hostname으로 연결하는 것도 지원. vCenter/Nutanix가 보고하는 행은 지금처럼 push 전용 읽기 전용 유지.
+- **물리 장비의 AUTO 필드(CPU/제조사 등)를 vCenter/Nutanix와 같은 라벨로 편집 가능하게 확장** — 물리 kind는 push 자체가 없어 자동 추출값이 다음 push에 덮어써질 위험이 없다는 점에 착안, 셀 클릭 편집과 엑셀 업로드 둘 다 물리 소스 행에 한해 AUTO 필드 반영을 허용(vCenter/Nutanix 행은 계속 차단돼 값이 무시됨).
+- **시스템 상세에 "원본 응답 보기" 추가** — admin에서 System host field definition을 새로 등록할 때 dot-path를 찾기 쉽도록, 자산 상세와 같은 패턴으로 `SystemHost.extra` 원본 JSON을 접이식 박스로 노출.
+- **오라클 호환 가이드에 JSONField NCLOB 위험 명시** — Oracle Django 백엔드가 JSONField도 TextField와 동일하게 NCLOB로 매핑한다는 걸 확인해, 지금까지 TextField만 언급하던 CLAUDE.md 문구를 JSONField까지 포함하도록 확장(코드 변경 없음, 검증 절차 문서화).
+
 ## 1.0.30
 
 - **서비스 탭 저장 후 화면 갱신 안 되는 문제 수정** — WebToB↔JEUS로 연결된 쪽은 저장 시 반대쪽 표(WEB↔WAS)의 행도 서버에서 같이 바뀌는데, 지금까지는 편집한 셀 하나만 JS로 patch해서 반대쪽 표는 새로고침 전까지 예전 값으로 보였음. 저장 성공 시(일반/충돌 확인 후 강제 저장 둘 다) 셀 patch 대신 페이지를 새로고침해 두 표 모두 최신 상태로 맞춤.

@@ -811,7 +811,7 @@ def get_system_host_queryset(request):
         SystemHost.objects.select_related("source")
         .defer("extra", "source__raw_response")
         .annotate(vm_count=Count("vms", distinct=True))
-        .prefetch_related("field_values__field_definition")
+        .prefetch_related("field_values__field_definition", "vms")
     )
 
     q = _request_param(request, "q", "search")
@@ -846,7 +846,15 @@ def build_system_host_rows(hosts, dynamic_field_definitions):
     """자산 목록의 build_rows()와 같은 패턴 - 고정 컬럼(이름/종류/VM 수)에 admin이 등록한
     동적 컬럼(AUTO/MANUAL)을 이어붙인다. 정렬은 아직 지원하지 않음(값이 EAV 테이블에 있어
     자산 목록처럼 Subquery 정렬이 필요한데, 필요해지면 get_asset_queryset의 방식을 그대로
-    가져오면 됨)."""
+    가져오면 됨).
+
+    kind=physical 호스트는 AUTO 필드도 is_manual=True로 취급해 편집 가능하게 만든다 - AUTO는 push로
+    들어온 extra에서 값을 뽑는 게 전제인데 수기 등록 호스트는 애초에 push 자체가 없어
+    extra가 항상 비어있다. 이 kind는 sync_host_fields()가(=AUTO 값 자동 채움) 절대 호출되지
+    않으므로 사람이 입력한 값이 다음 push에 덮어써질 위험도 없다 - 그래서 라벨/필드 정의를
+    vCenter/Nutanix와 그대로 공유하면서 물리 행에서만 입력 UI를 열어줄 수 있다(field
+    definition을 kind별로 중복 등록할 필요가 없어짐). vCenter/Nutanix 행은 지금처럼 AUTO는
+    읽기 전용 유지(수정해봐야 다음 push에 조용히 덮어써져 혼란만 커짐)."""
     rows = []
     for host in hosts:
         values_by_field_id = {}
@@ -861,7 +869,8 @@ def build_system_host_rows(hosts, dynamic_field_definitions):
                 "value": values_by_field_id.get(fd.id),
                 "field_id": fd.id,
                 "label": fd.label,
-                "is_manual": fd.source == SystemHostFieldDefinition.Source.MANUAL,
+                "is_manual": fd.source == SystemHostFieldDefinition.Source.MANUAL
+                or host.source.kind == SystemSource.Kind.PHYSICAL,
                 "value_type": fd.value_type,
             }
             for fd in dynamic_field_definitions

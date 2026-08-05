@@ -1,5 +1,6 @@
 import json
 import subprocess
+import uuid
 
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
@@ -87,7 +88,8 @@ from systems.excel_import import (
     export_system_host_workbook,
     parse_system_host_workbook,
 )
-from systems.models import SystemHost, SystemHostFieldDefinition, SystemHostFieldValue
+from systems.models import SystemHost, SystemHostFieldDefinition, SystemHostFieldValue, SystemSource
+from systems.sync import get_or_create_physical_source, sync_physical_host_asset
 from was.linkage import apply_container_service, apply_vhost_service
 from was.models import JeusContainer, WasConfigSource
 from webconfig.models import WebConfigSource, WebServiceDomain, WebtobVhost
@@ -199,18 +201,24 @@ class AssetDetailView(LoginRequiredMixin, DetailView):
 
 class SystemHostManualFieldUpdateView(LoginRequiredMixin, View):
     """"시스템" 목록의 인라인 편집(셀 하나 클릭 → 그 필드 값만 저장)용 엔드포인트 -
-    AssetManualFieldUpdateView와 동일 패턴, SystemHostFieldDefinition/Value 기준."""
+    AssetManualFieldUpdateView와 동일 패턴, SystemHostFieldDefinition/Value 기준.
+
+    kind=physical 호스트는 AUTO 필드도 받아준다 - build_system_host_rows의 is_manual 판정과
+    맞춰야 목록에서 클릭 가능하게 보여준 셀이 실제로도 저장돼야 하므로. vCenter/Nutanix
+    호스트는 지금처럼 MANUAL만 허용(AUTO를 여기로 고쳐봐야 다음 push의 sync_host_fields가
+    조용히 덮어써서 혼란만 생김)."""
 
     def post(self, request, pk):
-        host = get_object_or_404(SystemHost, pk=pk)
+        host = get_object_or_404(SystemHost.objects.select_related("source"), pk=pk)
+        is_physical = host.source.kind == SystemSource.Kind.PHYSICAL
 
         field_definition = SystemHostFieldDefinition.objects.filter(
-            pk=request.POST.get("field_id"),
-            source=SystemHostFieldDefinition.Source.MANUAL,
-            is_visible=True,
+            pk=request.POST.get("field_id"), is_visible=True
         ).first()
         if field_definition is None:
-            return JsonResponse({"error": "수기 입력 필드를 찾을 수 없습니다."}, status=404)
+            return JsonResponse({"error": "필드를 찾을 수 없습니다."}, status=404)
+        if field_definition.source != SystemHostFieldDefinition.Source.MANUAL and not is_physical:
+            return JsonResponse({"error": "자동 추출 필드는 직접 수정할 수 없습니다."}, status=400)
 
         if field_definition.value_type == SystemHostFieldDefinition.ValueType.BOOL:
             raw_value = request.POST.get("value") == "true"
@@ -239,6 +247,64 @@ class SystemHostManualFieldUpdateView(LoginRequiredMixin, View):
             "",
         )
         return JsonResponse({"value": str(display_value)})
+
+
+class SystemHostManualCreateView(LoginRequiredMixin, View):
+    """"시스템" 목록의 "물리 장비 등록" 모달 - vCenter/Nutanix push 경로 없이 사람이 직접
+    SystemHost(kind=physical)를 만든다. 소스 이름은 사용자가 직접 입력(전산실/그룹별로
+    나눠 관리 가능 - vCenter/Nutanix가 이미 (kind, name)으로 인스턴스를 구분하는 것과 동일
+    패턴). external_id는 vCenter moref 같은 자연 키가 없어 UUID를 발급(사용자에게 안 보임)."""
+
+    def post(self, request):
+        name = (request.POST.get("name") or "").strip()
+        source_name = (request.POST.get("source_name") or "").strip()
+        if not name:
+            return JsonResponse({"error": "이름을 입력하세요."}, status=400)
+        if not source_name:
+            return JsonResponse({"error": "소스를 입력하세요."}, status=400)
+
+        host = SystemHost.objects.create(
+            source=get_or_create_physical_source(source_name),
+            external_id=uuid.uuid4().hex,
+            name=name,
+        )
+        sync_physical_host_asset(host, request.POST.get("hostname") or "")
+        return JsonResponse({"id": host.pk})
+
+
+class SystemHostManualUpdateView(LoginRequiredMixin, View):
+    """물리 장비 이름/소스/연결 자산 수정 - kind=physical인 SystemHost만 대상으로 잠근다
+    (vCenter/Nutanix가 보고한 host는 push로만 바뀌어야 하므로 이 경로로 못 건드리게). 소스를
+    바꾸면(다른 그룹으로 이동) 같은 이름의 physical 소스가 없으면 새로 만든다."""
+
+    def post(self, request, pk):
+        host = get_object_or_404(
+            SystemHost.objects.select_related("source"),
+            pk=pk,
+            source__kind=SystemSource.Kind.PHYSICAL,
+        )
+        name = (request.POST.get("name") or "").strip()
+        source_name = (request.POST.get("source_name") or "").strip()
+        if not name:
+            return JsonResponse({"error": "이름을 입력하세요."}, status=400)
+        if not source_name:
+            return JsonResponse({"error": "소스를 입력하세요."}, status=400)
+
+        host.name = name
+        host.source = get_or_create_physical_source(source_name)
+        host.save(update_fields=["name", "source"])
+        sync_physical_host_asset(host, request.POST.get("hostname") or "")
+        return JsonResponse({"id": host.pk})
+
+
+class SystemHostManualDeleteView(LoginRequiredMixin, View):
+    """물리 장비 삭제 - kind=physical만 대상(CASCADE로 딸린 SystemVm/필드값도 함께 정리).
+    push 기반 정리가 없는 kind라 폐기 시 사람이 직접 지워야 한다."""
+
+    def post(self, request, pk):
+        host = get_object_or_404(SystemHost, pk=pk, source__kind=SystemSource.Kind.PHYSICAL)
+        host.delete()
+        return JsonResponse({"deleted": True})
 
 
 class AssetManualFieldUpdateView(LoginRequiredMixin, View):
@@ -704,6 +770,23 @@ class SystemListView(LoginRequiredMixin, ListView):
             }
             for fd in dynamic_field_definitions
         ]
+        # "물리 장비 등록/편집" 모달의 자산 연결 입력용 - 서비스 구성도 화면의 <input list>
+        # datalist와 같은 패턴(별도 자동완성 라이브러리 없이 네이티브 datalist로 해결).
+        context["asset_hostnames"] = list(
+            Asset.objects.order_by("hostname").values_list("hostname", flat=True)
+        )
+        # 소스 입력 datalist용 - 이미 쓰인 physical 소스 이름을 보여줘서 그룹 재사용을 유도.
+        context["physical_source_names"] = list(
+            SystemSource.objects.filter(kind=SystemSource.Kind.PHYSICAL)
+            .order_by("name")
+            .values_list("name", flat=True)
+        )
+        # "물리 장비 등록" 모달을 열 때 소스 입력란에 채워둘 기본값 - 처음 쓰는 사람은 그룹을
+        # 나눌 생각이 없을 수 있어 아무것도 안 입력해도 되게, 기존에 쓰인 이름이 있으면 그걸,
+        # 없으면(첫 등록) "수기 등록"을 기본으로 제안한다.
+        context["default_physical_source_name"] = (
+            context["physical_source_names"][0] if context["physical_source_names"] else "수기 등록"
+        )
         return context
 
 
@@ -736,6 +819,11 @@ class SystemDetailView(LoginRequiredMixin, DetailView):
         context["vm_entries"] = build_system_host_vm_entries(
             self.object.vms.all(), os_dynamic_field_definitions
         )
+
+        # SystemHostFieldDefinition의 key/kind_key_overrides는 이 host.extra 안의 dot-path를
+        # 가리킨다 - asset_detail.html의 raw_facts_json과 같은 이유로, admin이 새 필드를
+        # 등록할 때 실제 원본 구조를 보고 경로를 찾을 수 있어야 한다.
+        context["extra_json"] = json.dumps(self.object.extra, indent=2, ensure_ascii=False)
         return context
 
 

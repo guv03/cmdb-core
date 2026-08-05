@@ -2,6 +2,22 @@
 
 일 단위로 진행한 작업을 기록한다. 새 날짜는 위에 추가한다.
 
+## 2026-08-05
+
+- **시스템 상세에 "원본 응답 보기" 추가**: "새 System host field definition 등록할 때 원문 API 응답값을 모달에서 못 봐서 dot-path 찾기 어렵다"는 지적 — 자산 상세의 `raw_facts_json`과 같은 패턴으로 `SystemHost.extra`를 `<details>` 접이식 박스에 JSON으로 노출(`SystemDetailView`/`system_detail.html`). `SystemHostFieldDefinition.key`/`kind_key_overrides`가 참조하는 게 소스 전체(`SystemSource.raw_response`)가 아니라 호스트별 `extra`라 그쪽을 노출하는 게 맞다고 판단.
+- **베어메탈(물리) 장비 수기 등록 기능 신규**: "시스템 탭이 vCenter/Nutanix push로만 채워지는데 베어메탈은 어떻게 관리할지" 코딩 전 설계 논의부터 진행
+  - 데이터 출처로 (a) 기존 facts push 재사용 (b) BMC/IPMI 신규 연동 (c) systems 전용 API로 별도 배치 push 세 방향을 검토했으나, "시스템을 facts와 분리한 전제 자체가 이미 push 경로가 따로 있다는 것"이라는 사용자 지적으로 (c)까지도 재고 → 최종적으로 자동 수집 자체를 포기하고 **대시보드에서 사람이 직접 SystemHost를 생성**하는 방식으로 결정
+  - `SystemSource.Kind.PHYSICAL` 신규 추가(마이그레이션 `0004_alter_systemsource_kind`, choices 메타데이터뿐이라 DB 실질 변경 없음). 자산 미정 상태(asset=null)로 먼저 등록하는 것도 허용(발주/랙 설치만 된 장비 대응) — hostname을 나중에 입력하면 `SystemVm` 1건으로 자기 자신을 셀프 링크해서 기존 "떠있는 OS" 표/"연결된 시스템" 표/vm_count를 코드 수정 없이 그대로 재사용(`systems/sync.py`의 `sync_physical_host_asset`)
+  - "시스템" 목록에 "+물리 장비 등록" 버튼 + kind=physical 행 전용 "관리"(편집/삭제) 컬럼, 등록/편집 공용 모달(소스/이름/자산 hostname datalist) 신설. vCenter/Nutanix 행은 여전히 push 전용으로 잠금(신규 엔드포인트가 kind=physical만 대상으로 하고 나머지는 404 처리하는 것까지 확인)
+  - "소스도 사용자가 입력하게 해달라"는 후속 요청으로 소스 이름을 폼 입력으로 전환(전산실/그룹별 관리 가능), `get_or_create_physical_source(name)`으로 변경 — 호스트를 다른 소스로 옮길 때 연결된 `SystemVm.source`도 같이 맞추도록 기존에 빠져있던 부분까지 같이 수정
+  - Django test client + 실제 Playwright(Chromium)로 등록/수정/삭제/자산 연결 전체 흐름 검증(임시 테스트 계정 생성 후 세션 종료 시 삭제, 기존 `admin` 계정은 건드리지 않음)
+- **물리 장비의 AUTO 필드를 MANUAL과 같은 라벨로 편집 가능하게 확장**: "수기 등록한 애들은 속성(CPU/제조사 등 AUTO 필드)을 못 채운다"는 지적으로 원인 조사
+  - 원인: `SystemHostFieldValue`는 AUTO/MANUAL 저장 구조가 같지만(AUTO는 push 시 `sync_host_fields()`가 미리 채움), 화면에서 클릭 가능하게 보여줄지는 `fd.source==MANUAL`에만 묶여 있어 AUTO 필드는 물리 호스트에서도 영원히 읽기 전용이었던 것으로 확인(실제 Playwright로 재현해 확정)
+  - `host.source.kind=="physical"`인 행은 AUTO 필드도 `is_manual=True`로 취급하도록 `build_system_host_rows`/`SystemHostManualFieldUpdateView` 수정 — kind=physical은 push 자체가 없어 `sync_host_fields()`가 절대 안 돌기 때문에 사람이 입력한 값이 다음 push에 덮어써질 위험이 없다는 점을 근거로, 필드 정의/라벨을 vCenter·Nutanix와 그대로 공유(물리 전용 중복 필드 등록 불필요 — "라벨을 같게 쓰고 싶다"는 요청에 정확히 부합)
+  - vCenter/Nutanix 행은 계속 읽기 전용(서버에서도 400)인지 함께 검증. 이어서 "엑셀 업로드도 되는지" 질문에 확인해보니 `systems/excel_import.py`가 별도 코드 경로라 안 풀려있던 것 발견 — `parse_system_host_workbook`/`apply_updates` 둘 다 같은 예외를 적용해 셀 편집과 엑셀 업로드가 일관되게 동작하도록 수정, 실제 워크북 파싱→적용 스크립트로 검증(물리 행은 반영, vCenter 행은 여전히 무시됨을 확인)
+- **오라클(폐쇄망) 호환성 리뷰**: 이번 세션 변경 전체를 CLAUDE.md의 NCLOB 원칙 기준으로 점검 요청 — 신규 `.distinct()`/`order_by()`/집계가 JSONField(`SystemHost.extra` 등)를 건드리는 지점이 없음을 코드로 확인, `.first()`가 실제로 어떤 컬럼으로 정렬되는지도 Django 소스(`query.py`)를 직접 읽어 검증(정렬 미지정 시 pk로 폴백 확인)
+  - 리뷰 중 **JSONField도 TextField와 동일하게 Oracle에서 NCLOB로 매핑된다**는 걸 Django Oracle 백엔드 소스(`data_types["JSONField"]="NCLOB"`)로 재확인 — CLAUDE.md의 "환경" 섹션과 관련 메모(`feedback_oracle_testing_awareness`)가 지금까지 TextField만 언급하던 걸 JSONField까지 포함하도록 갱신(사용자 요청)
+
 ## 2026-08-03
 
 - **구성도 화면 500 에러(ORA-00932) 수정(1.0.24)**: 폐쇄망에 반입 후 구성도 화면을 누르면 500 에러가 난다는 제보 — 트레이스백 확인해 원인부터 분석
