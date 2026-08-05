@@ -20,9 +20,10 @@
   플레이북이 기대하는 정규화된 변수명으로 매핑하는 예시(참고용, 실제 환경에 맞게 조정 필요).
 - `push_vcenter_systems_to_cmdb.yml` / `push_vcenter_systems_instance_tasks.yml` — vCenter
   REST API를 직접 호출해 VM 목록을 CMDB(`POST /api/systems/`)로 push하는 플레이북. 위
-  facts/webconfig/was 플레이북과 달리 개별 호스트가 아니라 `hosts: localhost`로 vCenter
-  인스턴스 단위(여러 대 순회 가능)로 딱 한 번씩 실행된다 - CMDB의 `systems` 앱, CLAUDE.md의
-  "시스템" 섹션 참고.
+  facts/webconfig/was 플레이북과 달리 개별 호스트가 아니라 vCenter 인스턴스 단위(여러 대
+  순회 가능)로 딱 한 번씩 실행된다(기본 `hosts: localhost`, 방화벽 때문에 특정 서버를 경유해야
+  하면 `systems_collector_host`로 바꿀 수 있음 - 아래 "8. 경유 서버" 참고) - CMDB의 `systems`
+  앱, CLAUDE.md의 "시스템" 섹션 참고.
 - `push_nutanix_systems_to_cmdb.yml` / `push_nutanix_systems_instance_tasks.yml` — 위와 같은
   설계로 Nutanix Prism Central API를 호출해 VM 목록을 CMDB로 push하는 플레이북.
 
@@ -206,7 +207,40 @@ vCenter/Nutanix dynamic inventory 플러그인이 노출하는 hostvar 이름은
   `https://developers.nutanix.com/api-reference`로 확인한 뒤
   `push_nutanix_systems_instance_tasks.yml`의 필드 매핑을 넓히면 된다.
 
-### 8. 로컬 테스트
+### 8. 경유 서버(방화벽으로 직접 접속이 막혀 있을 때)
+
+vCenter/Nutanix 시스템 정보 push 플레이북(위 6/7번)은 기본적으로 AWX 실행환경(EE) 안에서
+`hosts: localhost`로 실행되면서 vCenter/Nutanix API와 CMDB에 직접 접속한다. AWX EE에서
+그쪽으로 나가는 아웃바운드가 방화벽에 막혀 있고, 그 경로가 열린 특정 서버가 따로 있다면
+그 서버를 경유시킬 수 있다.
+
+- **설정 방법**: 그 서버를 AWX 인벤토리에 등록하고(다른 관리 대상 호스트와 동일하게), Job
+  Template의 Extra Variables에 `systems_collector_host: <그 서버의 inventory_hostname 또는
+  그룹명>`을 추가하면 된다. 플레이북 자체는 이미 이 변수를 지원하도록 돼 있음(`hosts: "{{
+  systems_collector_host | default('localhost') }}"`) - 별도 수정 불필요.
+- **그 서버에 실제로 필요한 것**: Python 3뿐이다. vCenter/Nutanix API 호출과 CMDB로의 최종
+  POST 전부 `ansible.builtin.uri`(ansible-core 내장 모듈)로 처리하는데, 이 모듈은 curl을
+  셸아웃해서 부르는 게 아니라 Python 표준 라이브러리(`urllib`)로 직접 HTTP 요청을 만든다 -
+  즉 curl도 `requests` 같은 별도 pip 패키지도 필요 없다.
+- **그 외 확인할 것**:
+  - 그 서버에서 vCenter/Nutanix API와 CMDB(`cmdb_base_url`) 양쪽으로 아웃바운드(보통 443)가
+    열려 있어야 한다 - 애초에 경유시키는 목적이므로 방화벽 규칙을 이 서버 기준으로 다시 확인.
+  - `validate_certs: true`(기본값)인데 vCenter/Nutanix/CMDB 인증서가 사내 CA로 서명돼
+    있다면, 그 서버의 OS 인증서 신뢰 저장소에 사내 루트 CA가 등록돼 있어야 한다(Python
+    `ssl` 모듈이 OS 신뢰 저장소를 그대로 씀). 안 돼 있으면 인증서 검증 에러로 실패한다 -
+    사내 CA를 등록하거나, 급하면 `cmdb_validate_certs`/각 인스턴스의 `validate_certs`를
+    `false`로 우회할 수 있다(보안상 권장하지 않음, 사내 CA 등록이 정공법).
+  - 그 서버의 기본 `python3` 경로가 표준이 아니면(AIX 사례처럼) 인벤토리 변수로
+    `ansible_python_interpreter`를 지정할 것 - `OS_SPECS.md` 참고, facts push의 2번 항목과
+    동일한 패턴.
+- **주의**: `hosts: localhost`를 그냥 다른 호스트명으로 바꾸는 것만으로는 충분하지 않다 -
+  원래 플레이북엔 `connection: local`이 같이 박혀 있어서, `hosts:`만 바꾸면 `connection:
+  local`이 우선해 여전히 AWX EE 안에서 로컬로 실행된다(경유가 전혀 안 됨). 지금 플레이북은
+  이 함정을 피하려고 `connection: local`을 아예 안 쓰고, `hosts:`가 암묵적 `localhost`일 때
+  Ansible이 자동으로 로컬 실행하는 동작에 의존한다 - `systems_collector_host`로 실제
+  호스트를 지정하면 자동으로 SSH 연결로 바뀐다.
+
+### 9. 로컬 테스트
 
 CMDB를 로컬 Docker Compose로 띄운 상태에서, 임의 값으로 API를 직접 호출해 CMDB 쪽 동작을
 먼저 검증하고 싶다면 CMDB 리포지토리의 `LOCAL_ACCESS.md`를 참고 (facts/webconfig push API 섹션).
