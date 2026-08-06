@@ -5,6 +5,10 @@
 
 1.0.6까지의 이력은 이 파일 도입 전이라 별도 기록 없음 — `WORKLOG.md`의 해당 날짜 항목 참고.
 
+## 1.0.32
+
+- **Nutanix 시스템 push 실패 수정 - AHV 호스트/VM 필드명 스네이크케이스 오타** — `push_nutanix_systems_instance_tasks.yml`이 Prism Central v4 API 필드를 `ext_id`/`host_name`/`power_state`(스네이크케이스)로 짐작해 읽었으나 실제 응답은 전부 카멜케이스(`extId`/`hostName`/`powerState`, VM의 호스트 참조는 `vm.host.extId`)라 Jinja가 조용히 `Undefined`→`default('')`로 넘어가면서 모든 host의 `external_id`/모든 vm의 `uuid`가 빈 문자열로 저장됨 → `(host, uuid)` 조합이 전부 겹쳐 실제 운영 push에서 `ORA-00001(unique_system_vm_uuid_per_host)`로 실패. 실제 Prism Central 응답으로 필드명을 재검증해 수정.
+
 ## 1.0.31
 
 - **시스템 목록에 베어메탈(물리) 장비 수기 등록 기능 추가** — vCenter/Nutanix push로만 채워지던 "시스템" 탭에, push 경로가 없는 베어메탈 장비를 대시보드에서 직접 등록/편집/삭제하는 기능 신설(`SystemSource.Kind.PHYSICAL`). 소스 이름은 전산실/그룹별로 직접 입력해 관리하고, 자산 미확정 상태(발주/랙 설치만 된 장비)로 먼저 등록한 뒤 나중에 hostname으로 연결하는 것도 지원. vCenter/Nutanix가 보고하는 행은 지금처럼 push 전용 읽기 전용 유지.

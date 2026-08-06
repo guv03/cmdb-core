@@ -7,11 +7,14 @@
 # 으로 딸린 OS"로 모델링돼 있어(systems 앱, CLAUDE.md의 "시스템" 섹션 참고) VM 쪽 payload에
 # host_external_id로 자신이 속한 호스트를 표시해야 한다.
 #
-# 주의(반입 전 확인 필요): 아래 호스트 목록 엔드포인트 경로(clustermgmt 네임스페이스)와 VM의
-# 호스트 참조 필드(vm.host.ext_id)는 Nutanix v4 API의 일반적인 네이밍 관례를 따른 추정이라
-# 실제 Prism Central 버전으로 검증 안 됨 - https://developers.nutanix.com/api-reference로
-# 확인 후 조정할 것. name/uuid(ext_id)/power_state 외 상세 스펙(CPU/메모리/모델 등)도
-# 마찬가지로 구조화하지 않고 원본을 extra에 그대로 보관한다.
+# 호스트/VM 필드명은 실제 Prism Central(v4 API) 응답으로 검증 완료 - 전부 카멜케이스다
+# (extId/hostName/powerState, VM의 호스트 참조는 vm.host.extId). 처음엔 스네이크케이스로
+# 짐작해 넣었다가(ahv_host.ext_id 등) Jinja가 존재하지 않는 속성을 조용히 Undefined로 넘기고
+# default('')가 그걸 삼켜버리는 바람에 모든 host의 external_id/모든 vm의 uuid가 빈 문자열로
+# 저장돼 (host, uuid) 조합이 전부 겹치면서 ORA-00001(unique_system_vm_uuid_per_host) push
+# 실패로 실제 발견됨 - 반입 전 문서 추정이 아니라 운영 push 실패로 바로잡은 것이므로 필드명을
+# 다시 바꿀 땐 반드시 실제 응답으로 재검증할 것. name/uuid(extId)/powerState 외 상세 스펙
+# (CPU/메모리/모델 등)은 여전히 구조화하지 않고 원본을 extra에 그대로 보관한다.
 
 - name: 이 인스턴스의 payload 초기화
   ansible.builtin.set_fact:
@@ -42,8 +45,8 @@
   ansible.builtin.set_fact:
     nutanix_hosts_payload: >-
       {{ nutanix_hosts_payload + [{
-        'external_id': ahv_host.ext_id | default(''),
-        'name': ahv_host.host_name | default(ahv_host.name | default('')),
+        'external_id': ahv_host.extId | default(''),
+        'name': ahv_host.hostName | default(''),
         'extra': {'host': ahv_host},
       }] }}
   loop: "{{ nutanix_host_list.json.data | default([]) }}"
@@ -67,11 +70,11 @@
   ansible.builtin.set_fact:
     nutanix_vms_payload: >-
       {{ nutanix_vms_payload + [{
-        'host_external_id': (vm.host | default({})).ext_id | default(''),
+        'host_external_id': (vm.host | default({})).extId | default(''),
         'name': vm.name | default(''),
         'hostname': vm.name | default(''),
-        'uuid': vm.ext_id | default(''),
-        'power_state': vm.power_state | default(''),
+        'uuid': vm.extId | default(''),
+        'power_state': vm.powerState | default(''),
         'extra': {'vm': vm},
       }] }}
   loop: "{{ nutanix_vm_list.json.data | default([]) }}"
