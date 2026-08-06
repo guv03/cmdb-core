@@ -12,9 +12,10 @@ class WasConfigSource(TimeStampedModel):
 
     class Kind(models.TextChoices):
         # domain.xml 레이아웃이 같은 JEUS 7/8/8.5/9를 kind 하나로 묶는다 - JEUS 6는
-        # JEUSMain.xml + servlet_engine*/WEBMain.xml로 구조 자체가 달라 별도 kind(jeus6,
-        # 아직 파서 미구현)로 분리하기로 함(CLAUDE.md "WAS 설정" 참고).
+        # JEUSMain.xml + servlet_engine*/WEBMain.xml로 구조 자체가 달라 별도 kind로 분리
+        # (CLAUDE.md "WAS 설정" 참고).
         JEUS = "jeus", "JEUS"
+        JEUS6 = "jeus6", "JEUS6"
 
     asset = models.ForeignKey(Asset, on_delete=models.CASCADE, related_name="was_configs")
     kind = models.CharField(max_length=20, choices=Kind.choices)

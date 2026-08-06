@@ -14,8 +14,14 @@
   도메인 설정 파일(`domain.xml`)을 CMDB(`POST /api/was/`)로 push하는 플레이북. WAS는
   `webconfig`와 다른 별도 앱(`was`)이다. **admin 서버가 떠있는 호스트에서만 실행할 것** —
   domain.xml은 도메인 전체(여러 물리 노드)를 기술할 수 있지만 파일 자체는 admin 서버
-  호스트에만 있다. JEUS 6는 파일 구조가 달라 이 플레이북 대상이 아님(`kind=jeus6`, 아직
-  파서 미구현).
+  호스트에만 있다. JEUS 6는 파일 구조가 달라 이 플레이북 대상이 아님(`kind=jeus6`,
+  아래 `push_jeus6_config_to_cmdb.yml` 참고).
+- `push_jeus6_config_to_cmdb.yml` — JEUS 6(`JEUSMain.xml` + 컨테이너별
+  `servlet_engine{N}/WEBMain.xml`, `kind=jeus6`) 설정을 CMDB(`POST /api/was/`)로 push하는
+  플레이북. **admin 서버 개념이 없어(JEUSMain.xml 하나 = 물리 노드 하나) 위 `push_jeus_config_to_cmdb.yml`과
+  달리 JEUS6 노드 전부를 인벤토리 대상으로 실행해야 함.** `JEUSMain.xml`과 그 밑의 모든
+  `servlet_engine*/WEBMain.xml`을 같이 읽어 `files`(파일명 → 원본 텍스트 dict)로 한 번에
+  push한다(`kind=jeus`의 `content` 단일 문자열과 다름).
 - `inventory_source_vars.example.yml` — vCenter/Nutanix 인벤토리 소스의 hostvar를
   플레이북이 기대하는 정규화된 변수명으로 매핑하는 예시(참고용, 실제 환경에 맞게 조정 필요).
 - `push_vcenter_systems_to_cmdb.yml` / `push_vcenter_systems_instance_tasks.yml` — vCenter

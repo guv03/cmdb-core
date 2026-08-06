@@ -5,6 +5,10 @@
 
 1.0.6까지의 이력은 이 파일 도입 전이라 별도 기록 없음 — `WORKLOG.md`의 해당 날짜 항목 참고.
 
+## 1.0.35
+
+- **JEUS6(`kind=jeus6`) WAS 설정 파싱 신규 지원** — `JEUSMain.xml`(노드/도메인 레벨) + 컨테이너별 `servlet_engine{N}/WEBMain.xml`(웹 커넥션) 조합을 파싱해 기존 JEUS 7+(`kind=jeus`)와 동일한 컨테이너/WebToB 연결/데이터소스(1.0.34에서 추가된 `JeusDataSource`) 화면으로 보여준다. JEUS6은 admin 서버 개념이 없어(노드마다 자기 `JEUSMain.xml`을 따로 가짐) 호스트 판별을 `<node><name>`으로 직접 하고, AWX도 admin 서버 한 대가 아니라 JEUS6 노드 전부를 대상으로 push해야 함(`awx/push_jeus6_config_to_cmdb.yml` 신규). 파일이 여러 개라 CMDB API는 이 kind에 한해 `content`(단일 문자열) 대신 `files`(파일명→원본 텍스트 dict)를 받는다. `servlet_engine{N}`의 `N`은 컨테이너 이름이 아니라 `<engine-command><name>engine{N}</engine-command>`의 엔진 번호와 매칭. `JeusDataSource`는 JEUS6엔 컨테이너별 참조가 파일에 없어 그 노드의 모든 컨테이너에 일괄 연결(식별자도 `data-source-id`가 없어 `export-name`으로 대체). `samples/jeus6/` 실제 재push로 검증.
+
 ## 1.0.34
 
 - **자산 상세 "연결된 시스템" 표 500 에러(ORA-00932) 수정** — 폐쇄망 반입 후 시스템 push된 자산의 상세 화면을 열면 500 에러가 난다는 제보. `dashboard/queries.py`의 `get_system_hosts_for_vms()`가 `annotate(Count("vms", distinct=True))` + `select_related("source")` 조합인데, 목록 화면(`get_system_host_queryset`)과 달리 `SystemHost.extra`/`SystemSource.raw_response`(JSONField→Oracle NCLOB)를 `defer()`로 빼지 않아 GROUP BY에 NCLOB 컬럼이 끌려들어가 발생. 목록 화면과 동일하게 `.defer("extra", "source__raw_response")` 추가.
