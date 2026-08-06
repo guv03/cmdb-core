@@ -5,6 +5,11 @@
 
 1.0.6까지의 이력은 이 파일 도입 전이라 별도 기록 없음 — `WORKLOG.md`의 해당 날짜 항목 참고.
 
+## 1.0.33
+
+- **Nutanix 시스템 push 실패 추가 수정 - 같은 VM이 payload에 중복 보고되는 경우 방어** — 1.0.32의 필드명 수정 후에도 `unique_system_vm_uuid_per_host` 위반이 재발. 원인은 필드명이 아니라 같은 `(host, uuid)`가 `vms_payload` 안에 두 번 이상 들어오는 실제 데이터(Nutanix DR/Metro 이중화로 보호되는 VM이 클러스터 관점별로 중복 보고되는 것으로 추정, `protectionType: PD_PROTECTED`)였음. `systems/sync.py`의 `sync_systems()`가 이제 uuid가 실제 값인 중복은 나중 값으로 덮어쓰고(SystemHost upsert와 동일한 "나중 값이 이긴다" 원칙), uuid가 비어있는(host 매칭 자체가 안 된) 항목은 기존처럼 각각 별도로 남기도록 수정. vCenter push도 같은 함수를 공유해 동일하게 보호됨.
+- **Nutanix 시스템 push가 호스트/VM 50대까지만 수집되던 문제 수정** — `push_nutanix_systems_instance_tasks.yml`이 목록 조회 API를 파라미터 없이 한 번만 호출해 v4 API의 페이지네이션 기본값(환경 실측 50건)만 가져오고 나머지는 조용히 잘렸음. `$page`(0-base)/`$limit=100`을 명시하고, 1페이지 응답의 `metadata.totalAvailableResults`로 전체 개수를 계산해 남은 페이지를 마저 가져오도록 수정(1페이지로 충분하면 추가 호출 없음). 호스트/VM 둘 다 동일하게 적용.
+
 ## 1.0.32
 
 - **Nutanix 시스템 push 실패 수정 - AHV 호스트/VM 필드명 스네이크케이스 오타** — `push_nutanix_systems_instance_tasks.yml`이 Prism Central v4 API 필드를 `ext_id`/`host_name`/`power_state`(스네이크케이스)로 짐작해 읽었으나 실제 응답은 전부 카멜케이스(`extId`/`hostName`/`powerState`, VM의 호스트 참조는 `vm.host.extId`)라 Jinja가 조용히 `Undefined`→`default('')`로 넘어가면서 모든 host의 `external_id`/모든 vm의 `uuid`가 빈 문자열로 저장됨 → `(host, uuid)` 조합이 전부 겹쳐 실제 운영 push에서 `ORA-00001(unique_system_vm_uuid_per_host)`로 실패. 실제 Prism Central 응답으로 필드명을 재검증해 수정.

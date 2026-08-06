@@ -66,7 +66,16 @@ def sync_systems(source, hosts_payload: list[dict], vms_payload: list[dict]) -> 
     SystemVm은 MANUAL 개념이 없어서 기존처럼 통짜 교체(전체 삭제 후 재생성)해도 안전하다 -
     다만 host 매칭 실패(host=null) 케이스도 빠짐없이 정리해야 해서 host가 아니라 source
     FK로 이 소스 소속 VM 전체를 찾아 지운다(host FK만으로 CASCADE를 태우면 host=null인
-    VM은 절대 안 지워지고 계속 쌓이는 버그가 됨)."""
+    VM은 절대 안 지워지고 계속 쌓이는 버그가 됨).
+
+    같은 (host, uuid)가 vms_payload 안에 두 번 이상 나오는 경우가 실측 확인됐다(Nutanix DR/
+    Metro 이중화로 보호되는 VM이 클러스터 관점별로 중복 보고되는 것으로 추정 - protectionType
+    PD_PROTECTED). uuid가 실제 값(빈 문자열이 아님)인데 이미 나온 (host, uuid)와 같으면 뒤에
+    나온 값으로 덮어쓴다(SystemHost upsert와 동일하게 "나중 값이 이긴다" 원칙) - 그냥
+    create()만 하면 unique_system_vm_uuid_per_host 위반으로 push 전체가 실패한다. uuid가
+    비어있는 항목(host 매칭 자체가 안 된 VM 등)은 서로 다른 VM일 수 있어 덮어쓰지 않고 각각
+    create - host가 null이면 어차피 유니크 제약이 걸리지 않는다(NULL은 비교 대상에서 제외)."""
+    seen_vm_keys = set()
     seen_external_ids = []
     hosts_by_external_id = {}
     for item in hosts_payload:
@@ -90,6 +99,13 @@ def sync_systems(source, hosts_payload: list[dict], vms_payload: list[dict]) -> 
         hostname = (item.get("hostname") or item.get("name") or "").strip()
         asset = _find_asset(hostname)
         host = hosts_by_external_id.get(item.get("host_external_id") or "")
+        uuid = item.get("uuid") or ""
+
+        vm_key = (host.id if host else None, uuid)
+        if uuid and vm_key in seen_vm_keys:
+            SystemVm.objects.filter(host=host, uuid=uuid).delete()
+        else:
+            seen_vm_keys.add(vm_key)
 
         vm = SystemVm.objects.create(
             source=source,
@@ -97,7 +113,7 @@ def sync_systems(source, hosts_payload: list[dict], vms_payload: list[dict]) -> 
             asset=asset,
             name=item.get("name") or "",
             hostname=hostname,
-            uuid=item.get("uuid") or "",
+            uuid=uuid,
             power_state=item.get("power_state") or "",
             num_cpu=_int_or_none(item.get("num_cpu")),
             memory_mb=_int_or_none(item.get("memory_mb")),
