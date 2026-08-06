@@ -4,10 +4,11 @@ from core.models import Asset, Service, TimeStampedModel
 
 
 class WasConfigSource(TimeStampedModel):
-    """WAS 설정 원본. 종류(kind)별로 자산당 1개, push마다 구조화 테이블을 전부 지우고
-    다시 만든다 - webconfig.WebConfigSource와 같은 패턴. 여기서 asset은 이 설정을 push한
-    admin 서버 호스트를 가리킨다(도메인 전체를 관리하는 노드) - 도메인이 여러 물리 노드로
-    클러스터링될 수 있어 이 소스에 딸린 컨테이너(JeusContainer)들의 asset과는 다를 수 있다.
+    """WAS 설정 원본. 종류(kind)+instance_name별로 자산당 1개, push마다 구조화 테이블을
+    전부 지우고 다시 만든다 - webconfig.WebConfigSource와 같은 패턴. 여기서 asset은 이
+    설정을 push한 admin 서버 호스트를 가리킨다(도메인 전체를 관리하는 노드) - 도메인이
+    여러 물리 노드로 클러스터링될 수 있어 이 소스에 딸린 컨테이너(JeusContainer)들의
+    asset과는 다를 수 있다.
     """
 
     class Kind(models.TextChoices):
@@ -19,6 +20,13 @@ class WasConfigSource(TimeStampedModel):
 
     asset = models.ForeignKey(Asset, on_delete=models.CASCADE, related_name="was_configs")
     kind = models.CharField(max_length=20, choices=Kind.choices)
+    # JEUS6은 같은 물리 호스트에 OS 계정만 다르게 해서 여러 인스턴스가 뜰 수 있어(예: ddorap01에
+    # jeuscm/jeuslt 계정으로 각각 별도 JEUS6) asset+kind만으로는 유일하지 않다. JEUSMain.xml
+    # 내용만으로는 인스턴스를 구분할 방법이 없어(apache/nginx의 hostname과 같은 이유) AWX가
+    # payload에 명시적으로 실어 보낸다(OS 계정명 그대로, 예: "jeuscm") - was/parsers.py는
+    # 이 값을 몰라도 되고 was/views.py가 asset/kind와 별개로 그대로 저장만 한다. kind=jeus는
+    # admin 서버 한 대 = 도메인 하나라 이 문제가 없어 항상 빈 문자열로 둔다.
+    instance_name = models.CharField(max_length=100, blank=True)
     raw_content = models.TextField()
     last_pushed_at = models.DateTimeField(auto_now=True)
     # AUTO지만 WebToB/Apache/Nginx와 달리 명령어 실행이나 마커 없이 XML 루트의 version
@@ -27,11 +35,14 @@ class WasConfigSource(TimeStampedModel):
 
     class Meta:
         constraints = [
-            models.UniqueConstraint(fields=["asset", "kind"], name="unique_was_config_per_kind")
+            models.UniqueConstraint(
+                fields=["asset", "kind", "instance_name"], name="unique_was_config_per_instance"
+            )
         ]
 
     def __str__(self):
-        return f"{self.asset.hostname} / {self.get_kind_display()}"
+        label = f"{self.asset.hostname} / {self.get_kind_display()}"
+        return f"{label} ({self.instance_name})" if self.instance_name else label
 
 
 class WasConfigSourceRevision(TimeStampedModel):

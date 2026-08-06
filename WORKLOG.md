@@ -22,6 +22,11 @@
   - `WasConfigSource.Kind.JEUS6` 추가, `content`(단일 문자열) 대신 `files`(파일명→원본 텍스트 dict)를 받도록 `was/serializers.py`/`was/views.py` 확장(kind=jeus는 기존 그대로) — `raw_content`(TextField 하나)엔 파일 경계를 표시해 합친 텍스트를 저장하되 파싱은 항상 원본 dict로 함
   - 신규 플레이북 `awx/push_jeus6_config_to_cmdb.yml` — JEUS6은 admin 서버 개념이 없어 **노드 전부를 인벤토리 대상으로 실행**해야 한다는 점이 기존 `push_jeus_config_to_cmdb.yml`(admin 서버 한 대만)과 가장 큰 차이. `find`+`slurp`로 JEUSMain.xml과 모든 `servlet_engine*/WEBMain.xml`을 모아 `files` dict로 push
   - `samples/jeus6/` 실제 재push(테스트 자산 임시 생성)로 DB 반영 확인(컨테이너 2개, 각각 WebToB 커넥터 1개+데이터소스 6개 연결) + Playwright 스크린샷으로 화면까지 검증. CLAUDE.md의 "WAS 설정" 섹션도 "jeus6는 파서 미구현" 문구를 실제 구현 내용으로 갱신
+- **JEUS6 한 호스트 다중 인스턴스(계정별) 지원(1.0.36)**: JEUS6 지원 배포 직후 "한 서버에 계정을 다르게 해서 JEUS6가 여러 개 뜨는 경우(예: ddorap01에 jeuscm/jeuslt)도 있다"는 제보 — 코딩 전 먼저 원인부터 짚음: `WasConfigSource`가 `(asset, kind)`로만 유일해서 두 번째 push가 첫 번째를 덮어씀, `<node><name>`(물리 호스트명)만으론 계정이 달라도 같은 값이라 설정 내용으로는 구분 불가능하다는 점을 설명하고 apache/nginx의 hostname 명시 패턴을 근거로 제시
+  - 코딩 전 질문 3가지(식별값을 AWX가 명시적으로 보낼지/무슨 값을 쓸지/화면에 어떻게 보여줄지)를 확인받은 뒤 진행 — "AWX가 OS 계정명을 명시적으로 보내고, WAS 목록/상세에 인스턴스명 컬럼 추가"로 결정
+  - `WasConfigSource.instance_name` 신규 필드 + 유니크 키를 `(asset, kind, instance_name)`로 확장(`kind=jeus`는 항상 빈 문자열이라 기존 동작 그대로 보존), `was/serializers.py`/`was/views.py`가 kind=jeus6일 때 이 값을 필수로 받아 그대로 저장. WAS 목록·JEUS 컨테이너 목록·엑셀 다운로드 2종·WAS 상세 전부 "인스턴스" 컬럼 추가(`dashboard/queries.py`/`views.py`/`list_export.py`/템플릿)
+  - `awx/push_jeus6_config_to_cmdb.yml`에 `jeus6_instance_name`(필수) 변수 추가 - 같은 호스트를 계정별로 여러 번 push해야 한다는 점을 주석에 명시
+  - 실제로 같은 샘플을 `instance_name=jeuscm`/`jeuslt`로 두 번 push해서 두 행이 서로 안 덮어쓰고 독립적으로 남는 것까지 직접 검증(마이그레이션 생성/적용, Playwright로 목록 화면 스크린샷)
 
 ## 2026-08-05
 

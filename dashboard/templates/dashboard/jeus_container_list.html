@@ -30,6 +30,7 @@
       <tr>
         <th class="dash-sticky-col dash-sticky-col-1"><a class="has-text-dark" href="{% querystring sort=columns.hostname.next_sort page=None %}">Hostname</a></th>
         <th class="dash-sticky-col dash-sticky-col-2"><a class="has-text-dark" href="{% querystring sort=columns.ip.next_sort page=None %}">IP</a></th>
+        <th><a class="has-text-dark" href="{% querystring sort=columns.instance_name.next_sort page=None %}">인스턴스</a></th>
         <th><a class="has-text-dark" href="{% querystring sort=columns.container.next_sort page=None %}">컨테이너</a></th>
         <th><a class="has-text-dark" href="{% querystring sort=columns.node_name.next_sort page=None %}">Node</a></th>
         <th><a class="has-text-dark" href="{% querystring sort=columns.listen_port.next_sort page=None %}">Listen Port</a></th>
@@ -44,6 +45,7 @@
       <tr>
         <td class="dash-sticky-col dash-sticky-col-1 dash-hostname">{{ row.container.asset.hostname|default:"(미등록)" }}</td>
         <td class="dash-sticky-col dash-sticky-col-2">{{ row.container.asset.primary_ip|default:"" }}</td>
+        <td>{{ row.container.source.instance_name|default:"" }}</td>
         <td>{{ row.container.name }}</td>
         <td>{{ row.container.node_name }}</td>
         <td>{{ row.container.listen_port|default:"" }}</td>
@@ -53,7 +55,7 @@
         <td>{{ row.container.service.name|default:"" }}</td>
       </tr>
       {% empty %}
-      <tr><td colspan="9" class="has-text-grey">등록된 컨테이너가 없습니다.</td></tr>
+      <tr><td colspan="10" class="has-text-grey">등록된 컨테이너가 없습니다.</td></tr>
       {% endfor %}
     </tbody>
   </table>

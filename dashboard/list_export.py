@@ -230,6 +230,7 @@ def export_was_config_workbook() -> HttpResponse:
         [
             source.asset.hostname,
             source.get_kind_display(),
+            source.instance_name,
             source.solution_version,
             source.container_count,
             source.last_changed_at,
@@ -239,7 +240,7 @@ def export_was_config_workbook() -> HttpResponse:
     ]
     return _workbook_response(
         "WAS",
-        ["Hostname", "종류", "버전", "컨테이너 수", "최근 변경일", "최근 반영일"],
+        ["Hostname", "종류", "인스턴스", "버전", "컨테이너 수", "최근 변경일", "최근 반영일"],
         rows,
         "cmdb_was.xlsx",
     )
@@ -260,6 +261,7 @@ def export_jeus_container_workbook() -> HttpResponse:
     rows = [
         [
             row["container"].asset.hostname if row["container"].asset else "(미등록)",
+            row["container"].source.instance_name,
             row["container"].name,
             row["container"].node_name,
             row["container"].listen_port,
@@ -272,7 +274,7 @@ def export_jeus_container_workbook() -> HttpResponse:
     ]
     return _workbook_response(
         "JEUS 컨테이너",
-        ["Hostname", "컨테이너", "Node", "Listen Port", "SSL Port", "배포된 앱", "WebToB 연결", "서비스명"],
+        ["Hostname", "인스턴스", "컨테이너", "Node", "Listen Port", "SSL Port", "배포된 앱", "WebToB 연결", "서비스명"],
         rows,
         "cmdb_jeus_containers.xlsx",
     )

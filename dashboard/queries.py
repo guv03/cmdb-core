@@ -632,6 +632,7 @@ WAS_CONFIG_SORT_LOOKUPS = {
     "hostname": "asset__hostname",
     "ip": "asset__primary_ip",
     "kind": "kind",
+    "instance_name": "instance_name",
     "solution_version": "solution_version",
     "container_count": "container_count",
     "last_changed_at": "last_changed_at",
@@ -654,6 +655,7 @@ def get_was_config_queryset(request):
     if q:
         queryset = queryset.filter(
             Q(asset__hostname__icontains=q)
+            | Q(instance_name__icontains=q)
             | Q(containers__node_name__icontains=q)
             | Q(containers__name__icontains=q)
             | _kind_search_q(WasConfigSource.Kind, "kind", q)
@@ -680,6 +682,7 @@ def get_was_history_queryset(request):
 JEUS_CONTAINER_SORT_LOOKUPS = {
     "hostname": "asset__hostname",
     "ip": "asset__primary_ip",
+    "instance_name": "source__instance_name",
     "node_name": "node_name",
     "container": "name",
     "listen_port": "listen_port",
@@ -703,6 +706,7 @@ def get_jeus_container_queryset(request):
     if q:
         queryset = queryset.filter(
             Q(source__asset__hostname__icontains=q)
+            | Q(source__instance_name__icontains=q)
             | Q(asset__hostname__icontains=q)
             | Q(node_name__icontains=q)
             | Q(name__icontains=q)

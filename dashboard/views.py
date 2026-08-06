@@ -664,7 +664,16 @@ class WasConfigListView(LoginRequiredMixin, ListView):
         context = super().get_context_data(**kwargs)
         context["columns"] = build_sort_columns(
             self.request,
-            ["hostname", "ip", "kind", "solution_version", "container_count", "last_changed_at", "last_pushed_at"],
+            [
+                "hostname",
+                "ip",
+                "kind",
+                "instance_name",
+                "solution_version",
+                "container_count",
+                "last_changed_at",
+                "last_pushed_at",
+            ],
             default="hostname",
         )
         return context
@@ -726,7 +735,16 @@ class JeusContainerListView(LoginRequiredMixin, ListView):
         context["rows"] = build_jeus_container_rows(context["containers"])
         context["columns"] = build_sort_columns(
             self.request,
-            ["hostname", "ip", "node_name", "container", "listen_port", "ssl_port", "service_name"],
+            [
+                "hostname",
+                "ip",
+                "instance_name",
+                "node_name",
+                "container",
+                "listen_port",
+                "ssl_port",
+                "service_name",
+            ],
             default="hostname",
         )
         context["current_q"] = self.request.GET.get("q", "")

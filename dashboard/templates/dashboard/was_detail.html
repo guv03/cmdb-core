@@ -1,10 +1,10 @@
 {% extends "dashboard/base.html" %}
 
-{% block title %}{{ source.asset.hostname|upper }} WAS - CMDB{% endblock %}
+{% block title %}{{ source.asset.hostname|upper }}{% if source.instance_name %} ({{ source.instance_name }}){% endif %} WAS - CMDB{% endblock %}
 
 {% block content %}
 <div id="was-content">
-<h1 class="title is-4"><span class="dash-hostname">{{ source.asset.hostname }}</span> - {{ source.get_kind_display }} 설정</h1>
+<h1 class="title is-4"><span class="dash-hostname">{{ source.asset.hostname }}</span> - {{ source.get_kind_display }}{% if source.instance_name %} <span class="tag">{{ source.instance_name }}</span>{% endif %} 설정</h1>
 <p class="subtitle is-6">
   {% if source.solution_version %}버전: {{ source.solution_version }}<br>{% endif %}
   최근 반영: {{ source.last_pushed_at }}

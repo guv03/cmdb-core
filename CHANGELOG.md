@@ -5,6 +5,10 @@
 
 1.0.6까지의 이력은 이 파일 도입 전이라 별도 기록 없음 — `WORKLOG.md`의 해당 날짜 항목 참고.
 
+## 1.0.36
+
+- **JEUS6 한 호스트에 여러 인스턴스(계정별) 설치 지원** — 같은 물리 호스트에 OS 계정만 다르게 해서 JEUS6가 여러 개 뜨는 경우(예: `ddorap01`에 `jeuscm`/`jeuslt` 각각), 기존 `(asset, kind)` 유니크 키로는 두 번째 push가 첫 번째를 덮어쓰는 문제가 있었음(설정 내용만으론 인스턴스를 구분할 방법이 없어 발견 후 즉시 수정, 실사용 전 반영). `WasConfigSource.instance_name`(AWX가 payload에 명시적으로 실어 보내는 OS 계정명 등 식별자) 신규 필드로 유니크 키를 `(asset, kind, instance_name)`로 확장. `kind=jeus`는 항상 빈 문자열이라 기존 동작 그대로. WAS 목록/JEUS 컨테이너 목록/엑셀 다운로드/상세 화면에 "인스턴스" 컬럼 추가. `awx/push_jeus6_config_to_cmdb.yml`은 `jeus6_instance_name` 변수를 필수로 요구하도록 갱신 — **폐쇄망 반입 시 기존 jeus6 Job Template에 이 변수를 추가해야 함**.
+
 ## 1.0.35
 
 - **JEUS6(`kind=jeus6`) WAS 설정 파싱 신규 지원** — `JEUSMain.xml`(노드/도메인 레벨) + 컨테이너별 `servlet_engine{N}/WEBMain.xml`(웹 커넥션) 조합을 파싱해 기존 JEUS 7+(`kind=jeus`)와 동일한 컨테이너/WebToB 연결/데이터소스(1.0.34에서 추가된 `JeusDataSource`) 화면으로 보여준다. JEUS6은 admin 서버 개념이 없어(노드마다 자기 `JEUSMain.xml`을 따로 가짐) 호스트 판별을 `<node><name>`으로 직접 하고, AWX도 admin 서버 한 대가 아니라 JEUS6 노드 전부를 대상으로 push해야 함(`awx/push_jeus6_config_to_cmdb.yml` 신규). 파일이 여러 개라 CMDB API는 이 kind에 한해 `content`(단일 문자열) 대신 `files`(파일명→원본 텍스트 dict)를 받는다. `servlet_engine{N}`의 `N`은 컨테이너 이름이 아니라 `<engine-command><name>engine{N}</engine-command>`의 엔진 번호와 매칭. `JeusDataSource`는 JEUS6엔 컨테이너별 참조가 파일에 없어 그 노드의 모든 컨테이너에 일괄 연결(식별자도 `data-source-id`가 없어 `export-name`으로 대체). `samples/jeus6/` 실제 재push로 검증.

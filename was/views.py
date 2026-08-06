@@ -61,6 +61,10 @@ class WasConfigIngestView(APIView):
         serializer.is_valid(raise_exception=True)
 
         kind = serializer.validated_data["kind"]
+        # kind=jeus는 항상 빈 문자열(도메인 하나 = admin 서버 하나라 구분값이 필요 없음) -
+        # kind=jeus6만 실제 값이 들어온다(같은 호스트에 OS 계정별로 여러 인스턴스가 뜰 수
+        # 있어서, WasConfigSource.instance_name 참고).
+        instance_name = serializer.validated_data.get("instance_name", "")
 
         parser = PARSERS.get(kind)
         if parser is None:
@@ -88,7 +92,9 @@ class WasConfigIngestView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        existing = WasConfigSource.objects.filter(asset=asset, kind=kind).first()
+        existing = WasConfigSource.objects.filter(
+            asset=asset, kind=kind, instance_name=instance_name
+        ).first()
         if existing is not None and existing.raw_content != content:
             WasConfigSourceRevision.objects.create(
                 source=existing, old_content=existing.raw_content, new_content=content
@@ -97,6 +103,7 @@ class WasConfigIngestView(APIView):
         source, _ = WasConfigSource.objects.update_or_create(
             asset=asset,
             kind=kind,
+            instance_name=instance_name,
             defaults={"raw_content": content, "solution_version": parsed.get("domain_version", "")},
         )
 
@@ -104,6 +111,12 @@ class WasConfigIngestView(APIView):
         sync_func(source, parsed)
 
         return Response(
-            {"asset_id": asset.id, "hostname": asset.hostname, "kind": kind, "updated": True},
+            {
+                "asset_id": asset.id,
+                "hostname": asset.hostname,
+                "kind": kind,
+                "instance_name": instance_name,
+                "updated": True,
+            },
             status=status.HTTP_201_CREATED,
         )

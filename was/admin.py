@@ -11,9 +11,9 @@ from was.models import (
 
 @admin.register(WasConfigSource)
 class WasConfigSourceAdmin(admin.ModelAdmin):
-    list_display = ["asset", "kind", "solution_version", "last_pushed_at"]
+    list_display = ["asset", "kind", "instance_name", "solution_version", "last_pushed_at"]
     list_filter = ["kind"]
-    search_fields = ["asset__hostname"]
+    search_fields = ["asset__hostname", "instance_name"]
 
 
 @admin.register(JeusContainer)
