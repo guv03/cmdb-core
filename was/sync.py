@@ -2,8 +2,15 @@ from django.db import transaction
 
 from core.models import Asset
 from core.reconciliation import normalize_hostname
-from was.models import JeusContainer, JeusWebtobConnector, WasConfigSource
+from was.models import JeusContainer, JeusDataSource, JeusWebtobConnector, WasConfigSource
 from webconfig.models import WebConfigSource, WebtobServer
+
+
+def _to_int(value: str | None):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _resolve_asset(node_name: str) -> Asset | None:
@@ -59,6 +66,8 @@ def sync_jeus(source: WasConfigSource, parsed: dict) -> None:
     재생성한다. 컨테이너는 이름으로 upsert(수기 입력한 service_name 보존), webtob 커넥터는
     MANUAL 필드가 없어 컨테이너별로 통짜 재생성."""
     seen_names = []
+    container_by_name = {}
+    container_names_by_ds_id: dict[str, list[str]] = {}
     for attrs in parsed.get("containers", []):
         name = attrs["name"]
         container, _ = JeusContainer.objects.update_or_create(
@@ -73,6 +82,9 @@ def sync_jeus(source: WasConfigSource, parsed: dict) -> None:
             ),
         )
         seen_names.append(name)
+        container_by_name[name] = container
+        for ds_id in attrs.get("data_source_names", []):
+            container_names_by_ds_id.setdefault(ds_id, []).append(name)
 
         JeusWebtobConnector.objects.filter(container=container).delete()
         webtob_servers = []
@@ -101,3 +113,22 @@ def sync_jeus(source: WasConfigSource, parsed: dict) -> None:
             container.save(update_fields=["service"])
 
     JeusContainer.objects.filter(source=source).exclude(name__in=seen_names).delete()
+
+    # 데이터소스는 MANUAL 필드가 없어 컨테이너의 webtob 커넥터와 같은 방식으로 통짜 재생성.
+    JeusDataSource.objects.filter(source=source).delete()
+    for ds_attrs in parsed.get("data_sources", []):
+        ds_id = ds_attrs.get("data_source_id", "")
+        data_source = JeusDataSource.objects.create(
+            source=source,
+            data_source_id=ds_id,
+            export_name=ds_attrs.get("export_name", ""),
+            vendor=ds_attrs.get("vendor", ""),
+            db_host=ds_attrs.get("db_host", ""),
+            port=ds_attrs.get("port", ""),
+            database_name=ds_attrs.get("database_name", ""),
+            db_user=ds_attrs.get("db_user", ""),
+            pool_min=_to_int(ds_attrs.get("pool_min")),
+            pool_max=_to_int(ds_attrs.get("pool_max")),
+        )
+        names = container_names_by_ds_id.get(ds_id, [])
+        data_source.containers.set([container_by_name[n] for n in names if n in container_by_name])

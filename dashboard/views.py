@@ -684,6 +684,7 @@ class WasConfigDetailView(LoginRequiredMixin, DetailView):
             "containers__asset",
             "containers__service",
             "containers__webtob_connectors__webtob_server__source__asset",
+            "containers__data_sources",
         )
 
 

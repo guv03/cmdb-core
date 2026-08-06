@@ -35,6 +35,41 @@ def _parse_webtob_connectors(server_elem: ET.Element) -> list[dict]:
     return connectors
 
 
+def _parse_data_source_names(server_elem: ET.Element) -> list[str]:
+    """<server>의 <data-sources><data-source>이름</data-source>... - 콤마로 여러 개를 한 번에
+    지정하는 WebToB의 VhostName과 달리 태그가 반복되는 형태라 findall로 바로 리스트를 만든다."""
+    return [
+        elem.text.strip()
+        for elem in server_elem.findall("data-sources/data-source")
+        if elem.text and elem.text.strip()
+    ]
+
+
+def _parse_data_sources(root: ET.Element) -> list[dict]:
+    """<resources><data-source><database> - 도메인 레벨 JDBC 커넥션 풀 정의. 특정 컨테이너에
+    속하지 않고 컨테이너 쪽에서 data_source_id로 이름 참조한다(_parse_data_source_names).
+    password는 암호화돼 있어도 민감정보라 아예 안 뽑는다."""
+    data_sources = []
+    for ds_elem in root.findall("resources/data-source"):
+        db = ds_elem.find("database")
+        if db is None:
+            continue
+        data_sources.append(
+            {
+                "data_source_id": _text(db, "data-source-id"),
+                "export_name": _text(db, "export-name"),
+                "vendor": _text(db, "vendor"),
+                "db_host": _text(db, "server-name"),
+                "port": _text(db, "port-number"),
+                "database_name": _text(db, "database-name"),
+                "db_user": _text(db, "user"),
+                "pool_min": _text(db, "connection-pool/pooling/min"),
+                "pool_max": _text(db, "connection-pool/pooling/max"),
+            }
+        )
+    return data_sources
+
+
 def _parse_listeners(server_elem: ET.Element) -> tuple[str, str]:
     """(BASE 리스너 포트, SSL 리스너 포트)를 반환. SSL 리스너가 없으면 두 번째 값은 빈 문자열."""
     listen_port = ""
@@ -51,8 +86,9 @@ def _parse_listeners(server_elem: ET.Element) -> tuple[str, str]:
 
 def parse_jeus(content: str) -> dict:
     """JEUS(7/8/8.5/9 - domain.xml 레이아웃 공통) domain.xml을 {"admin_server_name",
-    "domain_version", "containers": [...]}로 변환. 컨테이너(<server>) 하나당
-    name/node_name/listen_port/ssl_port/deployed_apps_summary/webtob_connectors를 담는다."""
+    "domain_version", "containers": [...], "data_sources": [...]}로 변환. 컨테이너(<server>)
+    하나당 name/node_name/listen_port/ssl_port/deployed_apps_summary/webtob_connectors/
+    data_source_names(이 컨테이너가 참조하는 도메인 레벨 data_source_id 목록)를 담는다."""
     root = ET.fromstring(content)
     _strip_namespace(root)
 
@@ -87,6 +123,7 @@ def parse_jeus(content: str) -> dict:
                 "ssl_port": ssl_port,
                 "deployed_apps_summary": ", ".join(apps_by_server.get(name, [])),
                 "webtob_connectors": _parse_webtob_connectors(server_elem),
+                "data_source_names": _parse_data_source_names(server_elem),
             }
         )
 
@@ -94,6 +131,7 @@ def parse_jeus(content: str) -> dict:
         "admin_server_name": admin_server_name,
         "domain_version": domain_version,
         "containers": containers,
+        "data_sources": _parse_data_sources(root),
     }
 
 

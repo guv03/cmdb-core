@@ -1,6 +1,12 @@
 from django.contrib import admin
 
-from was.models import JeusContainer, JeusWebtobConnector, WasConfigSource, WasConfigSourceRevision
+from was.models import (
+    JeusContainer,
+    JeusDataSource,
+    JeusWebtobConnector,
+    WasConfigSource,
+    WasConfigSourceRevision,
+)
 
 
 @admin.register(WasConfigSource)
@@ -21,6 +27,12 @@ class JeusContainerAdmin(admin.ModelAdmin):
 class JeusWebtobConnectorAdmin(admin.ModelAdmin):
     list_display = ["name", "container", "registration_id", "network_address", "port", "webtob_server"]
     search_fields = ["name", "registration_id", "network_address", "container__name"]
+
+
+@admin.register(JeusDataSource)
+class JeusDataSourceAdmin(admin.ModelAdmin):
+    list_display = ["data_source_id", "source", "vendor", "db_host", "port", "database_name"]
+    search_fields = ["data_source_id", "db_host", "database_name", "source__asset__hostname"]
 
 
 @admin.register(WasConfigSourceRevision)

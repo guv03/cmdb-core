@@ -81,6 +81,39 @@ class JeusContainer(TimeStampedModel):
         return self.name
 
 
+class JeusDataSource(TimeStampedModel):
+    """<resources><data-source><database> 엘리먼트 하나 = 행 하나 - domain.xml 레벨에서
+    정의되는 JDBC 커넥션 풀로, 특정 컨테이너에 속하지 않는다(WebToB의 SvrGroup/Uri처럼
+    도메인 공용 리소스). 각 <server>(JeusContainer)의 <data-sources><data-source>이름
+    </data-source>이 이 data_source_id를 이름으로 참조하는 방식이고, 하나의 데이터소스를
+    여러 컨테이너가 공유하는 게 일반적이라(SvrGroup이 VhostName으로 여러 vhost를 참조하는
+    것과 같은 이유) M2M으로 연결한다(was/sync.py). password는 설정 파일에 암호화된 값으로
+    있지만 그래도 민감정보라 CMDB엔 아예 저장하지 않는다 - 필요하면 상세 화면의 "원본 설정
+    보기"에서 원문(암호화된 값)을 확인."""
+
+    source = models.ForeignKey(WasConfigSource, on_delete=models.CASCADE, related_name="data_sources")
+    containers = models.ManyToManyField(JeusContainer, blank=True, related_name="data_sources")
+    data_source_id = models.CharField(max_length=100)
+    export_name = models.CharField(max_length=100, blank=True)
+    vendor = models.CharField(max_length=50, blank=True)
+    db_host = models.CharField(max_length=255, blank=True)
+    port = models.CharField(max_length=20, blank=True)
+    database_name = models.CharField(max_length=100, blank=True)
+    db_user = models.CharField(max_length=100, blank=True)
+    pool_min = models.PositiveIntegerField(null=True, blank=True)
+    pool_max = models.PositiveIntegerField(null=True, blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["source", "data_source_id"], name="unique_jeus_datasource_per_source"
+            )
+        ]
+
+    def __str__(self):
+        return self.data_source_id
+
+
 class JeusWebtobConnector(TimeStampedModel):
     """<webtob-connector> 하나 = 행 하나. 이 JEUS 컨테이너가 등록되는 WebToB 쪽 정보
     (registration-id/network-address)를 담고, 동기화 시점에 webconfig 앱의

@@ -5,6 +5,11 @@
 
 1.0.6까지의 이력은 이 파일 도입 전이라 별도 기록 없음 — `WORKLOG.md`의 해당 날짜 항목 참고.
 
+## 1.0.34
+
+- **자산 상세 "연결된 시스템" 표 500 에러(ORA-00932) 수정** — 폐쇄망 반입 후 시스템 push된 자산의 상세 화면을 열면 500 에러가 난다는 제보. `dashboard/queries.py`의 `get_system_hosts_for_vms()`가 `annotate(Count("vms", distinct=True))` + `select_related("source")` 조합인데, 목록 화면(`get_system_host_queryset`)과 달리 `SystemHost.extra`/`SystemSource.raw_response`(JSONField→Oracle NCLOB)를 `defer()`로 빼지 않아 GROUP BY에 NCLOB 컬럼이 끌려들어가 발생. 목록 화면과 동일하게 `.defer("extra", "source__raw_response")` 추가.
+- **WAS 상세에 컨테이너별 Data Source 정보 추가** — domain.xml의 `<resources><data-source>`(도메인 레벨 JDBC 커넥션 풀 정의)를 새 모델 `JeusDataSource`로 파싱해, 각 컨테이너가 참조하는 데이터소스(ID/Vendor/DB 접속 정보/User/Pool min·max)를 상세 화면 컨테이너 카드에 표로 노출. 하나의 데이터소스를 여러 컨테이너가 공유할 수 있어 WebToB의 SvrGroup↔VHost와 같은 이유로 M2M으로 연결. 비밀번호는 설정 파일에 암호화된 값으로 있어도 민감정보라 CMDB엔 아예 저장하지 않음.
+
 ## 1.0.33
 
 - **Nutanix 시스템 push 실패 추가 수정 - 같은 VM이 payload에 중복 보고되는 경우 방어** — 1.0.32의 필드명 수정 후에도 `unique_system_vm_uuid_per_host` 위반이 재발. 원인은 필드명이 아니라 같은 `(host, uuid)`가 `vms_payload` 안에 두 번 이상 들어오는 실제 데이터(Nutanix DR/Metro 이중화로 보호되는 VM이 클러스터 관점별로 중복 보고되는 것으로 추정, `protectionType: PD_PROTECTED`)였음. `systems/sync.py`의 `sync_systems()`가 이제 uuid가 실제 값인 중복은 나중 값으로 덮어쓰고(SystemHost upsert와 동일한 "나중 값이 이긴다" 원칙), uuid가 비어있는(host 매칭 자체가 안 된) 항목은 기존처럼 각각 별도로 남기도록 수정. vCenter push도 같은 함수를 공유해 동일하게 보호됨.

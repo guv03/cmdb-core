@@ -906,13 +906,18 @@ def build_system_host_vm_entries(vms, os_dynamic_field_definitions):
 
 def get_system_hosts_for_vms(vms):
     """자산 상세의 "연결된 시스템" 섹션용 - VM들이 속한 SystemHost를 vm_count까지 annotate해서
-    가져온다(목록 화면과 동일한 값을 보여주기 위해 get_system_host_queryset과 같은 annotate)."""
+    가져온다(목록 화면과 동일한 값을 보여주기 위해 get_system_host_queryset과 같은 annotate).
+    extra/source__raw_response(JSONField→Oracle NCLOB)도 get_system_host_queryset과 동일하게
+    defer - annotate()가 select_related로 끌려온 이 컬럼들까지 GROUP BY에 포함시켜
+    ORA-00932(inconsistent datatypes: expected - got NCLOB)로 실제 폐쇄망에서 500이 났음
+    (로컬 Postgres는 이 제약이 없어 재현 안 됨)."""
     host_ids = [vm.host_id for vm in vms if vm.host_id]
     if not host_ids:
         return SystemHost.objects.none()
     return (
         SystemHost.objects.filter(id__in=host_ids)
         .select_related("source")
+        .defer("extra", "source__raw_response")
         .annotate(vm_count=Count("vms", distinct=True))
         .prefetch_related("field_values__field_definition")
     )
