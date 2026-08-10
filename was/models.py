@@ -32,6 +32,11 @@ class WasConfigSource(TimeStampedModel):
     # AUTO지만 WebToB/Apache/Nginx와 달리 명령어 실행이나 마커 없이 XML 루트의 version
     # 속성에서 바로 뽑힌다(parsers.parse_jeus).
     solution_version = models.CharField(max_length=50, blank=True)
+    # AUTO: AWX가 이 설정을 읽어온 원본 경로 - kind=jeus/jeus6은 파일 하나(domain.xml)라
+    # 전체 경로가 그대로 들어가지만, kind=jeus6는 파일이 여러 개(JEUSMain.xml +
+    # servlet_engine{N}/WEBMain.xml)라 그 파일들이 있는 디렉터리(jeus6_config_dir)만 저장한다
+    # - webconfig.WebConfigSource.config_path와 동일한 롤아웃 안전 원칙(payload에 없으면 유지).
+    config_path = models.CharField(max_length=500, blank=True)
 
     class Meta:
         constraints = [

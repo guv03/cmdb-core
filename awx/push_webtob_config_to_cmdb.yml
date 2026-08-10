@@ -10,7 +10,8 @@
 #   cmdb_api_key        : webconfig push API 인증 키 (X-API-Key 헤더값). Credential로 주입 권장.
 #   webtob_config_path : http.m 전체 경로 (기본값 /app/webtob/config/http.m). 서버/OS
 #                          (Windows/Linux/AIX)마다 설치 위치·계정 환경이 달라서 자동 탐지
-#                          대신 값을 명시한다.
+#                          대신 값을 명시한다. 이 값 자체가 CMDB의 config_path(설정 경로)로도
+#                          같이 push된다.
 #   webtob_account      : wsadmin -version을 실행할 계정 (기본값 webtob)
 #   wsadmin_path        : wsadmin 실행파일 전체 경로 (기본값 /app/webtob/bin/wsadmin — become으로
 #                          전환한 셸은 셸 자체를 안 거치는 command 모듈이라 .bash_profile 등에서
@@ -96,6 +97,7 @@
         body:
           kind: webtob
           content: "{{ webtob_push_content }}"
+          config_path: "{{ webtob_config_path | default('/app/webtob/config/http.m') }}"
         status_code: [200, 201]
         validate_certs: "{{ cmdb_validate_certs }}"
       delegate_to: localhost

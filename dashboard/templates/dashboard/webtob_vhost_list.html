@@ -37,8 +37,9 @@
         <th><a class="has-text-dark" href="{% querystring sort=columns.docroot.next_sort page=None %}">DocRoot</a></th>
         <th><a class="has-text-dark" href="{% querystring sort=columns.limit_request_body.next_sort page=None %}">LimitRequestBody</a></th>
         <th><a class="has-text-dark" href="{% querystring sort=columns.ssl_flag.next_sort page=None %}">SSL</a></th>
+        <th>SSL 인증서</th>
         <th><a class="has-text-dark" href="{% querystring sort=columns.ssl_protocols.next_sort page=None %}">SSL Protocols</a></th>
-        <th>SSL RequiredCiphers</th>
+        <th>SSL Ciphers</th>
         <th><a class="has-text-dark" href="{% querystring sort=columns.logging.next_sort page=None %}">Logging</a></th>
         <th><a class="has-text-dark" href="{% querystring sort=columns.errorlog.next_sort page=None %}">ErrorLog</a></th>
         <th><a class="has-text-dark" href="{% querystring sort=columns.service_name.next_sort page=None %}">서비스명</a></th>
@@ -58,10 +59,8 @@
         <td>{{ row.vhost.port|default:"" }}</td>
         <td>{{ row.vhost.docroot|default:"" }}</td>
         <td>{{ row.vhost.source.node.limit_request_body|default:"" }}</td>
-        <td>
-          {% if row.vhost.ssl_flag %}<span class="tag is-success">SSL</span>{% endif %}
-          {% if row.vhost.ssl %}{{ row.vhost.ssl.name }} ({{ row.vhost.ssl.certificate_file }}){% endif %}
-        </td>
+        <td>{% if row.vhost.ssl_flag %}<span class="tag is-success">SSL</span>{% endif %}</td>
+        <td style="word-break: break-all;">{% if row.vhost.ssl %}{{ row.vhost.ssl.name }} ({{ row.vhost.ssl.certificate_file }}){% endif %}</td>
         <td>{{ row.vhost.ssl.protocols|default:"" }}</td>
         <td style="word-break: break-all;">{{ row.vhost.ssl.required_ciphers|default:"" }}</td>
         <td>{{ row.vhost.logging|default:"" }}</td>
@@ -72,7 +71,7 @@
         <td>{{ row.uri_summary }}</td>
       </tr>
       {% empty %}
-      <tr><td colspan="17" class="has-text-grey">등록된 vhost가 없습니다.</td></tr>
+      <tr><td colspan="18" class="has-text-grey">등록된 vhost가 없습니다.</td></tr>
       {% endfor %}
     </tbody>
   </table>

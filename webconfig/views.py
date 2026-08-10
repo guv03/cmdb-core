@@ -71,8 +71,15 @@ class WebConfigIngestView(APIView):
                 source=existing, old_content=existing.raw_content, new_content=content
             )
 
+        defaults = {"raw_content": content}
+        # config_path도 solution_version과 동일한 롤아웃 안전 원칙 - payload에 없으면
+        # (아직 role 업데이트 전 자산) 기존 값을 그대로 두고 덮어쓰지 않는다.
+        config_path = serializer.validated_data.get("config_path", "")
+        if config_path:
+            defaults["config_path"] = config_path
+
         source, _ = WebConfigSource.objects.update_or_create(
-            asset=asset, kind=kind, defaults={"raw_content": content}
+            asset=asset, kind=kind, defaults=defaults
         )
 
         version_extractor = VERSION_EXTRACTORS.get(kind)

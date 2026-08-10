@@ -7,6 +7,7 @@
 <h1 class="title is-4"><span class="dash-hostname">{{ source.asset.hostname }}</span> - {{ source.get_kind_display }} 설정</h1>
 <p class="subtitle is-6">
   {% if source.solution_version %}버전: {{ source.solution_version }}{% if source.solution_fix %} · Fix: {{ source.solution_fix }}{% endif %}<br>{% endif %}
+  {% if source.config_path %}설정 경로: {{ source.config_path }}<br>{% endif %}
   최근 반영: {{ source.last_pushed_at }}
 </p>
 
@@ -47,7 +48,7 @@
       {% if vhost.ssl %}
       <tr><th>SSL 인증서</th><td>{{ vhost.ssl.name }} ({{ vhost.ssl.certificate_file }})</td></tr>
       <tr><th>SSL Protocols</th><td>{{ vhost.ssl.protocols }}</td></tr>
-      <tr><th>SSL RequiredCiphers</th><td style="word-break: break-all;">{{ vhost.ssl.required_ciphers }}</td></tr>
+      <tr><th>SSL Ciphers</th><td style="word-break: break-all;">{{ vhost.ssl.required_ciphers }}</td></tr>
       {% endif %}
       <tr><th>Logging / ErrorLog</th><td>{{ vhost.logging }} / {{ vhost.errorlog }}</td></tr>
     </tbody>

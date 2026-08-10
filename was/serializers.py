@@ -15,6 +15,9 @@ class WasConfigIngestSerializer(serializers.Serializer):
     # JEUS6 전용(WasConfigSource.instance_name 참고) - 같은 호스트에 OS 계정만 다르게 여러
     # 인스턴스가 뜰 수 있어 설정 내용만으론 구분이 안 돼 AWX가 명시적으로 실어 보낸다.
     instance_name = serializers.CharField(required=False, allow_blank=True, default="")
+    # AUTO(WasConfigSource.config_path) - AWX가 이 설정을 읽어온 원본 경로(jeus6는 파일이
+    # 여러 개라 디렉터리). 없으면 기존 값을 그대로 두고 덮어쓰지 않는다(was/views.py).
+    config_path = serializers.CharField(required=False, allow_blank=True)
 
     def validate(self, attrs):
         kind = attrs.get("kind")

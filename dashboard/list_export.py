@@ -94,6 +94,7 @@ def export_webconfig_workbook() -> HttpResponse:
             source.solution_version,
             source.solution_fix,
             source.vhost_count,
+            source.config_path,
             source.last_changed_at,
             source.last_pushed_at,
         ]
@@ -101,7 +102,7 @@ def export_webconfig_workbook() -> HttpResponse:
     ]
     return _workbook_response(
         "웹 설정",
-        ["Hostname", "종류", "버전", "Fix", "VHost 수", "최근 변경일", "최근 반영일"],
+        ["Hostname", "종류", "버전", "Fix", "VHost 수", "설정 경로", "최근 변경일", "최근 반영일"],
         rows,
         "cmdb_webconfig.xlsx",
     )
@@ -145,6 +146,7 @@ def export_webtob_vhost_workbook() -> HttpResponse:
                 vhost.docroot,
                 node.limit_request_body if node else "",
                 "Y" if vhost.ssl_flag else "",
+                f"{vhost.ssl.name} ({vhost.ssl.certificate_file})" if vhost.ssl else "",
                 vhost.ssl.protocols if vhost.ssl else "",
                 vhost.ssl.required_ciphers if vhost.ssl else "",
                 vhost.logging,
@@ -159,7 +161,7 @@ def export_webtob_vhost_workbook() -> HttpResponse:
         "WebToB vhost",
         [
             "Hostname", "vhost", "도메인", "HostAlias", "Port", "DocRoot", "LimitRequestBody",
-            "SSL", "SSL Protocols", "SSL RequiredCiphers", "Logging", "ErrorLog", "서비스명",
+            "SSL", "SSL 인증서", "SSL Protocols", "SSL Ciphers", "Logging", "ErrorLog", "서비스명",
             "SvrGroup", "Server", "URI",
         ],
         rows,
@@ -233,6 +235,7 @@ def export_was_config_workbook() -> HttpResponse:
             source.instance_name,
             source.solution_version,
             source.container_count,
+            source.config_path,
             source.last_changed_at,
             source.last_pushed_at,
         ]
@@ -240,7 +243,7 @@ def export_was_config_workbook() -> HttpResponse:
     ]
     return _workbook_response(
         "WAS",
-        ["Hostname", "종류", "인스턴스", "버전", "컨테이너 수", "최근 변경일", "최근 반영일"],
+        ["Hostname", "종류", "인스턴스", "버전", "컨테이너 수", "설정 경로", "최근 변경일", "최근 반영일"],
         rows,
         "cmdb_was.xlsx",
     )

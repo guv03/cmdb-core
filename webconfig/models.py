@@ -24,6 +24,10 @@ class WebConfigSource(TimeStampedModel):
     # Fix/패치 정보. WebtoB만 해당(예: "SP 0 Fix #4 Linux-K2.6_x64 FD16384 B404 epoll 2026/05/19")
     # - nginx/apache 등은 이 값이 없는 게 정상이라 비워둔다.
     solution_fix = models.CharField(max_length=255, blank=True)
+    # AUTO: AWX가 이 설정을 읽어온 원본 파일 전체 경로(예: /app/webtob/config/http.m).
+    # solution_version과 동일한 롤아웃 안전 원칙 - payload에 없으면(아직 role 업데이트 전
+    # 자산) 기존 값을 그대로 두고 덮어쓰지 않는다(webconfig/views.py).
+    config_path = models.CharField(max_length=500, blank=True)
 
     class Meta:
         constraints = [

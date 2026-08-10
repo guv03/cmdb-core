@@ -7,6 +7,7 @@
 <h1 class="title is-4"><span class="dash-hostname">{{ source.asset.hostname }}</span> - {{ source.get_kind_display }}{% if source.instance_name %} <span class="tag">{{ source.instance_name }}</span>{% endif %} 설정</h1>
 <p class="subtitle is-6">
   {% if source.solution_version %}버전: {{ source.solution_version }}<br>{% endif %}
+  {% if source.config_path %}설정 경로: {{ source.config_path }}<br>{% endif %}
   최근 반영: {{ source.last_pushed_at }}
 </p>
 <p class="help">이 자산은 도메인 admin 서버가 떠있는 호스트입니다 - 아래 컨테이너는 각자 다른 자산(노드)에 속할 수 있습니다.</p>

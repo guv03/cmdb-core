@@ -2,6 +2,16 @@
 
 일 단위로 진행한 작업을 기록한다. 새 날짜는 위에 추가한다.
 
+## 2026-08-10
+
+- **웹설정/WAS 설정 파일 경로 표기 신규(1.0.37)**: "WEB/WAS 설정 수집 요건이 동일한데 설정파일 경로도 같이 표기해달라"는 요청 — 코딩 전 검토부터 진행. `webconfig`/`was` 앱의 모델·시리얼라이저·뷰·AWX 플레이북 5개(webtob/apache/nginx/jeus/jeus6)를 먼저 다 읽어보고, **AWX 플레이북이 이미 설정 파일을 `slurp`할 때 쓰는 경로 변수(`webtob_config_path` 등, 전부 `default()` 기본값 있음)를 갖고 있는데 payload엔 안 실려 있고 버려지고 있다**는 걸 확인 — 새로 알아낼 게 없어 난이도가 낮다는 점을 검토 결과로 먼저 보고
+  - JEUS6만 파일이 여러 개(`JEUSMain.xml` + `servlet_engine{N}/WEBMain.xml`)라 "파일 경로 하나"로 안 떨어지는 문제를 짚고, 디렉터리(`jeus6_config_dir`) 하나만 저장하는 절충안을 제시해 승인받음
+  - 목록 화면 컬럼 추가 여부를 `AskUserQuestion`으로 확인(상세 페이지만 vs 목록도 추가) — "목록에도 추가"로 결정
+  - `WebConfigSource.config_path`/`WasConfigSource.config_path`(CharField, `solution_version`과 동일한 롤아웃 안전 원칙 - payload에 값 없으면 기존 값 유지) 신규 필드 + 마이그레이션, 시리얼라이저/뷰/AWX 플레이북 5개/대시보드 상세·목록 템플릿/엑셀 다운로드(`dashboard/list_export.py`)/admin `list_display`까지 전부 반영
+  - `samples/webtob/APCS01_http.m`/`samples/jeus8/domain.xml`을 실제 `POST /api/webconfig/`·`POST /api/was/`로 재push해 `config_path` 저장 확인, `config_path` 없이 재push해서 기존 값이 안 지워지는 것도 확인. Django test client로 목록/상세/엑셀 다운로드/admin 페이지 전부 200 + 값 렌더링 확인. `config_path`는 CharField(Oracle VARCHAR2)라 기존 `defer("raw_content", ...)` NCLOB 방지 로직과 안 겹치는 것도 코드로 재확인(CLAUDE.md의 Oracle 점검 습관 유지)
+  - CHANGELOG에 "폐쇄망 반입 시 AWX 플레이북 5개 재동기화 필요" 콜아웃 추가(과거 1.0.35/1.0.36 항목의 관례를 따름) — 값 자체는 AUTO+optional이라 Job Template에 새 변수 추가는 불필요
+  - 커밋 전 확인 단계에서 후속 요청 두 건 추가: (1) 목록의 "설정 경로" 컬럼을 최근 변경일/최근 반영일 **앞**으로 이동(웹설정/WAS 목록·엑셀 다운로드 둘 다) (2) WebToB vhost 목록(`/dashboard/webconfig/vhosts/`)의 SSL 컬럼명을 이미 통일돼 있던 Apache/Nginx 쪽("SSL"/"SSL 인증서"/"SSL Protocols"/"SSL Ciphers" 4컬럼)에 맞춤 — WebToB만 플래그+인증서가 한 칸에 섞여 있고 Cipher 컬럼명도 "SSL RequiredCiphers"로 달랐던 걸 정리(SSL 절 이름은 WebToB 고유라 "이름 (경로)" 형태로 유지), 상세 모달 카드도 같이 통일. 중간에 "상단 웹설정 목록에도 SSL 프로토콜/Cipher 요약 컬럼을 추가해달라"는 요청이 있었으나(소스 하나에 vhost가 여러 개면 콤마 요약이 필요해 `attach_webconfig_ssl_summary` 헬퍼까지 작성) 사용자가 바로 취소해 되돌림 — 실제 반영된 건 위 두 가지뿐
+
 ## 2026-08-06
 
 - **Nutanix 시스템 push 연쇄 오류 조사 및 수정(1.0.32 → 1.0.33)**: AWX에서 Nutanix push를 처음 돌렸더니 "물리 호스트(AHV 노드) 목록 조회" 태스크가 404로 실패한다는 제보 스크린샷으로 시작, 이후 같은 기능을 두고 총 세 차례 원인이 바뀌며 이어진 조사

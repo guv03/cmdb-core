@@ -5,6 +5,11 @@
 
 1.0.6까지의 이력은 이 파일 도입 전이라 별도 기록 없음 — `WORKLOG.md`의 해당 날짜 항목 참고.
 
+## 1.0.37
+
+- **웹설정/WAS에 설정 파일 경로 표기 추가** — WEB(WebToB/Apache/Nginx)·WAS(JEUS/JEUS6) 6개 kind 전부 AWX가 설정을 읽어온 원본 경로를 `config_path`로 같이 push하도록 확장. AWX 플레이북은 이미 `slurp`용 경로 변수(`webtob_config_path` 등)를 갖고 있어 payload에 한 줄만 추가(JEUS6만 파일이 여러 개라 `jeus6_config_dir`, 즉 디렉터리 값을 대신 저장). `WebConfigSource.config_path`/`WasConfigSource.config_path` 신규 필드(AUTO, `solution_version`과 동일하게 payload에 값이 없으면 기존 값 유지 — 롤아웃 중 값이 안 사라지게). 웹설정/WAS 상세 페이지 소제목과 목록 화면(최근 변경일/최근 반영일 바로 앞, 정렬 불가 컬럼)·엑셀 다운로드·admin 목록에 노출. **폐쇄망 반입 시 `push_webtob_config_to_cmdb.yml`/`push_apache_config_to_cmdb.yml`/`push_nginx_config_to_cmdb.yml`/`push_jeus_config_to_cmdb.yml`/`push_jeus6_config_to_cmdb.yml` 5개 플레이북 파일을 AWX Project에 다시 반입(동기화)해야 함 — 값 자체는 AUTO+optional이라 Job Template에 새 변수를 추가할 필요는 없음.**
+- **WebToB vhost 목록의 SSL 컬럼명을 Apache/Nginx와 통일** — Apache/Nginx vhost 목록은 이미 "SSL"(플래그)/"SSL 인증서"/"SSL Protocols"/"SSL Ciphers" 4컬럼으로 갖춰져 있는데 WebToB만 플래그+인증서가 한 컬럼에 섞여 있고 Cipher 컬럼명도 "SSL RequiredCiphers"로 달랐음. WebToB는 SSL 절 이름이 있다는 차이만 살려("이름 (인증서 경로)") 나머지는 동일한 4컬럼 구조로 맞춤(`/dashboard/webconfig/vhosts/` 화면·엑셀 다운로드, 상세 모달의 WebToB SSL 카드도 함께 통일).
+
 ## 1.0.36
 
 - **JEUS6 한 호스트에 여러 인스턴스(계정별) 설치 지원** — 같은 물리 호스트에 OS 계정만 다르게 해서 JEUS6가 여러 개 뜨는 경우(예: `ddorap01`에 `jeuscm`/`jeuslt` 각각), 기존 `(asset, kind)` 유니크 키로는 두 번째 push가 첫 번째를 덮어쓰는 문제가 있었음(설정 내용만으론 인스턴스를 구분할 방법이 없어 발견 후 즉시 수정, 실사용 전 반영). `WasConfigSource.instance_name`(AWX가 payload에 명시적으로 실어 보내는 OS 계정명 등 식별자) 신규 필드로 유니크 키를 `(asset, kind, instance_name)`로 확장. `kind=jeus`는 항상 빈 문자열이라 기존 동작 그대로. WAS 목록/JEUS 컨테이너 목록/엑셀 다운로드/상세 화면에 "인스턴스" 컬럼 추가. `awx/push_jeus6_config_to_cmdb.yml`은 `jeus6_instance_name` 변수를 필수로 요구하도록 갱신 — **폐쇄망 반입 시 기존 jeus6 Job Template에 이 변수를 추가해야 함**.

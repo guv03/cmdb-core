@@ -34,6 +34,7 @@
         <th><a class="has-text-dark" href="{% querystring sort=columns.instance_name.next_sort page=None %}">인스턴스</a></th>
         <th><a class="has-text-dark" href="{% querystring sort=columns.solution_version.next_sort page=None %}">버전</a></th>
         <th><a class="has-text-dark" href="{% querystring sort=columns.container_count.next_sort page=None %}">컨테이너 수</a></th>
+        <th>설정 경로</th>
         <th><a class="has-text-dark" href="{% querystring sort=columns.last_changed_at.next_sort page=None %}">최근 변경일</a></th>
         <th><a class="has-text-dark" href="{% querystring sort=columns.last_pushed_at.next_sort page=None %}">최근 반영일</a></th>
       </tr>
@@ -47,11 +48,12 @@
         <td>{{ source.instance_name|default:"" }}</td>
         <td>{{ source.solution_version|default:"" }}</td>
         <td>{{ source.container_count }}</td>
+        <td>{{ source.config_path|default:"" }}</td>
         <td>{{ source.last_changed_at|default:"" }}</td>
         <td>{{ source.last_pushed_at }}</td>
       </tr>
       {% empty %}
-      <tr><td colspan="8" class="has-text-grey">등록된 WAS 설정이 없습니다.</td></tr>
+      <tr><td colspan="9" class="has-text-grey">등록된 WAS 설정이 없습니다.</td></tr>
       {% endfor %}
     </tbody>
   </table>

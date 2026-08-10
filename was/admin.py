@@ -11,7 +11,7 @@ from was.models import (
 
 @admin.register(WasConfigSource)
 class WasConfigSourceAdmin(admin.ModelAdmin):
-    list_display = ["asset", "kind", "instance_name", "solution_version", "last_pushed_at"]
+    list_display = ["asset", "kind", "instance_name", "solution_version", "config_path", "last_pushed_at"]
     list_filter = ["kind"]
     search_fields = ["asset__hostname", "instance_name"]
 
