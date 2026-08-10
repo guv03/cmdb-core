@@ -42,7 +42,6 @@ class FactFieldDefinition(TimeStampedModel):
     class Source(models.TextChoices):
         AUTO = "auto", "자동 (raw facts 승격)"
         MANUAL = "manual", "수기 입력"
-        FIXED = "fixed", "고정 컬럼"
 
     key = models.CharField(
         max_length=255,
@@ -51,8 +50,7 @@ class FactFieldDefinition(TimeStampedModel):
             "AUTO: raw_facts 안의 dot-path(os_family_key_overrides에 없는 os_family는 이 경로를 씀), "
             "예: ansible_facts.ansible_memtotal_mb. 경로 중간에 JSON 리스트가 나오면 숫자 인덱스로 "
             "진입 가능(예: ansible_facts.interfaces.0.macaddress) - 조건 필터링은 지원 안 함 / "
-            "MANUAL: raw_facts와 무관한 고유 식별자 / "
-            "FIXED: HostFact 고정 컬럼명(facts.approval.FIXED_FIELD_EXTRACTORS 참고)"
+            "MANUAL: raw_facts와 무관한 고유 식별자"
         ),
     )
     os_family_key_overrides = models.JSONField(
@@ -72,15 +70,9 @@ class FactFieldDefinition(TimeStampedModel):
     label = models.CharField(max_length=255)
     value_type = models.CharField(max_length=10, choices=ValueType.choices)
     source = models.CharField(max_length=10, choices=Source.choices, default=Source.AUTO)
-    is_visible = models.BooleanField(
-        default=True, help_text="FIXED 필드는 이미 고정 컬럼으로 표시되므로 항상 꺼둘 것"
-    )
+    is_visible = models.BooleanField(default=True)
     is_searchable = models.BooleanField(default=False)
     sort_order = models.PositiveIntegerField(default=0)
-    requires_approval = models.BooleanField(
-        default=False,
-        help_text="켜두면 이미 존재하는 자산의 값이 push로 바뀔 때 즉시 반영하지 않고 승인 대기열에 쌓는다. MANUAL 필드는 대상이 아님(대시보드 입력은 항상 즉시 반영)",
-    )
 
     class Meta:
         ordering = ["sort_order", "id"]
@@ -110,42 +102,31 @@ class FactFieldChoice(models.Model):
         return f"{self.field_definition.label}: {self.value}"
 
 
-class PendingChange(TimeStampedModel):
-    class Status(models.TextChoices):
-        PENDING = "pending", "대기"
-        APPROVED = "approved", "승인"
-        REJECTED = "rejected", "반려"
+class FactChangeHistory(TimeStampedModel):
+    """webconfig/was의 WebConfigSourceRevision/WasConfigSourceRevision과 동일한 취지 -
+    승인 절차 없이 push 즉시 반영되고, 이미 존재하는 자산의 AUTO/FIXED 필드 값이 실제로
+    바뀔 때만(신규 자산의 첫 push는 제외) 조회용으로 기록하는 읽기 전용 이력. facts.history의
+    record_fact_changes가 채운다.
 
-    asset = models.ForeignKey(Asset, on_delete=models.CASCADE, related_name="pending_changes")
-    field_definition = models.ForeignKey(
-        FactFieldDefinition, on_delete=models.CASCADE, related_name="pending_changes"
-    )
+    field_definition을 FK로 두지 않고 key/label을 값으로 스냅샷해두는 이유: FIXED 컬럼
+    (os_family/num_cpu 등)은 FactFieldDefinition 행 자체가 없이 코드에 고정돼 있고, AUTO
+    필드도 나중에 필드 정의가 삭제/이름이 바뀌어도 과거 이력에 찍힌 라벨은 그대로 남아야
+    감사 기록으로서 의미가 있기 때문(FK였다면 CASCADE로 같이 지워지거나 최신 라벨로
+    보이게 되어 그 시점 기록이 아니게 됨)."""
 
-    old_value_text = models.CharField(max_length=500, null=True, blank=True)
-    old_value_number = models.DecimalField(max_digits=20, decimal_places=4, null=True, blank=True)
-    old_value_date = models.DateField(null=True, blank=True)
-
-    new_value_text = models.CharField(max_length=500, null=True, blank=True)
-    new_value_number = models.DecimalField(max_digits=20, decimal_places=4, null=True, blank=True)
-    new_value_date = models.DateField(null=True, blank=True)
-
-    status = models.CharField(max_length=10, choices=Status.choices, default=Status.PENDING)
-    decided_at = models.DateTimeField(null=True, blank=True)
-    decided_by = models.CharField(max_length=150, blank=True)
+    asset = models.ForeignKey(Asset, on_delete=models.CASCADE, related_name="fact_changes")
+    field_key = models.CharField(max_length=255)
+    field_label = models.CharField(max_length=255)
+    old_value = models.CharField(max_length=500, blank=True)
+    new_value = models.CharField(max_length=500, blank=True)
+    detected_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        ordering = ["-created_at"]
+        ordering = ["-detected_at"]
+        verbose_name_plural = "Fact change histories"
 
     def __str__(self):
-        return f"{self.asset.hostname} / {self.field_definition.key}"
-
-    @property
-    def old_value(self):
-        return self.old_value_text if self.old_value_text is not None else self.old_value_number if self.old_value_number is not None else self.old_value_date
-
-    @property
-    def new_value(self):
-        return self.new_value_text if self.new_value_text is not None else self.new_value_number if self.new_value_number is not None else self.new_value_date
+        return f"{self.asset.hostname} / {self.field_key} @ {self.detected_at}"
 
 
 class HostFactValue(models.Model):

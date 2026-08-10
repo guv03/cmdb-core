@@ -14,7 +14,7 @@ from django.db.models import (
 )
 
 from core.models import Asset
-from facts.models import FactFieldDefinition, HostFact, HostFactValue, PendingChange
+from facts.models import FactChangeHistory, FactFieldDefinition, HostFact, HostFactValue
 from processes.models import ProcessSnapshot
 from systems.models import SystemHost, SystemHostFieldDefinition, SystemSource
 from was.models import JeusContainer, WasConfigSource, WasConfigSourceRevision
@@ -54,7 +54,6 @@ _VALUE_FIELD_BY_TYPE = {
 def get_dynamic_field_definitions():
     return (
         FactFieldDefinition.objects.filter(is_visible=True)
-        .exclude(source=FactFieldDefinition.Source.FIXED)
         .prefetch_related("choices")
         .order_by("sort_order", "id")
     )
@@ -224,7 +223,11 @@ def get_was_version_breakdown(kind):
 def get_asset_queryset(request):
     dynamic_fields = list(get_dynamic_field_definitions())
 
-    queryset = Asset.objects.select_related("hostfact").prefetch_related(
+    # hostfact.raw_facts(JSONField, Oracle NCLOB)를 select_related가 SELECT 목록에 끌고
+    # 들어오는데, 검색 시 아래 .distinct()가 걸리면(동적 필드 검색은 hostfact__values로
+    # to-many 조인까지 생김) ORA-00932(GROUP BY/DISTINCT에 NCLOB)가 난다 - webconfig 등
+    # 다른 쿼리셋에 이미 적용된 defer 패턴과 동일하게 방어(CLAUDE.md NCLOB 규칙).
+    queryset = Asset.objects.select_related("hostfact").defer("hostfact__raw_facts").prefetch_related(
         Prefetch(
             "hostfact__values",
             queryset=HostFactValue.objects.select_related("field_definition"),
@@ -324,31 +327,27 @@ def get_dashboard_columns(request):
     return columns
 
 
+# webconfig/was의 *Revision 이력 조회와 동일한 취지 - 승인/반려 없는 읽기 전용 이력이라
+# status 관련 필터/정렬은 없다.
 CHANGE_HISTORY_SORT_LOOKUPS = {
-    "created_at": "created_at",
-    "decided_at": "decided_at",
-    "status": "status",
+    "detected_at": "detected_at",
     "asset": "asset__hostname",
 }
 
 
 def get_change_history_queryset(request):
-    queryset = PendingChange.objects.select_related("asset", "field_definition")
+    queryset = FactChangeHistory.objects.select_related("asset")
 
     q = _request_param(request, "q", "search")
     if q:
         queryset = queryset.filter(
-            Q(asset__hostname__icontains=q) | Q(field_definition__label__icontains=q)
+            Q(asset__hostname__icontains=q) | Q(field_label__icontains=q)
         )
 
-    change_status = request.GET.get("status")
-    if change_status:
-        queryset = queryset.filter(status=change_status)
-
-    sort = _request_param(request, "sort", "ordering", default="-created_at")
+    sort = _request_param(request, "sort", "ordering", default="-detected_at")
     direction = "-" if sort.startswith("-") else ""
     sort_key = sort.lstrip("-")
-    lookup = CHANGE_HISTORY_SORT_LOOKUPS.get(sort_key, "created_at")
+    lookup = CHANGE_HISTORY_SORT_LOOKUPS.get(sort_key, "detected_at")
 
     return queryset.order_by(f"{direction}{lookup}")
 

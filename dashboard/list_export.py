@@ -63,23 +63,22 @@ def _workbook_response(sheet_title, headers, rows, filename):
 
 
 def export_change_history_workbook() -> HttpResponse:
+    # webconfig/was 변경 이력 다운로드와 동일하게 승인/반려 없는 읽기 전용 이력이라
+    # 상태/결정시각/결정자 컬럼이 없다.
     changes = get_change_history_queryset(_NO_FILTER_REQUEST)
     rows = [
         [
             change.asset.hostname,
-            change.field_definition.label,
+            change.field_label,
             change.old_value,
             change.new_value,
-            change.get_status_display(),
-            change.created_at,
-            change.decided_at,
-            change.decided_by,
+            change.detected_at,
         ]
         for change in changes
     ]
     return _workbook_response(
         "변경 이력",
-        ["자산", "필드", "이전 값", "새 값", "상태", "감지시각", "결정시각", "결정자"],
+        ["자산", "필드", "이전 값", "새 값", "감지시각"],
         rows,
         "cmdb_change_history.xlsx",
     )

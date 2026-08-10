@@ -1,14 +1,13 @@
 from django import forms
 from django.contrib import admin
 
-from facts.approval import FIXED_FIELD_EXTRACTORS, apply_pending_change, reject_pending_change
 from facts.dynamic_fields import backfill_field
 from facts.models import (
+    FactChangeHistory,
     FactFieldChoice,
     FactFieldDefinition,
     HostFact,
     HostFactValue,
-    PendingChange,
 )
 
 
@@ -41,17 +40,8 @@ class FactFieldDefinitionForm(forms.ModelForm):
     def clean(self):
         cleaned = super().clean()
         source = cleaned.get("source")
-        key = cleaned.get("key")
         overrides = cleaned.get("os_family_key_overrides")
 
-        if source == FactFieldDefinition.Source.FIXED and key not in FIXED_FIELD_EXTRACTORS:
-            raise forms.ValidationError(
-                f"FIXED 필드는 다음 중 하나여야 함: {', '.join(FIXED_FIELD_EXTRACTORS)}"
-            )
-        if source == FactFieldDefinition.Source.MANUAL and cleaned.get("requires_approval"):
-            raise forms.ValidationError(
-                "MANUAL 필드는 대시보드 입력이 항상 즉시 반영되므로 승인 대상으로 지정할 수 없음"
-            )
         if overrides:
             if source != FactFieldDefinition.Source.AUTO:
                 raise forms.ValidationError("os_family_key_overrides는 AUTO 필드에서만 쓸 수 있음")
@@ -76,10 +66,9 @@ class FactFieldDefinitionAdmin(admin.ModelAdmin):
         "is_visible",
         "is_searchable",
         "sort_order",
-        "requires_approval",
     ]
-    list_editable = ["is_visible", "is_searchable", "sort_order", "requires_approval"]
-    list_filter = ["source", "value_type", "requires_approval"]
+    list_editable = ["is_visible", "is_searchable", "sort_order"]
+    list_filter = ["source", "value_type"]
     search_fields = ["key", "label"]
     actions = ["run_backfill"]
     inlines = [FactFieldChoiceInline]
@@ -107,34 +96,17 @@ class HostFactValueAdmin(admin.ModelAdmin):
     search_fields = ["host_fact__asset__hostname"]
 
 
-@admin.register(PendingChange)
-class PendingChangeAdmin(admin.ModelAdmin):
-    list_display = [
-        "asset",
-        "field_definition",
-        "old_value",
-        "new_value",
-        "status",
-        "created_at",
-        "decided_at",
-        "decided_by",
-    ]
-    list_filter = ["status", "field_definition"]
-    search_fields = ["asset__hostname"]
-    actions = ["approve_selected", "reject_selected"]
+@admin.register(FactChangeHistory)
+class FactChangeHistoryAdmin(admin.ModelAdmin):
+    """읽기 전용 감사 이력 - 승인/반려 절차가 없어졌으므로 승인 액션도 없음(webconfig/was의
+    *SourceRevisionAdmin과 동일한 취지)."""
 
-    @admin.action(description="선택한 변경 승인")
-    def approve_selected(self, request, queryset):
-        count = 0
-        for pending_change in queryset.filter(status=PendingChange.Status.PENDING):
-            apply_pending_change(pending_change, decided_by=request.user.username)
-            count += 1
-        self.message_user(request, f"{count}건 승인 처리했습니다.")
+    list_display = ["asset", "field_key", "field_label", "old_value", "new_value", "detected_at"]
+    list_filter = ["field_key"]
+    search_fields = ["asset__hostname", "field_key", "field_label"]
 
-    @admin.action(description="선택한 변경 반려")
-    def reject_selected(self, request, queryset):
-        count = 0
-        for pending_change in queryset.filter(status=PendingChange.Status.PENDING):
-            reject_pending_change(pending_change, decided_by=request.user.username)
-            count += 1
-        self.message_user(request, f"{count}건 반려 처리했습니다.")
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False

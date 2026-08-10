@@ -39,8 +39,8 @@ class WebConfigSource(TimeStampedModel):
 
 
 class WebConfigSourceRevision(TimeStampedModel):
-    """웹설정 원본(raw_content)이 실제로 바뀔 때만 남기는 읽기 전용 감사 이력 - facts의
-    PendingChange와 달리 승인 절차는 없다(웹설정 push는 지금처럼 즉시 반영 유지). old/new를
+    """웹설정 원본(raw_content)이 실제로 바뀔 때만 남기는 읽기 전용 감사 이력 - 승인 절차
+    없이 push는 지금처럼 즉시 반영되고(facts.FactChangeHistory와 동일한 취지) old/new를
     한 행에 같이 저장해서 조회 시점에 이전 리비전을 따로 찾아 짝지을 필요가 없게 한다."""
 
     source = models.ForeignKey(WebConfigSource, on_delete=models.CASCADE, related_name="revisions")

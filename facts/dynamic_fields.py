@@ -70,11 +70,9 @@ def is_valid_choice(field_definition: FactFieldDefinition, raw_value) -> bool:
     return field_definition.choices.filter(value=str(raw_value)).exists()
 
 
-def sync_dynamic_fields(host_fact: HostFact, exclude_keys: set[str] | None = None) -> None:
+def sync_dynamic_fields(host_fact: HostFact) -> None:
     # MANUAL 필드는 raw_facts에서 추출할 값이 없어 push 때마다 덮어쓰면 수기 입력값이 사라진다.
     field_definitions = FactFieldDefinition.objects.filter(source=FactFieldDefinition.Source.AUTO)
-    if exclude_keys:
-        field_definitions = field_definitions.exclude(key__in=exclude_keys)
     for field_definition in field_definitions:
         path = resolve_field_path(field_definition, host_fact.os_family)
         raw_value = extract_json_path(host_fact.raw_facts, path)

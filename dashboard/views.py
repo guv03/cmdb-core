@@ -69,9 +69,8 @@ from dashboard.queries import (
 )
 from dashboard.topology import build_service_topology_graph, render_topology_svg
 from dashboard.serializers import AssetSerializer
-from facts.approval import apply_pending_change, reject_pending_change
 from facts.dynamic_fields import coerce_fact_value, is_valid_choice
-from facts.models import FactFieldDefinition, HostFactValue, PendingChange
+from facts.models import FactFieldDefinition, HostFactValue
 from processes.models import ProcessSnapshot
 from webconfig.diff import unified_diff_lines
 from webconfig.excel_import import (
@@ -421,6 +420,8 @@ class AssetListAPIView(ListAPIView):
 
 
 class ChangeHistoryListView(LoginRequiredMixin, ListView):
+    """webconfig/was의 *HistoryListView와 동일한 취지 - 승인/반려 없는 읽기 전용 이력."""
+
     template_name = "dashboard/change_history.html"
     context_object_name = "changes"
     paginate_by = 50
@@ -431,10 +432,8 @@ class ChangeHistoryListView(LoginRequiredMixin, ListView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["current_q"] = self.request.GET.get("q", "")
-        context["current_status"] = self.request.GET.get("status", "")
-        context["status_choices"] = PendingChange.Status.choices
         context["columns"] = build_sort_columns(
-            self.request, ["asset", "status", "created_at", "decided_at"], default="-created_at"
+            self.request, ["asset", "detected_at"], default="-detected_at"
         )
         return context
 
@@ -442,47 +441,6 @@ class ChangeHistoryListView(LoginRequiredMixin, ListView):
 class ChangeHistoryExportView(LoginRequiredMixin, View):
     def get(self, request):
         return export_change_history_workbook()
-
-
-class PendingChangeDecisionView(LoginRequiredMixin, View):
-    action = None  # "approve" or "reject"
-
-    def post(self, request, pk):
-        pending_change = get_object_or_404(PendingChange, pk=pk, status=PendingChange.Status.PENDING)
-        if self.action == "approve":
-            apply_pending_change(pending_change, decided_by=request.user.username)
-            messages.success(request, f"'{pending_change.field_definition.label}' 변경을 승인했습니다.")
-        else:
-            reject_pending_change(pending_change, decided_by=request.user.username)
-            messages.success(request, f"'{pending_change.field_definition.label}' 변경을 반려했습니다.")
-
-        next_url = request.POST.get("next") or reverse_lazy("dashboard-change-history")
-        return redirect(next_url)
-
-
-class BulkPendingChangeDecisionView(LoginRequiredMixin, View):
-    action = None  # "approve" or "reject"
-
-    def post(self, request):
-        pks = request.POST.getlist("pk")
-        queryset = PendingChange.objects.filter(pk__in=pks, status=PendingChange.Status.PENDING)
-
-        count = 0
-        for pending_change in queryset:
-            if self.action == "approve":
-                apply_pending_change(pending_change, decided_by=request.user.username)
-            else:
-                reject_pending_change(pending_change, decided_by=request.user.username)
-            count += 1
-
-        verb = "승인" if self.action == "approve" else "반려"
-        if count:
-            messages.success(request, f"{count}건을 일괄 {verb}했습니다.")
-        else:
-            messages.warning(request, "선택된 대기 건이 없습니다.")
-
-        next_url = request.POST.get("next") or reverse_lazy("dashboard-change-history")
-        return redirect(next_url)
 
 
 class WebConfigListView(LoginRequiredMixin, ListView):

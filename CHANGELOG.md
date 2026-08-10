@@ -5,6 +5,11 @@
 
 1.0.6까지의 이력은 이 파일 도입 전이라 별도 기록 없음 — `WORKLOG.md`의 해당 날짜 항목 참고.
 
+## 1.0.38
+
+- **자산 목록 검색 Oracle 500 에러 긴급 수정** — `/dashboard/assets/` 검색창(`q`)을 쓰면 Oracle에서 `ORA-00932(NCLOB)`로 항상 실패하던 버그. `get_asset_queryset()`(`dashboard/queries.py`)이 검색 시 `.distinct()`를 거는데 `select_related("hostfact")`가 `HostFact.raw_facts`(JSONField→Oracle NCLOB)를 SELECT 목록에 그대로 끌고 들어온 게 원인 — 1.0.12에서 웹설정 쪽에 이미 적용된 defer 패턴이 정작 자산 목록 자체에는 빠져 있었음. `.defer("hostfact__raw_facts")` 추가로 수정, 실제 쿼리(`str(qs.query)`)로 SELECT 목록에서 `raw_facts`가 빠진 것까지 확인. 상세 화면은 별도 쿼리라 영향 없음.
+- **OS(facts) 변경 승인 절차 폐지 → WEB/WAS와 동일한 읽기 전용 이력으로 전환** — 기존엔 `FactFieldDefinition.requires_approval`로 지정한 필드만 값이 바뀌면 `PendingChange`로 대기, 대시보드/admin에서 승인해야 반영됐음. 이제 웹설정/WAS와 동일하게 push 즉시 반영하고, 이미 존재하는 자산의 AUTO/FIXED 필드 값이 실제로 바뀐 것만 신규 `FactChangeHistory`(field 선택 없이 전부 무조건 기록 — WEB/WAS가 설정 내용 전체를 선택 없이 기록하는 것과 동일 원칙)에 조회용으로 남긴다. `requires_approval` 체크박스와 그 지정 전용이던 `FactFieldDefinition.Source.FIXED`(고정 컬럼 8개를 승인 대상으로 지정하기 위한 메타데이터 값)도 선택할 대상 자체가 없어져 함께 삭제. `facts/approval.py`를 `facts/history.py`로 재작성(`record_fact_changes()`가 push 직전 값 비교 + 이력 기록만 담당, 실제 반영은 기존 로직이 그대로 함, 값이 하나라도 바뀌면 `Asset.last_changed_at`도 갱신). 대시보드 `/dashboard/changes/`는 체크박스 일괄 승인/반려·상태 필터를 전부 제거하고 webconfig/was 변경 이력과 같은 골격(자산/필드/이전값/새값/감지시각)으로 재작성, admin의 승인/반려 액션도 제거. 전환 시점에 `PendingChange`가 0건이라 데이터 이관 없이 모델 자체를 교체(`FactChangeHistory` 신규 생성 + `PendingChange` 삭제). `samples/facts/drnrap01.json`을 값 일부 바꿔 재push해 즉시 반영 + 이력 기록 + `last_changed_at` 갱신까지 실제로 확인.
+
 ## 1.0.37
 
 - **웹설정/WAS에 설정 파일 경로 표기 추가** — WEB(WebToB/Apache/Nginx)·WAS(JEUS/JEUS6) 6개 kind 전부 AWX가 설정을 읽어온 원본 경로를 `config_path`로 같이 push하도록 확장. AWX 플레이북은 이미 `slurp`용 경로 변수(`webtob_config_path` 등)를 갖고 있어 payload에 한 줄만 추가(JEUS6만 파일이 여러 개라 `jeus6_config_dir`, 즉 디렉터리 값을 대신 저장). `WebConfigSource.config_path`/`WasConfigSource.config_path` 신규 필드(AUTO, `solution_version`과 동일하게 payload에 값이 없으면 기존 값 유지 — 롤아웃 중 값이 안 사라지게). 웹설정/WAS 상세 페이지 소제목과 목록 화면(최근 변경일/최근 반영일 바로 앞, 정렬 불가 컬럼)·엑셀 다운로드·admin 목록에 노출. **폐쇄망 반입 시 `push_webtob_config_to_cmdb.yml`/`push_apache_config_to_cmdb.yml`/`push_nginx_config_to_cmdb.yml`/`push_jeus_config_to_cmdb.yml`/`push_jeus6_config_to_cmdb.yml` 5개 플레이북 파일을 AWX Project에 다시 반입(동기화)해야 함 — 값 자체는 AUTO+optional이라 Job Template에 새 변수를 추가할 필요는 없음.**

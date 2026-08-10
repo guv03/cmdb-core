@@ -50,13 +50,10 @@ class ImportResult:
 
 
 def _dynamic_fields() -> list[FactFieldDefinition]:
-    """FIXED를 뺀 전체 동적 필드(AUTO+MANUAL) - 다운로드에는 둘 다 참고용으로 실어서
-    대시보드 화면과 같은 값을 보여주고, 실제 반영 대상은 이 중 MANUAL만이다(아래
-    parse_manual_field_workbook)."""
+    """전체 동적 필드(AUTO+MANUAL) - 다운로드에는 둘 다 참고용으로 실어서 대시보드 화면과
+    같은 값을 보여주고, 실제 반영 대상은 이 중 MANUAL만이다(아래 parse_manual_field_workbook)."""
     return list(
-        FactFieldDefinition.objects.exclude(source=FactFieldDefinition.Source.FIXED)
-        .filter(is_visible=True)
-        .order_by("sort_order", "id")
+        FactFieldDefinition.objects.filter(is_visible=True).order_by("sort_order", "id")
     )
 
 

@@ -6,9 +6,9 @@ from rest_framework.views import APIView
 
 from core.authentication import AWXAPIKeyAuthentication
 from core.reconciliation import get_or_create_asset
-from facts.approval import compute_fixed_values, stage_governed_changes
 from facts.dynamic_fields import sync_dynamic_fields
-from facts.models import FactFieldDefinition, HostFact
+from facts.history import compute_fixed_values, record_fact_changes
+from facts.models import HostFact
 from facts.serializers import FactsIngestSerializer
 
 
@@ -54,29 +54,21 @@ class FactsIngestView(APIView):
             existing_host_fact = HostFact.objects.filter(asset=asset).first()
 
             if existing_host_fact is None:
-                # 신규 자산: 승인 없이 즉시 반영
+                # 신규 자산: 즉시 반영, 이력 기록 대상 아님(비교할 이전 값 자체가 없음)
                 new_host_fact = HostFact.objects.create(asset=asset, raw_facts=raw_facts, **fixed_values)
                 sync_dynamic_fields(new_host_fact)
             else:
-                governed_fixed_keys = set(
-                    FactFieldDefinition.objects.filter(
-                        source=FactFieldDefinition.Source.FIXED, requires_approval=True
-                    ).values_list("key", flat=True)
-                )
-                governed_dynamic_keys = set(
-                    FactFieldDefinition.objects.filter(
-                        source=FactFieldDefinition.Source.AUTO, requires_approval=True
-                    ).values_list("key", flat=True)
-                )
+                # 승인 절차 없음(webconfig/was와 동일) - 값은 무조건 즉시 반영하고, 실제로
+                # 바뀐 필드만 조회용 이력(FactChangeHistory)에 남긴다. 값을 덮어쓰기 전에
+                # 먼저 비교해야 "이전 값"을 알 수 있다.
+                record_fact_changes(existing_host_fact, raw_facts, fixed_values)
 
                 for key, value in fixed_values.items():
-                    if key not in governed_fixed_keys:
-                        setattr(existing_host_fact, key, value)
+                    setattr(existing_host_fact, key, value)
                 existing_host_fact.raw_facts = raw_facts
                 existing_host_fact.save()
 
-                sync_dynamic_fields(existing_host_fact, exclude_keys=governed_dynamic_keys)
-                stage_governed_changes(existing_host_fact, ansible_facts, hypervisor)
+                sync_dynamic_fields(existing_host_fact)
 
         return Response(
             {"asset_id": asset.id, "hostname": asset.hostname, "updated": True},
