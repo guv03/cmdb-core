@@ -2,6 +2,15 @@
 
 일 단위로 진행한 작업을 기록한다. 새 날짜는 위에 추가한다.
 
+## 2026-08-11
+
+- **통합대시보드 도넛 드릴다운에 버전별 목록 모달 추가(1.0.39)**: "종류 도넛에서 특정 버전 조각을 클릭하면 그 버전의 목록을 모달로 보여줄 수 있냐"는 요청으로 시작
+  - 1차 구현은 새 뷰/템플릿(`OverviewDrilldownItemsView`, 자체 컬럼의 목록 fragment)으로 모달을 만들었으나, "기존 조회 화면(`/dashboard/assets/`·`/dashboard/webconfig/`·`/dashboard/was/`)을 그대로 활용해서 필터링만 걸어 모달로 띄우면 될 것 같다"는 피드백으로 전면 재설계 — 새 테이블을 안 만들고 실제 목록 화면에 정확 일치 필터(`os_family`/`os_version`, `kind`/`solution_version`, "버전 미상" 포함)를 추가해 그 화면을 iframe으로 모달에 그대로 불러오는 방식으로 교체(`get_asset_queryset`/`get_webconfig_queryset`/`get_was_config_queryset`, `describe_overview_filter()` 신규). 앞서 만든 뷰/템플릿/URL은 삭제
+  - iframe이 "localhost에서 연결을 거부했다"는 제보로 원인 조사 — Django 기본 클릭재킹 방지(`X-Frame-Options: DENY`)가 자기 자신도 프레임에 못 넣게 막고 있던 것. `X_FRAME_OPTIONS = "SAMEORIGIN"`(같은 origin 내장만 허용, 실제 클릭재킹 방지는 유지)으로 해결
+  - "모달 안에 표+페이지네이션만 남기고 싶다"는 후속 요청으로 `embed=1` 쿼리파라미터 도입 — `base.html`(내비게이션 숨김+여백 축소)과 세 목록 템플릿(제목/버튼/검색창/필터배너 숨김)에 반영, `{% querystring %}` 태그가 기존 GET 파라미터를 그대로 이어받는 걸 활용해 정렬/페이지네이션 링크에도 `embed=1`이 자동으로 유지되는 것까지 테스트 클라이언트로 확인
+  - Django 테스트 클라이언트로 필터링된 건수가 도넛 집계(`get_*_version_breakdown`)와 정확히 일치하는지, embed 모드에서 실제로 표+페이지네이션만 남는지 검증 후 1.0.39로 배포(빌드/저장/zip/CHANGELOG/커밋/push/Release/오래된 첨부파일 정리까지 통상 절차대로 진행)
+- **CLAUDE.md에 WORKLOG.md 자동 기록 절차 추가**: "이미지 버전 관리 같은 일련의 정리 작업을 할 때 WORKLOG는 말 안 하면 기록 안 해준다"는 지적 — "이미지 버전 관리" 절차에 CHANGELOG.md 작성 바로 다음 단계로 WORKLOG.md 기록을 추가(세션 종료 신호를 기다리지 않고 배포 준비 시점에 같이 기록), "세션 종료" 절차 1번은 그 시점 이후 추가된 작업만 이어서 정리하도록 문구 조정 — 이번 세션에 놓친 1.0.39 작업 내용도 이 문서에 소급 반영
+
 ## 2026-08-10
 
 - **웹설정/WAS 설정 파일 경로 표기 신규(1.0.37)**: "WEB/WAS 설정 수집 요건이 동일한데 설정파일 경로도 같이 표기해달라"는 요청 — 코딩 전 검토부터 진행. `webconfig`/`was` 앱의 모델·시리얼라이저·뷰·AWX 플레이북 5개(webtob/apache/nginx/jeus/jeus6)를 먼저 다 읽어보고, **AWX 플레이북이 이미 설정 파일을 `slurp`할 때 쓰는 경로 변수(`webtob_config_path` 등, 전부 `default()` 기본값 있음)를 갖고 있는데 payload엔 안 실려 있고 버려지고 있다**는 걸 확인 — 새로 알아낼 게 없어 난이도가 낮다는 점을 검토 결과로 먼저 보고
