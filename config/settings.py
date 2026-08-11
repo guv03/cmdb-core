@@ -12,6 +12,12 @@ DEBUG = os.environ.get("DJANGO_DEBUG", "true").lower() == "true"
 
 ALLOWED_HOSTS = [h for h in os.environ.get("DJANGO_ALLOWED_HOSTS", "*").split(",") if h]
 
+# Django 기본값은 DENY라 통합대시보드가 자산/웹설정/WAS 목록 화면을 iframe으로 자기 자신에
+# 내장하는 것(dashboard/templates/dashboard/overview.html의 도넛 드릴다운 목록 모달)까지
+# 막힌다. SAMEORIGIN은 같은 origin에서의 내장만 허용해 실제 클릭재킹 방지(다른 사이트가
+# 이 앱을 몰래 프레임에 넣는 것)는 그대로 유지된다.
+X_FRAME_OPTIONS = "SAMEORIGIN"
+
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",

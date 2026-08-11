@@ -4,6 +4,7 @@
 
 {% block content %}
 {% csrf_token %}
+{% if not request.GET.embed %}
 <div class="level">
   <div class="level-left">
     <h1 class="title is-4">WAS</h1>
@@ -14,7 +15,15 @@
     </div>
   </div>
 </div>
+{% endif %}
 
+{% if overview_filter and not request.GET.embed %}
+<div class="notification is-light">
+  필터 적용됨: <strong>{{ overview_filter }}</strong> · <a href="{% url 'dashboard-was-list' %}">필터 해제</a>
+</div>
+{% endif %}
+
+{% if not request.GET.embed %}
 <form class="field has-addons" method="get">
   <div class="control is-expanded">
     <input class="input" type="text" name="q" value="{{ request.GET.q }}" placeholder="hostname/노드명/컨테이너명/종류 검색">
@@ -23,6 +32,7 @@
     <button class="button is-link" type="submit">검색</button>
   </div>
 </form>
+{% endif %}
 
 <div class="table-container">
   <table class="table is-fullwidth is-hoverable is-striped dash-scroll-table">

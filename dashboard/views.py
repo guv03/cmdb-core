@@ -36,12 +36,15 @@ from dashboard.list_export import (
     export_webtob_vhost_workbook,
 )
 from dashboard.queries import (
+    WAS_KIND_LABELS,
+    WEB_KIND_LABELS,
     build_jeus_container_rows,
     build_rows,
     build_sort_columns,
     build_system_host_rows,
     build_system_host_vm_entries,
     build_webtob_vhost_rows,
+    describe_overview_filter,
     get_apache_vhost_queryset,
     get_asset_queryset,
     get_change_history_queryset,
@@ -158,6 +161,9 @@ class AssetListView(LoginRequiredMixin, ListView):
         context["columns"] = get_dashboard_columns(self.request)
         context["rows"] = build_rows(context["assets"], dynamic_field_definitions)
         context["current_q"] = self.request.GET.get("q", "")
+        context["overview_filter"] = describe_overview_filter(
+            self.request, ("os_family", "OS"), ("os_version", "버전")
+        )
         return context
 
 
@@ -467,6 +473,11 @@ class WebConfigListView(LoginRequiredMixin, ListView):
             ],
             default="hostname",
         )
+        context["overview_filter"] = describe_overview_filter(
+            self.request,
+            ("kind", "종류", lambda v: WEB_KIND_LABELS.get(v, v)),
+            ("solution_version", "버전"),
+        )
         return context
 
 
@@ -633,6 +644,11 @@ class WasConfigListView(LoginRequiredMixin, ListView):
                 "last_pushed_at",
             ],
             default="hostname",
+        )
+        context["overview_filter"] = describe_overview_filter(
+            self.request,
+            ("kind", "종류", lambda v: WAS_KIND_LABELS.get(v, v)),
+            ("solution_version", "버전"),
         )
         return context
 

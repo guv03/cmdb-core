@@ -67,6 +67,21 @@ def _request_param(request, *names, default=None):
     return default
 
 
+def describe_overview_filter(request, *fields):
+    """통합대시보드 도넛의 버전 조각 클릭으로 이 목록 화면(assets/webconfig/was)에 정확
+    일치 필터(os_family/os_version, kind/solution_version)가 걸려 들어온 경우, 화면 상단에
+    "지금 이 조건으로 좁혀져 있다"를 보여주기 위한 라벨을 만든다. fields는
+    (query_param, 표시라벨[, 코드값→사람이 읽는 라벨 변환함수]) 튜플 목록 - kind처럼 원본
+    값이 코드값(webtob 등)인 경우에만 세 번째 인자를 넘긴다."""
+    parts = []
+    for param, label, *transform in fields:
+        value = request.GET.get(param)
+        if value:
+            display = transform[0](value) if transform else value
+            parts.append(f"{label}: {display}")
+    return " · ".join(parts)
+
+
 def build_sort_columns(request, keys, default):
     """자산 대시보드(get_dashboard_columns)와 같은 정렬 토글 규칙(같은 컬럼 다시 누르면
     오름/내림차순 반전)을 다른 목록 화면에서도 쓰기 위한 범용 버전. keys는 정렬 가능한 컬럼
@@ -145,9 +160,12 @@ def _build_category_tiles(rows, total, missing_label="(미수집)"):
     return tiles
 
 
+UNKNOWN_VERSION_LABEL = "(버전 미상)"
+
+
 def _breakdown_by_field(queryset, field_name):
     """통합대시보드 드릴다운 공통 - queryset을 field_name 기준으로 묶어 개수를 센다.
-    field_name이 비어있는 행(아직 그 값까지는 안 잡힌 경우)은 "(버전 미상)"으로 묶는다."""
+    field_name이 비어있는 행(아직 그 값까지는 안 잡힌 경우)은 UNKNOWN_VERSION_LABEL로 묶는다."""
     rows = [
         {"name": row[field_name], "count": row["count"]}
         for row in queryset.exclude(**{field_name: ""})
@@ -157,8 +175,17 @@ def _breakdown_by_field(queryset, field_name):
     ]
     unknown = queryset.count() - sum(row["count"] for row in rows)
     if unknown:
-        rows.append({"name": "(버전 미상)", "count": unknown})
+        rows.append({"name": UNKNOWN_VERSION_LABEL, "count": unknown})
     return rows
+
+
+def _filter_by_version(queryset, field_name, version):
+    """도넛 드릴다운 목록 모달 공통 - version이 UNKNOWN_VERSION_LABEL이면 그 필드가
+    비어있는 행을, 아니면 정확히 일치하는 행을 걸러낸다(_breakdown_by_field의 집계와
+    같은 기준을 목록 조회에도 그대로 적용)."""
+    if version == UNKNOWN_VERSION_LABEL:
+        return queryset.filter(**{field_name: ""})
+    return queryset.filter(**{field_name: version})
 
 
 def get_os_overview_data():
@@ -233,6 +260,16 @@ def get_asset_queryset(request):
             queryset=HostFactValue.objects.select_related("field_definition"),
         )
     )
+
+    # 통합대시보드 OS 도넛의 버전 조각 클릭 시 "이 화면을 그대로" 필터해서 모달로 보여주기
+    # 위한 정확 일치 필터 - q(부분일치 통합검색)와 별개 축이라 함께 걸려도 AND로 좁혀진다.
+    # hostfact는 O2O라 이 필터 자체는 to-many 조인을 만들지 않으므로 .distinct() 필요 없음.
+    os_family = _request_param(request, "os_family")
+    if os_family:
+        queryset = queryset.filter(hostfact__os_family=os_family)
+    os_version = _request_param(request, "os_version")
+    if os_version:
+        queryset = _filter_by_version(queryset, "hostfact__os_version", os_version)
 
     q = _request_param(request, "q", "search")
     if q:
@@ -430,6 +467,16 @@ def get_webconfig_queryset(request):
             last_changed_at=Max("revisions__detected_at"),
         )
     )
+
+    # 통합대시보드 WEB 도넛의 버전 조각 클릭 시 이 화면을 그대로 필터해서 모달로 보여주기
+    # 위한 정확 일치 필터 - kind/solution_version 모두 소스 자신의 필드라 조인이 안 생겨
+    # 아래 q 필터의 .distinct()와 무관하게 안전하다.
+    kind = _request_param(request, "kind")
+    if kind:
+        queryset = queryset.filter(kind=kind)
+    solution_version = _request_param(request, "solution_version")
+    if solution_version:
+        queryset = _filter_by_version(queryset, "solution_version", solution_version)
 
     q = _request_param(request, "q", "search")
     if q:
@@ -649,6 +696,15 @@ def get_was_config_queryset(request):
             last_changed_at=Max("revisions__detected_at"),
         )
     )
+
+    # get_webconfig_queryset과 같은 이유(통합대시보드 WAS 도넛 버전 조각 클릭)의 정확 일치
+    # 필터 - kind/solution_version 둘 다 소스 자신의 필드라 조인이 안 생겨 안전하다.
+    kind = _request_param(request, "kind")
+    if kind:
+        queryset = queryset.filter(kind=kind)
+    solution_version = _request_param(request, "solution_version")
+    if solution_version:
+        queryset = _filter_by_version(queryset, "solution_version", solution_version)
 
     q = _request_param(request, "q", "search")
     if q:

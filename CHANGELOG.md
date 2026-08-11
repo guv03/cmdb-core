@@ -5,6 +5,10 @@
 
 1.0.6까지의 이력은 이 파일 도입 전이라 별도 기록 없음 — `WORKLOG.md`의 해당 날짜 항목 참고.
 
+## 1.0.39
+
+- **통합대시보드 도넛 드릴다운에서 버전 조각 클릭 시 실제 목록을 모달로 표시** — 종류(OS Family/WEB kind/WAS kind) 타일 클릭으로 펼쳐지는 버전별 도넛에서, 파이 조각이나 범례 행을 클릭하면 그 버전에 해당하는 항목 목록이 모달로 뜬다. 새 테이블/뷰를 만드는 대신 기존 조회 화면(`/dashboard/assets/`, `/dashboard/webconfig/`, `/dashboard/was/`)을 그대로 재사용 — `get_asset_queryset()`/`get_webconfig_queryset()`/`get_was_config_queryset()`(`dashboard/queries.py`)에 정확 일치 필터(`os_family`/`os_version`, `kind`/`solution_version`, "버전 미상" 포함)를 추가하고, 그 화면을 필터+`embed=1` 쿼리스트링을 붙여 iframe으로 모달에 그대로 불러온다. 검색/정렬/페이지네이션/행 클릭 상세 모달까지 그 화면의 기능이 전부 그대로 동작. `embed=1`이면 상단 내비게이션/제목/버튼/검색창을 감추고 표+페이지네이션만 보이게 하고(`base.html`/세 목록 템플릿), 필터 없이 그 화면에 직접 들어오면 "필터 적용됨" 배너+해제 링크를 보여준다. Django 기본 클릭재킹 방지(`X-Frame-Options: DENY`)가 자기 자신을 iframe에 넣는 것도 막아서 `X_FRAME_OPTIONS = "SAMEORIGIN"`으로 완화(같은 origin 내장만 허용, 실제 클릭재킹 방지는 유지).
+
 ## 1.0.38
 
 - **자산 목록 검색 Oracle 500 에러 긴급 수정** — `/dashboard/assets/` 검색창(`q`)을 쓰면 Oracle에서 `ORA-00932(NCLOB)`로 항상 실패하던 버그. `get_asset_queryset()`(`dashboard/queries.py`)이 검색 시 `.distinct()`를 거는데 `select_related("hostfact")`가 `HostFact.raw_facts`(JSONField→Oracle NCLOB)를 SELECT 목록에 그대로 끌고 들어온 게 원인 — 1.0.12에서 웹설정 쪽에 이미 적용된 defer 패턴이 정작 자산 목록 자체에는 빠져 있었음. `.defer("hostfact__raw_facts")` 추가로 수정, 실제 쿼리(`str(qs.query)`)로 SELECT 목록에서 `raw_facts`가 빠진 것까지 확인. 상세 화면은 별도 쿼리라 영향 없음.

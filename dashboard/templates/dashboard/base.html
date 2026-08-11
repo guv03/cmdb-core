@@ -91,10 +91,15 @@
   .dash-scroll-table.is-hoverable.is-striped tbody tr:not(.is-selected):hover:nth-child(2n) td.dash-sticky-col {
     background-color: var(--bulma-table-striped-row-even-hover-background-color);
   }
+  /* embed=1(통합대시보드 도넛 드릴다운 목록이 iframe으로 이 목록 화면을 그대로 불러올 때) -
+     상단 내비게이션/제목/버튼/검색창을 감추고 표+페이지네이션만 남겨 좁은 모달 안에서
+     여백 없이 꽉 차 보이게 한다. 화면 자체는 그대로라 embed 없이 직접 열면 평소와 동일. */
+  body.is-embed .section { padding: 0.75rem 1rem; }
 </style>
 {% block extra_head %}{% endblock %}
 </head>
-<body>
+<body class="{% if request.GET.embed %}is-embed{% endif %}">
+{% if not request.GET.embed %}
 <nav class="navbar is-black" role="navigation" aria-label="main navigation">
   <div class="container">
     <div class="navbar-brand">
@@ -174,6 +179,7 @@
     </div>
   </div>
 </nav>
+{% endif %}
 
 <section class="section">
   <div class="container">

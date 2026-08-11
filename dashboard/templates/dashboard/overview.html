@@ -77,6 +77,17 @@
   .ov-legend-row .ov-lname { flex: 1; }
   .ov-legend-row .ov-lcount { font-weight: 700; font-variant-numeric: tabular-nums; }
   .ov-legend-row .ov-lpct { color: var(--bulma-text-weak); font-size: 0.8rem; width: 38px; text-align: right; font-variant-numeric: tabular-nums; }
+  .ov-legend-row { cursor: pointer; border-radius: 4px; padding: 2px 4px; margin: -2px -4px; transition: background 0.1s; }
+  .ov-legend-row:hover { background: var(--bulma-border); }
+  .ov-drill-hint { font-size: 0.78rem; color: var(--bulma-text-weak); margin-top: 14px; }
+
+  /* 도넛 조각/범례 클릭 시 뜨는 목록 모달 - 새 표를 만들지 않고 실제 목록 화면
+     (assets/webconfig/was, 필터 쿼리스트링을 붙여서)을 iframe으로 그대로 띄운다. 검색/정렬/
+     페이지네이션/행 클릭 상세 모달까지 그 화면의 기능이 전부 그대로 동작(iframe은 별도
+     문서라 이 페이지의 모달과 id가 겹치거나 중첩될 걱정이 없음). */
+  .ov-items-card { width: 95%; max-width: 1280px; height: 88vh; }
+  .ov-items-body { padding: 0; flex-grow: 1; overflow: hidden; }
+  #overviewItemsFrame { width: 100%; height: 100%; border: none; display: block; }
 
   #ovDonutTooltip {
     position: fixed; pointer-events: none; background: #17181c; color: #fff;
@@ -123,6 +134,19 @@
 {% endfor %}
 
 <div id="ovDonutTooltip"></div>
+
+<div class="modal" id="overviewItemsModal">
+  <div class="modal-background"></div>
+  <div class="modal-card ov-items-card">
+    <header class="modal-card-head">
+      <p class="modal-card-title" id="overviewItemsModalTitle">목록</p>
+      <button class="delete" aria-label="close" id="overviewItemsModalClose"></button>
+    </header>
+    <section class="modal-card-body ov-items-body">
+      <iframe id="overviewItemsFrame" title="목록"></iframe>
+    </section>
+  </div>
+</div>
 {% endblock %}
 
 {% block extra_body %}
@@ -130,6 +154,44 @@
 document.addEventListener('DOMContentLoaded', function () {
   var tooltip = document.getElementById('ovDonutTooltip');
   var drilldownUrl = '{% url "dashboard-overview-drilldown" %}';
+  var listUrls = {
+    os: '{% url "dashboard-asset-list" %}',
+    web: '{% url "dashboard-webconfig-list" %}',
+    was: '{% url "dashboard-was-list" %}'
+  };
+  // section별로 그 목록 화면이 실제로 받는 필터 쿼리파라미터 이름(dashboard/queries.py
+  // get_asset_queryset/get_webconfig_queryset/get_was_config_queryset와 반드시 맞춰야 함).
+  var filterParams = {
+    os: { key: 'os_family', version: 'os_version' },
+    web: { key: 'kind', version: 'solution_version' },
+    was: { key: 'kind', version: 'solution_version' }
+  };
+
+  var itemsModal = document.getElementById('overviewItemsModal');
+  var itemsModalTitle = document.getElementById('overviewItemsModalTitle');
+  var itemsFrame = document.getElementById('overviewItemsFrame');
+
+  function closeItemsModal() {
+    itemsModal.classList.remove('is-active');
+    itemsFrame.src = 'about:blank';
+  }
+
+  document.getElementById('overviewItemsModalClose').addEventListener('click', closeItemsModal);
+  itemsModal.querySelector('.modal-background').addEventListener('click', closeItemsModal);
+
+  // 도넛 범례 행 / 파이 슬라이스 클릭 시 - 새 목록 화면을 만드는 대신 실제 목록 화면
+  // (/dashboard/assets/, /dashboard/webconfig/, /dashboard/was/)에 정확 일치 필터
+  // 쿼리스트링을 붙여 iframe으로 그대로 띄운다. 검색/정렬/페이지네이션/행 클릭 상세 모달까지
+  // 그 화면의 기능이 전부 그대로 살아있고, iframe은 별도 문서라 그 화면 자신의 모달과
+  // 이 페이지의 모달이 서로 충돌(중첩)할 걱정이 없다.
+  function openItemsModal(section, key, name, version) {
+    var params = filterParams[section];
+    var url = listUrls[section] + '?embed=1&' + params.key + '=' + encodeURIComponent(key) +
+      '&' + params.version + '=' + encodeURIComponent(version);
+    itemsModalTitle.textContent = name + ' · ' + version;
+    itemsFrame.src = url;
+    itemsModal.classList.add('is-active');
+  }
 
   function resolveVar(name) {
     return getComputedStyle(document.body).getPropertyValue(name).trim();
@@ -193,7 +255,8 @@ document.addEventListener('DOMContentLoaded', function () {
         '<div class="ov-donut-layout">' +
         '<div class="ov-donut-wrap"><canvas width="160" height="160" style="width:160px;height:160px;"></canvas>' +
         '<div class="ov-donut-center"><span class="ov-num">' + subTotal + '</span><span class="ov-label">' + name + '</span></div></div>' +
-        '<div class="ov-legend"></div></div>';
+        '<div class="ov-legend"></div></div>' +
+        '<p class="ov-drill-hint">그래프 조각이나 항목을 클릭하면 목록을 볼 수 있습니다.</p>';
 
       panel.querySelector('.ov-drill-close').addEventListener('click', closePanel);
 
@@ -207,6 +270,7 @@ document.addEventListener('DOMContentLoaded', function () {
           '<span class="ov-lname">' + v.name + '</span>' +
           '<span class="ov-lcount">' + v.count + '</span>' +
           '<span class="ov-lpct">' + pct + '%</span>';
+        row.addEventListener('click', function () { openItemsModal(section, activeKey, name, v.name); });
         legendEl.appendChild(row);
       });
 
@@ -269,6 +333,21 @@ document.addEventListener('DOMContentLoaded', function () {
         }
       });
       canvas.addEventListener('mouseleave', function () { draw(-1); tooltip.style.opacity = '0'; });
+
+      canvas.addEventListener('click', function (e) {
+        var rect = canvas.getBoundingClientRect();
+        var x = e.clientX - rect.left - cx, y = e.clientY - rect.top - cy;
+        var dist = Math.sqrt(x * x + y * y);
+        var angle = Math.atan2(y, x);
+        if (angle < -Math.PI / 2) angle += Math.PI * 2;
+        if (dist < rInner || dist > rOuter + 4) return;
+        for (var i = 0; i < segments.length; i++) {
+          if (angle >= segments[i].start - 0.02 && angle <= segments[i].end + 0.02) {
+            openItemsModal(section, activeKey, name, items[i].name);
+            return;
+          }
+        }
+      });
     }
 
     sectionEl.querySelectorAll('.ov-tile[data-key]').forEach(function (btn) {
