@@ -2,6 +2,16 @@
 
 일 단위로 진행한 작업을 기록한다. 새 날짜는 위에 추가한다.
 
+## 2026-08-13
+
+- **로컬 개발 환경 기동**: Docker Desktop이 꺼져있어 먼저 실행 후 엔진 준비될 때까지 대기, `docker compose up -d --build`로 기동 후 로그인 페이지 200 응답까지 확인(기존 pgdata 볼륨 재사용이라 이전 세션 데이터 그대로 남아있음)
+- **vCenter 시스템 push 플레이북(`push_vcenter_systems_to_cmdb.yml` 계열) AWX 실행 오류 3건 연쇄 수정** — 실제 AWX Job Template으로 처음 돌려보면서 순차적으로 발견
+  1. **`'loop' is not a valid attribute for a Block`**: VM별 상세/게스트 조회 2개 API 호출을 `block:` + `loop:`로 묶으려 했는데 Ansible은 애초에 block에 loop를 지원하지 않음(근본적 문법 제약) — block 내용을 신규 `awx/push_vcenter_vm_detail_tasks.yml`로 분리해 `include_tasks` + `loop`로 대체. Nutanix 쪽(`push_nutanix_systems_instance_tasks.yml`)은 VM별 추가 API 호출이 필요 없는 구조라 애초에 이 함정을 안 밟았던 것도 확인
+  2. **VM이 전부 host 미매칭(SystemHost의 "VM 수"가 항상 0)**: 사용자가 Django admin에서 실제 push된 SystemVm 레코드(RIMGDT01, TSSOAP01)를 확인해준 덕에 `vm_detail.json.host`(VM 상세 응답에서 소속 호스트를 가져온다고 짐작했던 필드)가 실제로는 존재하지 않는 필드였음을 확인 — VM.Info 구조엔 cdroms/disks/nics/identity 등만 있고 host 참조가 없음. `GET /api/vcenter/vm?hosts=<호스트ID>`로 호스트별 VM 목록을 역조회해 `vcenter_vm_host_map`(vm id → host id dict)을 만드는 방식으로 재설계(`subelements` lookup으로 호스트별 결과를 펼쳐서 누적)
+  3. **`Unsupported property with name: filter.hosts`(400)**: 위 역조회 구현 시 쿼리 파라미터를 `filter.hosts=`로 짐작해 실패 — 원인 확인을 위해 해당 태스크만 임시로 `no_log: true`→`ignore_errors: true`로 바꿔 커밋/push해 실제 에러 메시지 노출(세션 토큰이 잠깐 로그에 남는 정도라 위험 낮다고 판단), 사용자가 vSphere apiexplorer(vCenter 7.0.3)의 `GET /api/vcenter/vm` Parameters 목록을 캡처해줘서 실제 파라미터명이 `filter.hosts`가 아니라 `hosts`(구버전 `/rest/...` API의 `filter.` 접두사 관례가 신형 `/api/...`엔 없음)임을 확인 — 수정 후 `no_log: true` 원복
+  - 세 번 모두 로컬 테스트로는 재현 불가(vCenter 실 API 필요)라 사용자가 AWX 잡 로그/apiexplorer 스크린샷을 캡처해주는 식으로 실측 기반 수정 반복 — awx/README.md에도 각 단계의 원인과 근거를 상세히 기록해둠
+- **vCenter 물리 호스트 하드웨어 스펙(클러스터/CPU/메모리/모델/ESXi버전) 수집 불가 확인**: 호스트 매핑 정상화 후 "SystemHost의 extra가 너무 부실하다"는 지적으로 apiexplorer의 `GET /api/vcenter/host`(목록)/`GET /api/vcenter/host/{host}`(상세) 둘 다 확인한 결과 실제로 `host`/`name`/`connection_state`/`power_state` 4개 필드가 전부임을 실측 확인 — vSphere Automation API(신형 REST)에 하드웨어 스펙 자체가 없고, 얻으려면 구버전 SOAP API(vim25, PowerCLI가 쓰는 것과 동일)가 필요해 범위가 훨씬 커짐. 사용자와 상의해 이번엔 SOAP 연동 없이 현재 상태로 마무리하기로 결정 — awx/README.md에 "확인 종료"로 기록해 다음에 같은 조사를 반복하지 않도록 함
+
 ## 2026-08-11
 
 - **통합대시보드 도넛 드릴다운에 버전별 목록 모달 추가(1.0.39)**: "종류 도넛에서 특정 버전 조각을 클릭하면 그 버전의 목록을 모달로 보여줄 수 있냐"는 요청으로 시작

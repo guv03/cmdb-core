@@ -189,14 +189,19 @@ vCenter/Nutanix dynamic inventory 플러그인이 노출하는 hostvar 이름은
   관례를 신형 `/api/vcenter/vm`에 잘못 적용했다가 400 오류로 발견, vSphere 7.0.3 apiexplorer의
   `GET /api/vcenter/vm` Parameters 목록으로 실측 확인 - `vms`/`names`/`folders`/
   `datacenters`/`hosts`/`clusters`/`resource_pools` 전부 접두사 없음).
-- **반입 전 확인 필요**: vSphere REST API 응답 스키마는 vCenter 버전(6.5/7.0/8.0)마다 조금씩
-  다를 수 있어서, 이 플레이북은 공식 문서로 확인된 필드(VM 목록의 name/power_state/cpu_count/
-  memory_size_MiB, 게스트 identity의 host_name/ip_address)만 구조화해서 보내고 **물리
-  호스트의 CPU 코어/메모리 총량/모델 같은 실제 하드웨어 스펙은 구조화하지 않았다** - 호스트
-  목록 응답 항목 전체를 CMDB의 `extra`(참고용 아카이브)에 그대로 실어 보낸다. 디스크·NIC
-  상세도 마찬가지로 VM 상세 응답 원본을 `extra`에 보관. 실제 vCenter의
-  `https://<vcenter>/apiexplorer`로 `GET /api/vcenter/host/{host}` 등의 응답 구조를 확인한
-  뒤 필요하면 `push_vcenter_systems_instance_tasks.yml`의 필드 매핑을 넓히면 된다.
+- **물리 호스트 하드웨어 스펙(클러스터/CPU 코어/메모리 총량/모델/ESXi 버전)은 vSphere
+  Automation API(신형 `/api/vcenter/host`)에 애초에 없다 — vCenter 7.0.3 apiexplorer로
+  `GET /api/vcenter/host`(목록)와 `GET /api/vcenter/host/{host}`(단건 상세) 둘 다 실측
+  확인한 결과 둘 다 `host`/`name`/`connection_state`/`power_state`뿐이었다.** 처음엔
+  "공식 문서로 확인된 필드만 구조화하고 나머지는 실측 후 넓히면 된다"로 열어뒀던
+  부분인데, 실측 결과 이 REST API 자체가 그 정도만 제공하는 걸로 확인 종료 — 하드웨어
+  스펙은 구버전 SOAP 기반 API(vim25, `HostSystem.hardware.systemInfo`/`cpuInfo`,
+  `config.product.version` 등 - PowerCLI가 내부적으로 쓰는 것과 같은 API)로만 얻을 수
+  있는데, 지금 플레이북은 전부 `ansible.builtin.uri`로 REST만 호출하는 구조라 SOAP까지
+  붙이려면 `community.vmware`/`pyvmomi` 같은 별도 의존성이 새로 필요해 범위가 훨씬 커짐 -
+  일단 보류. 호스트 목록 응답 항목 전체(사실상 저 4개 필드)를 CMDB의 `extra`(참고용
+  아카이브)에 그대로 실어 보낸다. VM 쪽 디스크·NIC 상세는 이 제약과 무관하게 VM 상세
+  응답(`GET /api/vcenter/vm/{vm}`) 원본에 이미 포함돼 있어 `extra`에 정상적으로 보관됨.
 
 ### 7. Job Template — Nutanix 시스템 정보 push
 
