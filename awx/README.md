@@ -183,8 +183,12 @@ vCenter/Nutanix dynamic inventory 플러그인이 노출하는 hostvar 이름은
   **VM이 어느 물리 호스트에 속하는지는 VM 상세 응답(`GET /api/vcenter/vm/{vm}`)에 없다는
   게 실측으로 확인됨**(처음엔 `host` 필드가 있을 거라 짐작했으나 VM.Info 구조에 그런 필드
   자체가 없어 모든 VM이 host 미매칭으로 push되는 버그로 발견) - 대신 호스트별로
-  `GET /api/vcenter/vm?filter.hosts=<호스트ID>`를 호출해 그 호스트에 속한 VM ID 목록을
-  역으로 얻어 매핑한다(`push_vcenter_systems_instance_tasks.yml`의 `vcenter_vm_host_map`).
+  `GET /api/vcenter/vm?hosts=<호스트ID>`를 호출해 그 호스트에 속한 VM ID 목록을 역으로
+  얻어 매핑한다(`push_vcenter_systems_instance_tasks.yml`의 `vcenter_vm_host_map`) - 쿼리
+  파라미터는 `filter.hosts`가 아니라 `hosts`다(구버전 `/rest/vcenter/vm`의 `filter.` 접두사
+  관례를 신형 `/api/vcenter/vm`에 잘못 적용했다가 400 오류로 발견, vSphere 7.0.3 apiexplorer의
+  `GET /api/vcenter/vm` Parameters 목록으로 실측 확인 - `vms`/`names`/`folders`/
+  `datacenters`/`hosts`/`clusters`/`resource_pools` 전부 접두사 없음).
 - **반입 전 확인 필요**: vSphere REST API 응답 스키마는 vCenter 버전(6.5/7.0/8.0)마다 조금씩
   다를 수 있어서, 이 플레이북은 공식 문서로 확인된 필드(VM 목록의 name/power_state/cpu_count/
   memory_size_MiB, 게스트 identity의 host_name/ip_address)만 구조화해서 보내고 **물리
