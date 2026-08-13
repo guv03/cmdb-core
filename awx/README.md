@@ -27,12 +27,14 @@
   나눠서 실행할 것.**
 - `inventory_source_vars.example.yml` — vCenter/Nutanix 인벤토리 소스의 hostvar를
   플레이북이 기대하는 정규화된 변수명으로 매핑하는 예시(참고용, 실제 환경에 맞게 조정 필요).
-- `push_vcenter_systems_to_cmdb.yml` / `push_vcenter_systems_instance_tasks.yml` — vCenter
-  REST API를 직접 호출해 VM 목록을 CMDB(`POST /api/systems/`)로 push하는 플레이북. 위
-  facts/webconfig/was 플레이북과 달리 개별 호스트가 아니라 vCenter 인스턴스 단위(여러 대
-  순회 가능)로 딱 한 번씩 실행된다(기본 `hosts: localhost`, 방화벽 때문에 특정 서버를 경유해야
-  하면 `systems_collector_host`로 바꿀 수 있음 - 아래 "8. 경유 서버" 참고) - CMDB의 `systems`
-  앱, CLAUDE.md의 "시스템" 섹션 참고.
+- `push_vcenter_systems_to_cmdb.yml` / `push_vcenter_systems_instance_tasks.yml` /
+  `push_vcenter_vm_detail_tasks.yml` — vCenter REST API를 직접 호출해 VM 목록을
+  CMDB(`POST /api/systems/`)로 push하는 플레이북. 위 facts/webconfig/was 플레이북과 달리
+  개별 호스트가 아니라 vCenter 인스턴스 단위(여러 대 순회 가능)로 딱 한 번씩 실행된다(기본
+  `hosts: localhost`, 방화벽 때문에 특정 서버를 경유해야 하면 `systems_collector_host`로
+  바꿀 수 있음 - 아래 "8. 경유 서버" 참고) - CMDB의 `systems` 앱, CLAUDE.md의 "시스템" 섹션
+  참고. VM별 상세/게스트 조회는 `include_tasks`로 분리된 `push_vcenter_vm_detail_tasks.yml`을
+  VM 목록으로 루프 호출(Ansible이 `block`에 `loop`를 지원하지 않아 별도 파일로 뺌).
 - `push_nutanix_systems_to_cmdb.yml` / `push_nutanix_systems_instance_tasks.yml` — 위와 같은
   설계로 Nutanix Prism Central API를 호출해 VM 목록을 CMDB로 push하는 플레이북.
 

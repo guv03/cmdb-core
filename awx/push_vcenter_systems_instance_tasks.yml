@@ -75,50 +75,10 @@
   no_log: true
 
 - name: VM별 상세/게스트 정보 조회 및 payload 구성
-  vars:
-    vm_detail_url: "{{ vcenter.base_url }}/api/vcenter/vm/{{ vm_summary.vm }}"
-  block:
-    - name: VM 상세 조회
-      ansible.builtin.uri:
-        url: "{{ vm_detail_url }}"
-        method: GET
-        headers:
-          vmware-api-session-id: "{{ vcenter_session.json }}"
-        validate_certs: "{{ vcenter.validate_certs | default(true) }}"
-        status_code: [200]
-      register: vm_detail
-      no_log: true
-
-    - name: 게스트 식별 정보 조회(VMware Tools 없으면 실패할 수 있어 무시)
-      ansible.builtin.uri:
-        url: "{{ vm_detail_url }}/guest/identity"
-        method: GET
-        headers:
-          vmware-api-session-id: "{{ vcenter_session.json }}"
-        validate_certs: "{{ vcenter.validate_certs | default(true) }}"
-        status_code: [200]
-      register: vm_guest_identity
-      failed_when: false
-      no_log: true
-
-    - name: 이 VM을 payload에 추가
-      # vm_guest_identity는 VMware Tools 미설치/미실행 시 조회 자체가 실패할 수 있는데
-      # (failed_when: false로 play는 안 멈추지만 .json이 아예 없을 수 있음), Jinja에서
-      # Undefined 객체의 속성에 바로 체이닝하면 에러가 나므로 ".json | default({})"로
-      # 한 번 감싼 뒤에 하위 필드에 접근한다.
-      ansible.builtin.set_fact:
-        vcenter_vms_payload: >-
-          {{ vcenter_vms_payload + [{
-            'host_external_id': vm_detail.json.host | default(''),
-            'name': vm_summary.name,
-            'hostname': ((vm_guest_identity.json | default({})).host_name | default('')) or vm_summary.name,
-            'uuid': vm_summary.vm,
-            'power_state': vm_summary.power_state | default(''),
-            'num_cpu': vm_summary.cpu_count | default(none),
-            'memory_mb': vm_summary.memory_size_MiB | default(none),
-            'primary_ip': (vm_guest_identity.json | default({})).ip_address | default(none),
-            'extra': {'vm_detail': vm_detail.json | default({}), 'guest_identity': vm_guest_identity.json | default({})},
-          }] }}
+  # VM 하나당 API 호출을 2번(상세/게스트) 묶어야 해서 block+loop을 쓰려 했으나 Ansible은
+  # block에 loop를 지원하지 않는다("'loop' is not a valid attribute for a Block") -
+  # include_tasks + loop로 대체(push_vcenter_vm_detail_tasks.yml).
+  ansible.builtin.include_tasks: push_vcenter_vm_detail_tasks.yml
   loop: "{{ vcenter_vm_list.json }}"
   loop_control:
     loop_var: vm_summary
