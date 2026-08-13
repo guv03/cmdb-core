@@ -180,7 +180,11 @@ vCenter/Nutanix dynamic inventory 플러그인이 노출하는 hostvar 이름은
 - CMDB 쪽은 "물리 장비(ESXi 호스트)가 기본 단위, VM은 그 위에 관계형으로 딸린 OS"로
   모델링돼 있어(`systems` 앱) 이 플레이북은 `GET /api/vcenter/host`(물리 호스트 목록)와
   `GET /api/vcenter/vm`(VM 목록) 둘 다 조회해서 `hosts`/`vms` 두 배열로 나눠 push한다 -
-  각 VM은 자기 상세 응답의 `host` 필드(호스트 moref)로 어느 물리 호스트에 속하는지 표시.
+  **VM이 어느 물리 호스트에 속하는지는 VM 상세 응답(`GET /api/vcenter/vm/{vm}`)에 없다는
+  게 실측으로 확인됨**(처음엔 `host` 필드가 있을 거라 짐작했으나 VM.Info 구조에 그런 필드
+  자체가 없어 모든 VM이 host 미매칭으로 push되는 버그로 발견) - 대신 호스트별로
+  `GET /api/vcenter/vm?filter.hosts=<호스트ID>`를 호출해 그 호스트에 속한 VM ID 목록을
+  역으로 얻어 매핑한다(`push_vcenter_systems_instance_tasks.yml`의 `vcenter_vm_host_map`).
 - **반입 전 확인 필요**: vSphere REST API 응답 스키마는 vCenter 버전(6.5/7.0/8.0)마다 조금씩
   다를 수 있어서, 이 플레이북은 공식 문서로 확인된 필드(VM 목록의 name/power_state/cpu_count/
   memory_size_MiB, 게스트 identity의 host_name/ip_address)만 구조화해서 보내고 **물리

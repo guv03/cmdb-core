@@ -35,10 +35,15 @@
   # (failed_when: false로 play는 안 멈추지만 .json이 아예 없을 수 있음), Jinja에서
   # Undefined 객체의 속성에 바로 체이닝하면 에러가 나므로 ".json | default({})"로
   # 한 번 감싼 뒤에 하위 필드에 접근한다.
+  # host_external_id는 vm_detail.json.host가 아니라 vcenter_vm_host_map(호스트별
+  # filter.hosts 조회로 만든 vm id -> host id dict, push_vcenter_systems_instance_tasks.yml
+  # 참고)에서 찾는다 - VM 상세 응답(GET /api/vcenter/vm/{vm})엔 소속 호스트를 나타내는
+  # 필드가 없다는 게 실측으로 확인됨(vm_detail.json.host는 항상 Undefined) - "필드 하나
+  # 어딘가 있겠지"로 넘겨짚었던 부분을 실제 응답으로 바로잡음.
   ansible.builtin.set_fact:
     vcenter_vms_payload: >-
       {{ vcenter_vms_payload + [{
-        'host_external_id': vm_detail.json.host | default(''),
+        'host_external_id': vcenter_vm_host_map.get(vm_summary.vm, ''),
         'name': vm_summary.name,
         'hostname': ((vm_guest_identity.json | default({})).host_name | default('')) or vm_summary.name,
         'uuid': vm_summary.vm,
