@@ -31,7 +31,7 @@ class JeusWebtobConnectorAdmin(admin.ModelAdmin):
 
 @admin.register(JeusDataSource)
 class JeusDataSourceAdmin(admin.ModelAdmin):
-    list_display = ["data_source_id", "source", "vendor", "db_host", "port", "database_name"]
+    list_display = ["data_source_id", "source", "vendor", "db_host", "port", "database_name", "db_instance"]
     search_fields = ["data_source_id", "db_host", "database_name", "source__asset__hostname"]
 
 

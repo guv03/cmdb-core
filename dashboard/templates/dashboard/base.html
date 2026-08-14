@@ -150,6 +150,18 @@
                href="{% url 'dashboard-was-history' %}">변경 이력</a>
           </div>
         </div>
+        <div class="navbar-item has-dropdown is-hoverable">
+          <a class="navbar-link {% if 'dashboard-db-config' in request.resolver_match.url_name or 'dashboard-db-instance' in request.resolver_match.url_name %}is-active{% endif %}"
+             href="{% url 'dashboard-db-config-list' %}">DB</a>
+          <div class="navbar-dropdown">
+            <a class="navbar-item {% if request.resolver_match.url_name == 'dashboard-db-config-list' %}is-active{% endif %}"
+               href="{% url 'dashboard-db-config-list' %}">DB 목록</a>
+            <a class="navbar-item {% if request.resolver_match.url_name == 'dashboard-db-instance-list' %}is-active{% endif %}"
+               href="{% url 'dashboard-db-instance-list' %}">인스턴스 목록</a>
+            <a class="navbar-item {% if request.resolver_match.url_name == 'dashboard-db-config-history' %}is-active{% endif %}"
+               href="{% url 'dashboard-db-config-history' %}">변경 이력</a>
+          </div>
+        </div>
         <a class="navbar-item {% if request.resolver_match.url_name == 'dashboard-system-list' %}is-active{% endif %}"
            href="{% url 'dashboard-system-list' %}">시스템</a>
         <div class="navbar-item has-dropdown is-hoverable">

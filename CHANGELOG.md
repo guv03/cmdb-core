@@ -5,6 +5,16 @@
 
 1.0.6까지의 이력은 이 파일 도입 전이라 별도 기록 없음 — `WORKLOG.md`의 해당 날짜 항목 참고.
 
+## 1.0.41
+
+- **DB(Oracle 12c/19c) 정보 수집 신규 지원** — OS ansible facts/웹설정/WAS/시스템과 별개로 DB 인스턴스 정보를 시각화하는 새 `database` 앱. CMDB가 DB에 직접 접속하지 않고 vCenter/Nutanix와 동일 원칙으로 AWX가 DB 호스트에서 로컬 `sqlplus`(오라클 OS 계정 인증 — DB 비밀번호 저장 불필요)를 실행해 결과(JSON)를 push한다.
+  - Oracle 12c/19c 둘 다 지원하는 `JSON_OBJECT`/`JSON_ARRAYAGG` SQL 함수로 DB 자신이 CMDB가 기대하는 JSON을 직접 만들어 출력 — WebToB/Apache처럼 텍스트를 정규식으로 파싱하는 대신 `json.loads`만 하면 됨(`awx/push_oracle_config_to_cmdb.yml`, `database/parsers.py`).
+  - RAC(멀티노드) 지원 — 대표 노드 1대에서 `GV$INSTANCE` 조회만으로 클러스터 전체 인스턴스가 나오는 걸 이용(WAS의 domain.xml과 동일 원리). `DbConfigSource`(DB 하나, 매칭 키는 `asset`이 아니라 Oracle이 보장하는 전역 유일값 `db_unique_name`)와 `DbInstance`(인스턴스=SID 하나, RAC는 노드 수만큼) 2단 모델.
+  - **소스 변경 없이 컬럼 추가 가능** — `SystemHostFieldDefinition`과 동일한 동적 필드 구조(`DbConfigSourceFieldDefinition`/`DbConfigSourceFieldValue`, AUTO/MANUAL + CHOICE 지원)를 갖춰, push된 JSON 원본(`DbConfigSource.extra`)에서 admin이 `key`/`label`만 등록하면 코드 수정·재배포 없이 대시보드 컬럼/엑셀 다운로드에 새 값이 나타난다. 이미 push된 DB에도 "선택한 필드 소급 백필 실행"으로 즉시 반영 가능.
+  - 대시보드 `/dashboard/database/`(DB 목록) → `/dashboard/database/<pk>/`(상세, 인스턴스별 카드) → `/dashboard/database/instances/`(인스턴스 전용 목록) → `/dashboard/database/changes/`(변경 이력, 승인 없는 읽기 전용 diff). 상단 내비게이션에 WAS와 나란히 "DB" 드롭다운. 세 목록 화면 전부 엑셀 다운로드 지원(DB 목록은 MANUAL 필드 업로드 왕복까지).
+  - **WAS↔DB 교차 참조 추가**: `JeusWebtobConnector`(WAS↔WebToB)와 같은 취지로 `JeusDataSource.db_instance` FK 신규 — JEUS의 데이터소스 설정(`database-name`, 실제로는 Oracle SID)을 `DbInstance.instance_name`과 매칭해 WAS 상세 화면에서 "이 컨테이너가 실제로 어느 DB에 붙는지" 바로 보여준다. RAC에서 흔한 VIP/SCAN 접속 주소는 `DbInstance.host_name`(실제 OS hostname)과 다를 수 있어 host는 매칭에 안 쓰고 SID 이름만으로 매칭(`was/sync.py`의 `_resolve_db_instance`) — 실제 domain.xml 샘플로 검증(Oracle 데이터소스 1건 정상 매칭, MariaDB 등 비Oracle 데이터소스는 매칭 대상 없어 정상적으로 미확인 처리됨).
+  - **주의**: 이 저장소 개발 환경에 실제 Oracle 인스턴스가 없어 AWX 플레이북의 SQL(특히 `listener_port` 정규식 추출)은 아직 실측 검증되지 않았다 — 반입 후 실제 sqlplus 출력으로 확인 필요(`samples/oracle/README.md` 참고). CMDB 쪽(파싱/저장/대시보드/엑셀/WAS 교차 연결)은 합성 payload(Standalone 19c + RAC 12c 2노드)와 실제 JEUS8 샘플(`samples/jeus8/domain.xml`)로 전부 검증 완료.
+
 ## 1.0.40
 
 - **엑셀 다운로드 13개 화면 전수 검증 후 화면 컬럼 누락/순서 불일치 수정** — "화면에 보이는 정보가 엑셀에도 다 담기는지" 검증 요청으로 13개 다운로드 엔드포인트를 전부 실제 호출해 대조한 결과, 데이터(행)는 필터 없이 전량 내려오지만 컬럼 일부가 화면과 다른 8곳을 발견해 수정.

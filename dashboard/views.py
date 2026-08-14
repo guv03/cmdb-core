@@ -26,6 +26,8 @@ from dashboard.excel_import import (
 from dashboard.list_export import (
     export_apache_vhost_workbook,
     export_change_history_workbook,
+    export_db_config_history_workbook,
+    export_db_instance_workbook,
     export_jeus_container_workbook,
     export_nginx_vhost_workbook,
     export_process_workbook,
@@ -38,6 +40,7 @@ from dashboard.list_export import (
 from dashboard.queries import (
     WAS_KIND_LABELS,
     WEB_KIND_LABELS,
+    build_db_config_rows,
     build_jeus_container_rows,
     build_rows,
     build_sort_columns,
@@ -49,6 +52,10 @@ from dashboard.queries import (
     get_asset_queryset,
     get_change_history_queryset,
     get_dashboard_columns,
+    get_db_config_dynamic_field_definitions,
+    get_db_config_history_queryset,
+    get_db_config_queryset,
+    get_db_instance_queryset,
     get_dynamic_field_definitions,
     get_jeus_container_queryset,
     get_nginx_vhost_queryset,
@@ -72,6 +79,13 @@ from dashboard.queries import (
 )
 from dashboard.topology import build_service_topology_graph, render_topology_svg
 from dashboard.serializers import AssetSerializer
+from database.excel_import import (
+    ImportFileError as DbImportFileError,
+    apply_updates as apply_db_config_updates,
+    export_db_config_workbook,
+    parse_db_config_workbook,
+)
+from database.models import DbConfigSource, DbConfigSourceFieldDefinition, DbConfigSourceFieldValue
 from facts.dynamic_fields import coerce_fact_value, is_valid_choice
 from facts.models import FactFieldDefinition, HostFactValue
 from processes.models import ProcessSnapshot
@@ -667,7 +681,7 @@ class WasConfigDetailView(LoginRequiredMixin, DetailView):
             "containers__asset",
             "containers__service",
             "containers__webtob_connectors__webtob_server__source__asset",
-            "containers__data_sources",
+            "containers__data_sources__db_instance__source",
         )
 
 
@@ -728,6 +742,207 @@ class JeusContainerListView(LoginRequiredMixin, ListView):
 class JeusContainerExportView(LoginRequiredMixin, View):
     def get(self, request):
         return export_jeus_container_workbook()
+
+
+class DbConfigListView(LoginRequiredMixin, ListView):
+    """DB(Standalone/RAC) 목록 - DbConfigSource 하나 = 행 하나. systems의 SystemListView와
+    같은 구조(고정 컬럼 + admin 등록 동적 필드)를 그대로 따른다 - 클러스터/버전 등 실측
+    스키마가 확실하지 않은 값은 처음부터 동적 필드로 시작."""
+
+    template_name = "dashboard/db_config_list.html"
+    context_object_name = "sources"
+    paginate_by = 50
+
+    def get_queryset(self):
+        return get_db_config_queryset(self.request)
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        dynamic_field_definitions = list(get_db_config_dynamic_field_definitions())
+        context["rows"] = build_db_config_rows(context["sources"], dynamic_field_definitions)
+        context["columns"] = build_sort_columns(
+            self.request,
+            ["db_unique_name", "kind", "db_name", "database_role", "open_mode", "hostname", "instance_count",
+             "last_changed_at", "last_pushed_at"],
+            default="db_unique_name",
+        )
+        context["current_q"] = self.request.GET.get("q", "")
+        # MANUAL 셀 편집 모달의 선택형(choice) 입력 구성용 - 시스템 목록과 동일 패턴.
+        context["field_choices_json"] = [
+            {
+                "field_id": fd.id,
+                "choices": (
+                    [c.value for c in fd.choices.all()]
+                    if fd.value_type == DbConfigSourceFieldDefinition.ValueType.CHOICE
+                    else None
+                ),
+            }
+            for fd in dynamic_field_definitions
+        ]
+        return context
+
+
+class DbConfigExportView(LoginRequiredMixin, View):
+    def get(self, request):
+        return export_db_config_workbook()
+
+
+class DbConfigImportView(LoginRequiredMixin, View):
+    """DB 목록 MANUAL 필드 엑셀 업로드 - SystemHostImportView와 동일 패턴, 매칭 키만
+    db_unique_name(단일 컬럼 - Asset.hostname과 같은 이유로 이미 전역 유일)."""
+
+    template_name = "dashboard/db_config_import.html"
+
+    def _manual_field_labels(self):
+        return list(
+            DbConfigSourceFieldDefinition.objects.filter(
+                source=DbConfigSourceFieldDefinition.Source.MANUAL, is_visible=True
+            ).values_list("label", flat=True)
+        )
+
+    def get(self, request):
+        return render(request, self.template_name, {"manual_field_labels": self._manual_field_labels()})
+
+    def post(self, request):
+        uploaded_file = request.FILES.get("file")
+        context = {"manual_field_labels": self._manual_field_labels()}
+
+        if not uploaded_file:
+            messages.error(request, "업로드할 엑셀 파일을 선택해주세요.")
+            return render(request, self.template_name, context)
+
+        try:
+            result = parse_db_config_workbook(uploaded_file)
+        except DbImportFileError as exc:
+            messages.error(request, str(exc))
+            return render(request, self.template_name, context)
+
+        payload = [
+            {"source_id": u.source_id, "field_id": u.field_id, "new_value": u.new_value}
+            for u in result.updates
+        ]
+        context.update({"result": result, "payload_json": json.dumps(payload)})
+        return render(request, self.template_name, context)
+
+
+class DbConfigImportConfirmView(LoginRequiredMixin, View):
+    def post(self, request):
+        try:
+            payload = json.loads(request.POST.get("payload", "[]"))
+        except json.JSONDecodeError:
+            payload = []
+
+        applied, source_count = apply_db_config_updates(payload)
+        if applied:
+            messages.success(request, f"{source_count}개 DB에 수기 필드 값 {applied}건을 반영했습니다.")
+        else:
+            messages.warning(request, "반영할 내용이 없습니다.")
+
+        return redirect("dashboard-db-config-list")
+
+
+class DbConfigManualFieldUpdateView(LoginRequiredMixin, View):
+    """"DB" 목록의 인라인 편집(셀 하나 클릭 → 그 필드 값만 저장)용 엔드포인트 -
+    SystemHostManualFieldUpdateView와 동일 패턴(kind=physical 같은 예외는 없음 - DB는
+    항상 push로만 생성됨)."""
+
+    def post(self, request, pk):
+        source = get_object_or_404(DbConfigSource, pk=pk)
+
+        field_definition = DbConfigSourceFieldDefinition.objects.filter(
+            pk=request.POST.get("field_id"),
+            source=DbConfigSourceFieldDefinition.Source.MANUAL,
+            is_visible=True,
+        ).first()
+        if field_definition is None:
+            return JsonResponse({"error": "수기 입력 필드를 찾을 수 없습니다."}, status=404)
+
+        if field_definition.value_type == DbConfigSourceFieldDefinition.ValueType.BOOL:
+            raw_value = request.POST.get("value") == "true"
+        else:
+            raw_value = request.POST.get("value", "").strip() or None
+
+        if not is_valid_choice(field_definition, raw_value):
+            return JsonResponse({"error": "허용되지 않은 값입니다."}, status=400)
+
+        defaults = coerce_fact_value(raw_value, field_definition.value_type)
+        parse_failed = (
+            field_definition.value_type
+            in (DbConfigSourceFieldDefinition.ValueType.NUMBER, DbConfigSourceFieldDefinition.ValueType.DATE)
+            and raw_value is not None
+            and all(v is None for v in defaults.values())
+        )
+        if parse_failed:
+            return JsonResponse({"error": "값 형식이 올바르지 않습니다."}, status=400)
+
+        DbConfigSourceFieldValue.objects.update_or_create(
+            source=source, field_definition=field_definition, defaults=defaults
+        )
+
+        display_value = next(
+            (v for v in (defaults["value_text"], defaults["value_number"], defaults["value_date"]) if v is not None),
+            "",
+        )
+        return JsonResponse({"value": str(display_value)})
+
+
+class DbConfigDetailView(LoginRequiredMixin, DetailView):
+    """DB 상세 - 인스턴스별 카드로 보여준다(WasConfigDetailView와 같은 구조)."""
+
+    template_name = "dashboard/db_config_detail.html"
+    context_object_name = "source"
+
+    def get_queryset(self):
+        return DbConfigSource.objects.select_related("asset").prefetch_related("instances__asset")
+
+
+class DbConfigHistoryListView(LoginRequiredMixin, ListView):
+    template_name = "dashboard/db_config_history.html"
+    context_object_name = "revisions"
+    paginate_by = 20
+
+    def get_queryset(self):
+        return get_db_config_history_queryset(self.request)
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        for revision in context["revisions"]:
+            revision.diff_lines = unified_diff_lines(revision.old_content, revision.new_content)
+        context["current_q"] = self.request.GET.get("q", "")
+        return context
+
+
+class DbConfigHistoryExportView(LoginRequiredMixin, View):
+    def get(self, request):
+        return export_db_config_history_workbook()
+
+
+class DbInstanceListView(LoginRequiredMixin, ListView):
+    """DB를 가로질러 인스턴스 단위로 검색·정렬하는 전용 목록 - JeusContainerListView와
+    같은 취지(RAC 노드별로 한 행씩 나옴)."""
+
+    template_name = "dashboard/db_instance_list.html"
+    context_object_name = "instances"
+    paginate_by = 50
+
+    def get_queryset(self):
+        return get_db_instance_queryset(self.request)
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["columns"] = build_sort_columns(
+            self.request,
+            ["db_unique_name", "hostname", "ip", "instance_name", "instance_number", "status", "version",
+             "listener_port"],
+            default="instance_name",
+        )
+        context["current_q"] = self.request.GET.get("q", "")
+        return context
+
+
+class DbInstanceExportView(LoginRequiredMixin, View):
+    def get(self, request):
+        return export_db_instance_workbook()
 
 
 class SystemListView(LoginRequiredMixin, ListView):

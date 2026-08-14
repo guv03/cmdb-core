@@ -106,7 +106,15 @@ class JeusDataSource(TimeStampedModel):
     여러 컨테이너가 공유하는 게 일반적이라(SvrGroup이 VhostName으로 여러 vhost를 참조하는
     것과 같은 이유) M2M으로 연결한다(was/sync.py). password는 설정 파일에 암호화된 값으로
     있지만 그래도 민감정보라 CMDB엔 아예 저장하지 않는다 - 필요하면 상세 화면의 "원본 설정
-    보기"에서 원문(암호화된 값)을 확인."""
+    보기"에서 원문(암호화된 값)을 확인.
+
+    db_instance는 database 앱의 DbInstance와 교차 연결(JeusWebtobConnector.webtob_server와
+    같은 취지·같은 관대한 원칙) - `database_name`(Oracle JDBC DataSource의 databaseName
+    프로퍼티, 실제로는 SID)을 DbInstance.instance_name과 매칭한다. db_host는 매칭에 안 쓴다 -
+    RAC는 흔히 VIP/SCAN 주소를 쓰는데 이건 DbInstance.host_name(gv$instance가 보고하는 실제
+    OS hostname)과 다른 값이라 host 기준 매칭이 신뢰할 수 없다(CLAUDE.md "데이터베이스" 섹션
+    참고). 못 찾으면(연결 자체가 없거나 SCAN 기반이라 특정 인스턴스로 안 좁혀지는 경우 포함)
+    db_instance=null로 두고 다음 JEUS push 때 재해석."""
 
     source = models.ForeignKey(WasConfigSource, on_delete=models.CASCADE, related_name="data_sources")
     containers = models.ManyToManyField(JeusContainer, blank=True, related_name="data_sources")
@@ -119,6 +127,13 @@ class JeusDataSource(TimeStampedModel):
     db_user = models.CharField(max_length=100, blank=True)
     pool_min = models.PositiveIntegerField(null=True, blank=True)
     pool_max = models.PositiveIntegerField(null=True, blank=True)
+    db_instance = models.ForeignKey(
+        "database.DbInstance",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="jeus_data_sources",
+    )
 
     class Meta:
         constraints = [

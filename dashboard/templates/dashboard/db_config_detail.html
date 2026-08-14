@@ -1,0 +1,46 @@
+{% extends "dashboard/base.html" %}
+
+{% block title %}{{ source.db_unique_name }} DB - CMDB{% endblock %}
+
+{% block content %}
+<div id="db-config-content">
+<h1 class="title is-4">{{ source.db_unique_name }} - {{ source.get_kind_display }}</h1>
+<p class="subtitle is-6">
+  {% if source.asset %}수집 노드: <span class="dash-hostname">{{ source.asset.hostname }}</span><br>{% endif %}
+  {% if source.db_name %}DB명: {{ source.db_name }}<br>{% endif %}
+  {% if source.database_role %}Role: {{ source.database_role }}<br>{% endif %}
+  {% if source.open_mode %}Open Mode: {{ source.open_mode }}<br>{% endif %}
+  {% if source.log_mode %}Log Mode: {{ source.log_mode }}<br>{% endif %}
+  {% if source.characterset %}Characterset: {{ source.characterset }}<br>{% endif %}
+  {% if source.platform_name %}Platform: {{ source.platform_name }}<br>{% endif %}
+  최근 반영: {{ source.last_pushed_at }}
+</p>
+<p class="help">RAC는 대표 노드 1대가 push를 실행하지만(위 "수집 노드"), 아래 인스턴스는 각자 다른 자산(물리 노드)에 속할 수 있습니다.</p>
+
+<h2 class="title is-6">인스턴스</h2>
+{% for instance in source.instances.all %}
+<div class="box">
+  <p class="title is-6">
+    {{ instance.instance_name }}{% if instance.instance_number %} <span class="tag">#{{ instance.instance_number }}</span>{% endif %}
+    <span class="tag dash-hostname">{{ instance.asset.hostname|default:instance.host_name|default:"(미등록)" }}</span>
+  </p>
+  <table class="table is-narrow is-fullwidth">
+    <tbody>
+      <tr><th style="width: 12em;">상태</th><td>{{ instance.status|default:"" }}</td></tr>
+      <tr><th>버전</th><td>{{ instance.version|default:"" }}</td></tr>
+      <tr><th>Archiver</th><td>{{ instance.archiver|default:"" }}</td></tr>
+      <tr><th>리스너 포트</th><td>{{ instance.listener_port|default:"" }}</td></tr>
+      <tr><th>기동 시각</th><td>{{ instance.startup_time|default:"" }}</td></tr>
+    </tbody>
+  </table>
+</div>
+{% empty %}
+<p class="has-text-grey">등록된 인스턴스가 없습니다.</p>
+{% endfor %}
+
+<details class="box">
+  <summary class="has-text-weight-semibold" style="cursor: pointer;">원본 설정 보기</summary>
+  <pre style="white-space: pre-wrap; word-break: break-all; max-height: 70vh; overflow-y: auto;">{{ source.raw_content }}</pre>
+</details>
+</div>
+{% endblock %}

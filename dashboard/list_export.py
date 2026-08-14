@@ -21,6 +21,8 @@ from dashboard.queries import (
     build_webtob_vhost_rows,
     get_apache_vhost_queryset,
     get_change_history_queryset,
+    get_db_config_history_queryset,
+    get_db_instance_queryset,
     get_jeus_container_queryset,
     get_nginx_vhost_queryset,
     get_process_queryset,
@@ -285,6 +287,54 @@ def export_jeus_container_workbook() -> HttpResponse:
         ["Hostname", "IP", "인스턴스", "컨테이너", "Node", "Listen Port", "SSL Port", "배포된 앱", "WebToB 연결", "서비스명"],
         rows,
         "cmdb_jeus_containers.xlsx",
+    )
+
+
+def export_db_instance_workbook() -> HttpResponse:
+    """DB 앱은 인스턴스 자체엔 동적 필드가 없어(database/models.py의 DbInstance.extra 참고 -
+    필요해지면 DbConfigSource와 같은 패턴을 복사해 추가) export_jeus_container_workbook과
+    같은 단방향 다운로드로 충분하다."""
+    instances = get_db_instance_queryset(_NO_FILTER_REQUEST)
+    rows = [
+        [
+            instance.asset.hostname if instance.asset else instance.host_name,
+            instance.asset.primary_ip if instance.asset else "",
+            instance.source.db_unique_name,
+            instance.instance_name,
+            instance.instance_number,
+            instance.status,
+            instance.version,
+            instance.archiver,
+            instance.listener_port,
+        ]
+        for instance in instances
+    ]
+    return _workbook_response(
+        "DB 인스턴스",
+        ["Hostname", "IP", "DB", "인스턴스", "인스턴스 번호", "상태", "버전", "Archiver", "리스너 포트"],
+        rows,
+        "cmdb_db_instances.xlsx",
+    )
+
+
+def export_db_config_history_workbook() -> HttpResponse:
+    # DbConfigSource.asset은 RAC 등에서 미등록일 수 있어 nullable이라(다른 소스들과 달리)
+    # _history_rows를 재사용하지 못하고 db_unique_name을 기준으로 별도 작성한다.
+    revisions = get_db_config_history_queryset(_NO_FILTER_REQUEST)
+    rows = [
+        [
+            revision.source.db_unique_name,
+            revision.source.asset.hostname if revision.source.asset else "",
+            revision.source.get_kind_display(),
+            revision.detected_at,
+        ]
+        for revision in revisions
+    ]
+    return _workbook_response(
+        "DB 변경 이력",
+        ["DB", "Hostname", "종류", "감지시각"],
+        rows,
+        "cmdb_database_history.xlsx",
     )
 
 

@@ -14,6 +14,12 @@ from django.db.models import (
 )
 
 from core.models import Asset
+from database.models import (
+    DbConfigSource,
+    DbConfigSourceFieldDefinition,
+    DbConfigSourceRevision,
+    DbInstance,
+)
 from facts.models import FactChangeHistory, FactFieldDefinition, HostFact, HostFactValue
 from processes.models import ProcessSnapshot
 from systems.models import SystemHost, SystemHostFieldDefinition, SystemSource
@@ -980,3 +986,135 @@ def get_system_hosts_for_vms(vms):
         .annotate(vm_count=Count("vms", distinct=True))
         .prefetch_related("field_values__field_definition")
     )
+
+
+DB_CONFIG_SORT_LOOKUPS = {
+    "db_unique_name": "db_unique_name",
+    "kind": "kind",
+    "db_name": "db_name",
+    "database_role": "database_role",
+    "open_mode": "open_mode",
+    "hostname": "asset__hostname",
+    "instance_count": "instance_count",
+    "last_changed_at": "last_changed_at",
+    "last_pushed_at": "last_pushed_at",
+}
+
+
+def get_db_config_queryset(request):
+    # raw_content(TextField)/extra(JSONField)는 둘 다 Oracle에서 NCLOB이라 목록에서 안 쓰는
+    # 이 화면은 defer로 뺀다 - webconfig/was의 get_*_queryset과 동일한 이유. q 필터가
+    # instances(to-many)를 참조해 .distinct()가 필요한데, defer 없이 걸면 annotate의
+    # GROUP BY/DISTINCT에 NCLOB 컬럼이 끌려들어가 ORA-00932가 난다(CLAUDE.md "환경" 참고).
+    queryset = (
+        DbConfigSource.objects.select_related("asset")
+        .defer("raw_content", "extra")
+        .annotate(
+            instance_count=Count("instances", distinct=True),
+            last_changed_at=Max("revisions__detected_at"),
+        )
+    )
+
+    q = _request_param(request, "q", "search")
+    if q:
+        queryset = queryset.filter(
+            Q(db_unique_name__icontains=q)
+            | Q(db_name__icontains=q)
+            | Q(asset__hostname__icontains=q)
+            | Q(instances__instance_name__icontains=q)
+            | Q(instances__host_name__icontains=q)
+        ).distinct()
+
+    sort = _request_param(request, "sort", "ordering", default="db_unique_name")
+    direction = "-" if sort.startswith("-") else ""
+    sort_key = sort.lstrip("-")
+    lookup = DB_CONFIG_SORT_LOOKUPS.get(sort_key, "db_unique_name")
+
+    return queryset.order_by(f"{direction}{lookup}")
+
+
+def get_db_config_dynamic_field_definitions():
+    """DbConfigSource 목록 컬럼으로 노출하는 필드 정의(AUTO+MANUAL 둘 다) - systems의
+    get_system_host_dynamic_field_definitions()와 같은 목적, database 앱 전용 모델
+    (DbConfigSourceFieldDefinition) 기준."""
+    return (
+        DbConfigSourceFieldDefinition.objects.filter(is_visible=True)
+        .prefetch_related("choices")
+        .order_by("sort_order", "id")
+    )
+
+
+def build_db_config_rows(sources, dynamic_field_definitions):
+    """DB 목록의 build_system_host_rows()와 같은 패턴 - 고정 컬럼(db_unique_name/종류/DB명/
+    Role/OpenMode/인스턴스 수)에 admin이 등록한 동적 컬럼(AUTO/MANUAL)을 이어붙인다."""
+    rows = []
+    for source in sources:
+        values_by_field_id = {}
+        for value in source.field_values.all():
+            candidates = (value.value_text, value.value_number, value.value_date)
+            values_by_field_id[value.field_definition_id] = next(
+                (v for v in candidates if v not in (None, "")), None
+            )
+
+        dynamic_cells = [
+            {
+                "value": values_by_field_id.get(fd.id),
+                "field_id": fd.id,
+                "label": fd.label,
+                "is_manual": fd.source == DbConfigSourceFieldDefinition.Source.MANUAL,
+                "value_type": fd.value_type,
+            }
+            for fd in dynamic_field_definitions
+        ]
+        rows.append({"source": source, "dynamic_cells": dynamic_cells})
+    return rows
+
+
+DB_INSTANCE_SORT_LOOKUPS = {
+    "db_unique_name": "source__db_unique_name",
+    "hostname": "asset__hostname",
+    "ip": "asset__primary_ip",
+    "instance_name": "instance_name",
+    "instance_number": "instance_number",
+    "status": "status",
+    "version": "version",
+    "listener_port": "listener_port",
+}
+
+
+def get_db_instance_queryset(request):
+    # 검색 필터가 own 필드/forward FK만 참조해 to-many 조인이 없으므로(중복 행이 생길 수
+    # 없음) .distinct()가 애초에 불필요 - WebToB/Apache/Nginx vhost 목록과 동일 원칙.
+    # source__raw_content/source__extra(Oracle NCLOB)는 이 화면에서 안 쓰므로 defer.
+    queryset = (
+        DbInstance.objects.select_related("source", "asset")
+        .defer("extra", "source__raw_content", "source__extra")
+    )
+
+    q = _request_param(request, "q", "search")
+    if q:
+        queryset = queryset.filter(
+            Q(source__db_unique_name__icontains=q)
+            | Q(asset__hostname__icontains=q)
+            | Q(host_name__icontains=q)
+            | Q(instance_name__icontains=q)
+        )
+
+    sort = _request_param(request, "sort", "ordering", default="hostname")
+    direction = "-" if sort.startswith("-") else ""
+    sort_key = sort.lstrip("-")
+    lookup = DB_INSTANCE_SORT_LOOKUPS.get(sort_key, "instance_name")
+
+    return queryset.order_by(f"{direction}{lookup}")
+
+
+def get_db_config_history_queryset(request):
+    queryset = DbConfigSourceRevision.objects.select_related("source__asset")
+
+    q = _request_param(request, "q", "search")
+    if q:
+        queryset = queryset.filter(
+            Q(source__db_unique_name__icontains=q) | Q(source__asset__hostname__icontains=q)
+        )
+
+    return queryset.order_by("-detected_at")

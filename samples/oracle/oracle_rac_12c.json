@@ -1,0 +1,4 @@
+{
+  "kind": "oracle",
+  "content": "{\"db_unique_name\": \"RACDB12C\", \"db_name\": \"RACDB\", \"database_role\": \"PRIMARY\", \"open_mode\": \"READ WRITE\", \"log_mode\": \"ARCHIVELOG\", \"platform_name\": \"Linux x86 64-bit\", \"created\": \"2023-11-01T00:00:00\", \"characterset\": \"KO16MSWIN949\", \"force_logging\": \"YES\", \"flashback_on\": \"YES\", \"cdb\": \"YES\", \"supplemental_log_data_min\": \"YES\", \"collected_from_instance\": \"racdb1\", \"instances\": [{\"instance_name\": \"racdb1\", \"instance_number\": 1, \"host_name\": \"ddorap01\", \"version\": \"12.2.0.1.0\", \"status\": \"OPEN\", \"archiver\": \"STARTED\", \"startup_time\": \"2026-07-20T01:00:00\", \"listener_port\": \"1521\"}, {\"instance_name\": \"racdb2\", \"instance_number\": 2, \"host_name\": \"iawxap01\", \"version\": \"12.2.0.1.0\", \"status\": \"OPEN\", \"archiver\": \"STARTED\", \"startup_time\": \"2026-07-20T01:05:00\", \"listener_port\": \"1521\"}]}"
+}

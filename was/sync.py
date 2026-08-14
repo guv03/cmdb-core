@@ -2,6 +2,7 @@ from django.db import transaction
 
 from core.models import Asset
 from core.reconciliation import normalize_hostname
+from database.models import DbInstance
 from was.models import JeusContainer, JeusDataSource, JeusWebtobConnector, WasConfigSource
 from webconfig.models import WebConfigSource, WebtobServer
 
@@ -41,6 +42,20 @@ def _resolve_webtob_server(registration_id: str, webtob_asset: Asset | None) -> 
         source__asset=webtob_asset,
         source__kind=WebConfigSource.Kind.WEBTOB,
     ).first()
+
+
+def _resolve_db_instance(database_name: str) -> DbInstance | None:
+    """JeusDataSource.database_name(Oracle JDBC DataSource의 databaseName 프로퍼티 - 실제로는
+    SID)을 DbInstance.instance_name과 매칭한다. db_host는 매칭에 안 쓴다(모델 docstring 참고 -
+    RAC에서 VIP/SCAN 주소일 수 있어 실제 OS hostname과 다를 수 있음). 같은 SID를 쓰는
+    인스턴스가 둘 이상이면(서로 다른 환경에 같은 이름을 재사용하는 경우) 어느 쪽인지 확정할
+    수 없어 매칭을 포기한다 - 틀린 DB로 잘못 연결하는 것보다 안전."""
+    if not database_name:
+        return None
+    candidates = list(DbInstance.objects.filter(instance_name__iexact=database_name))
+    if len(candidates) == 1:
+        return candidates[0]
+    return None
 
 
 def _resolve_webtob_service(webtob_servers: list[WebtobServer]):
@@ -118,6 +133,7 @@ def sync_jeus(source: WasConfigSource, parsed: dict) -> None:
     JeusDataSource.objects.filter(source=source).delete()
     for ds_attrs in parsed.get("data_sources", []):
         ds_id = ds_attrs.get("data_source_id", "")
+        database_name = ds_attrs.get("database_name", "")
         data_source = JeusDataSource.objects.create(
             source=source,
             data_source_id=ds_id,
@@ -125,10 +141,11 @@ def sync_jeus(source: WasConfigSource, parsed: dict) -> None:
             vendor=ds_attrs.get("vendor", ""),
             db_host=ds_attrs.get("db_host", ""),
             port=ds_attrs.get("port", ""),
-            database_name=ds_attrs.get("database_name", ""),
+            database_name=database_name,
             db_user=ds_attrs.get("db_user", ""),
             pool_min=_to_int(ds_attrs.get("pool_min")),
             pool_max=_to_int(ds_attrs.get("pool_max")),
+            db_instance=_resolve_db_instance(database_name),
         )
         names = container_names_by_ds_id.get(ds_id, [])
         data_source.containers.set([container_by_name[n] for n in names if n in container_by_name])

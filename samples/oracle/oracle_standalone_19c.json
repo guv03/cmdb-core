@@ -1,0 +1,4 @@
+{
+  "kind": "oracle",
+  "content": "{\"db_unique_name\": \"ORCL19C\", \"db_name\": \"ORCL\", \"database_role\": \"PRIMARY\", \"open_mode\": \"READ WRITE\", \"log_mode\": \"ARCHIVELOG\", \"platform_name\": \"Linux x86 64-bit\", \"created\": \"2024-03-10T09:12:00\", \"characterset\": \"AL32UTF8\", \"force_logging\": \"YES\", \"flashback_on\": \"NO\", \"cdb\": \"NO\", \"supplemental_log_data_min\": \"NO\", \"collected_from_instance\": \"orcl\", \"instances\": [{\"instance_name\": \"orcl\", \"instance_number\": 1, \"host_name\": \"drnrap01\", \"version\": \"19.21.0.0.0\", \"status\": \"OPEN\", \"archiver\": \"STARTED\", \"startup_time\": \"2026-08-01T03:00:00\", \"listener_port\": \"1521\"}]}"
+}

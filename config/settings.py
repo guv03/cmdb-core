@@ -32,6 +32,7 @@ INSTALLED_APPS = [
     "processes",
     "was",
     "systems",
+    "database",
     "dashboard",
 ]
 

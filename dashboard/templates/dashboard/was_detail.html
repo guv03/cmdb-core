@@ -35,7 +35,7 @@
   {% if container.data_sources.all %}
   <p class="has-text-weight-semibold mt-3">Data Source</p>
   <table class="table is-narrow is-fullwidth">
-    <thead><tr><th>ID</th><th>Vendor</th><th>DB 접속 정보</th><th>User</th><th>Pool(min/max)</th></tr></thead>
+    <thead><tr><th>ID</th><th>Vendor</th><th>DB 접속 정보</th><th>User</th><th>Pool(min/max)</th><th>연결된 DB</th></tr></thead>
     <tbody>
       {% for ds in container.data_sources.all %}
       <tr>
@@ -44,6 +44,13 @@
         <td>{{ ds.db_host }}{% if ds.port %}:{{ ds.port }}{% endif %}{% if ds.database_name %}/{{ ds.database_name }}{% endif %}</td>
         <td>{{ ds.db_user }}</td>
         <td>{{ ds.pool_min|default:"" }} / {{ ds.pool_max|default:"" }}</td>
+        <td>
+          {% if ds.db_instance %}
+            {{ ds.db_instance.source.db_unique_name }} / {{ ds.db_instance.instance_name }}
+          {% else %}
+            <span class="tag is-warning">DB 쪽 미확인</span>
+          {% endif %}
+        </td>
       </tr>
       {% endfor %}
     </tbody>

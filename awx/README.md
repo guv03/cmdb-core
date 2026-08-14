@@ -25,6 +25,15 @@
   해서 JEUS6가 여러 개 뜰 수 있어(예: `ddorap01`에 `jeuscm`/`jeuslt` 각각) `jeus6_instance_name`
   (보통 OS 계정명)을 반드시 채워야 함 — 계정별로 인벤토리 host 항목을 나누거나 Job Template을
   나눠서 실행할 것.**
+- `push_oracle_config_to_cmdb.yml` — DB 호스트에 SSH 접속해 오라클 OS 계정으로 로컬
+  `sqlplus`(OS 인증, DB 비밀번호 저장 불필요)를 실행하고 그 결과(JSON)를
+  CMDB(`POST /api/database/`)로 push하는 플레이북. WebToB처럼 텍스트를 정규식으로 파싱하는
+  대신, Oracle 12c/19c 둘 다 지원하는 `JSON_OBJECT`/`JSON_ARRAYAGG` SQL 함수로 DB 자신이
+  CMDB가 기대하는 JSON을 직접 만들어 출력한다. **RAC는 대표 노드 1대만 인벤토리에 넣을 것**
+  — `gv$instance`/`gv$parameter`는 어느 노드에서 조회하든 클러스터 전체 인스턴스 정보가
+  나온다(WAS의 domain.xml이 admin 서버 한 곳에서 도메인 전체를 기술하는 것과 같은 이유).
+  Standalone은 노드가 하나뿐이라 이 구분이 필요 없음 - 플레이북 자체는 kind 분기 없이 항상
+  `gv$` 뷰만 조회한다.
 - `inventory_source_vars.example.yml` — vCenter/Nutanix 인벤토리 소스의 hostvar를
   플레이북이 기대하는 정규화된 변수명으로 매핑하는 예시(참고용, 실제 환경에 맞게 조정 필요).
 - `push_vcenter_systems_to_cmdb.yml` / `push_vcenter_systems_instance_tasks.yml` /
@@ -151,7 +160,27 @@ vCenter/Nutanix dynamic inventory 플러그인이 노출하는 hostvar 이름은
   일단 자산 미연결 상태로 저장되고, 나중에 그 노드가 facts push되면 다음 JEUS push 때
   자동으로 연결된다.
 
-### 6. Job Template — vCenter 시스템 정보 push
+### 6. Job Template — Oracle DB 정보 push
+
+- Playbook: `awx/push_oracle_config_to_cmdb.yml`
+- Inventory: **DB 호스트만**(RAC는 대표 노드 1대만 - 위 "파일" 섹션 참고). facts push가 먼저
+  한 번은 돌아 있어야 함.
+- Credential: facts push와 동일한 `cmdb_api_key` 재사용 가능. DB 계정 비밀번호는 필요 없음
+  (오라클 OS 계정으로 로컬 접속하는 OS 인증만 씀).
+- Extra Variables 예시:
+  ```yaml
+  cmdb_base_url: http://cmdb.internal:8000
+  cmdb_validate_certs: true
+  oracle_unix_account: oracle
+  ```
+- **`oracle_home`/`oracle_sid`는 서버(인스턴스)마다 값이 다르므로 다른 플레이북과 같은 이유로
+  Extra Variables가 아니라 인벤토리 호스트별 변수로 등록할 것.** 한 호스트에 SID가 여러 개면
+  Job Template을 SID별로 나눠 실행(또는 host 항목을 SID 단위로 나눠 등록).
+- **`awx/push_oracle_config_to_cmdb.yml`의 SQL(특히 `listener_port` 정규식 추출)은 이 저장소
+  개발 환경에 실제 Oracle 인스턴스가 없어 실측 검증되지 않았다** - 처음 반입할 때 실제
+  sqlplus 출력을 확인하고 필요하면 SQL을 조정할 것(`samples/oracle/README.md` 참고).
+
+### 7. Job Template — vCenter 시스템 정보 push
 
 - Playbook: `awx/push_vcenter_systems_to_cmdb.yml` (인스턴스별 실제 작업은
   `awx/push_vcenter_systems_instance_tasks.yml`에 `include_tasks`로 분리)
@@ -203,7 +232,7 @@ vCenter/Nutanix dynamic inventory 플러그인이 노출하는 hostvar 이름은
   아카이브)에 그대로 실어 보낸다. VM 쪽 디스크·NIC 상세는 이 제약과 무관하게 VM 상세
   응답(`GET /api/vcenter/vm/{vm}`) 원본에 이미 포함돼 있어 `extra`에 정상적으로 보관됨.
 
-### 7. Job Template — Nutanix 시스템 정보 push
+### 8. Job Template — Nutanix 시스템 정보 push
 
 - Playbook: `awx/push_nutanix_systems_to_cmdb.yml` (인스턴스별 실제 작업은
   `awx/push_nutanix_systems_instance_tasks.yml`에 분리) - 위 vCenter 플레이북과 완전히 같은
@@ -231,9 +260,9 @@ vCenter/Nutanix dynamic inventory 플러그인이 노출하는 hostvar 이름은
   `https://developers.nutanix.com/api-reference`로 확인한 뒤
   `push_nutanix_systems_instance_tasks.yml`의 필드 매핑을 넓히면 된다.
 
-### 8. 경유 서버(방화벽으로 직접 접속이 막혀 있을 때)
+### 9. 경유 서버(방화벽으로 직접 접속이 막혀 있을 때)
 
-vCenter/Nutanix 시스템 정보 push 플레이북(위 6/7번)은 기본적으로 AWX 실행환경(EE) 안에서
+vCenter/Nutanix 시스템 정보 push 플레이북(위 7/8번)은 기본적으로 AWX 실행환경(EE) 안에서
 `hosts: localhost`로 실행되면서 vCenter/Nutanix API와 CMDB에 직접 접속한다. AWX EE에서
 그쪽으로 나가는 아웃바운드가 방화벽에 막혀 있고, 그 경로가 열린 특정 서버가 따로 있다면
 그 서버를 경유시킬 수 있다.
@@ -264,7 +293,7 @@ vCenter/Nutanix 시스템 정보 push 플레이북(위 6/7번)은 기본적으�
   Ansible이 자동으로 로컬 실행하는 동작에 의존한다 - `systems_collector_host`로 실제
   호스트를 지정하면 자동으로 SSH 연결로 바뀐다.
 
-### 9. 로컬 테스트
+### 10. 로컬 테스트
 
 CMDB를 로컬 Docker Compose로 띄운 상태에서, 임의 값으로 API를 직접 호출해 CMDB 쪽 동작을
 먼저 검증하고 싶다면 CMDB 리포지토리의 `LOCAL_ACCESS.md`를 참고 (facts/webconfig push API 섹션).

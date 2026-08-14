@@ -1,0 +1,289 @@
+{% extends "dashboard/base.html" %}
+
+{% block title %}DB - CMDB{% endblock %}
+
+{% block content %}
+{% csrf_token %}
+<div class="level">
+  <div class="level-left">
+    <h1 class="title is-4">DB</h1>
+  </div>
+  <div class="level-right">
+    <div class="buttons">
+      <a class="button is-light" href="{% url 'dashboard-db-config-export' %}">엑셀 다운로드</a>
+      <a class="button is-light" href="{% url 'dashboard-db-config-import' %}">엑셀 업로드</a>
+    </div>
+  </div>
+</div>
+<p class="subtitle is-6 has-text-grey">DB(Standalone/RAC) 하나가 한 행입니다. RAC는 여러 노드를 대표 노드 1대가 push하지만 db_unique_name 기준으로 항상 같은 행으로 합쳐집니다 - 인스턴스별(노드별) 목록은 "인스턴스" 화면에서 확인하세요. db_unique_name/종류/DB명/Role/OpenMode/인스턴스 수 외 나머지 컬럼은 admin의 Db config source field definitions에 등록한 만큼만 나타나고, 연필 아이콘(✎)이 붙은 값은 클릭해서 직접 수정할 수 있습니다.</p>
+
+<form class="field has-addons" method="get">
+  <div class="control is-expanded">
+    <input class="input" type="text" name="q" value="{{ current_q }}" placeholder="db_unique_name/DB명/hostname 검색">
+  </div>
+  <div class="control">
+    <button class="button is-link" type="submit">검색</button>
+  </div>
+</form>
+
+<div class="table-container">
+  <table class="table is-fullwidth is-hoverable is-striped dash-scroll-table">
+    <thead>
+      <tr>
+        <th class="dash-sticky-col dash-sticky-col-1"><a class="has-text-dark" href="{% querystring sort=columns.db_unique_name.next_sort page=None %}">db_unique_name</a></th>
+        <th class="dash-sticky-col dash-sticky-col-2"><a class="has-text-dark" href="{% querystring sort=columns.hostname.next_sort page=None %}">Hostname</a></th>
+        <th><a class="has-text-dark" href="{% querystring sort=columns.kind.next_sort page=None %}">종류</a></th>
+        <th><a class="has-text-dark" href="{% querystring sort=columns.db_name.next_sort page=None %}">DB명</a></th>
+        <th><a class="has-text-dark" href="{% querystring sort=columns.database_role.next_sort page=None %}">Role</a></th>
+        <th><a class="has-text-dark" href="{% querystring sort=columns.open_mode.next_sort page=None %}">Open Mode</a></th>
+        <th><a class="has-text-dark" href="{% querystring sort=columns.instance_count.next_sort page=None %}">인스턴스 수</a></th>
+        {% if rows %}{% for cell in rows.0.dynamic_cells %}<th>{{ cell.label }}</th>{% endfor %}{% endif %}
+        <th><a class="has-text-dark" href="{% querystring sort=columns.last_changed_at.next_sort page=None %}">최근 변경일</a></th>
+        <th><a class="has-text-dark" href="{% querystring sort=columns.last_pushed_at.next_sort page=None %}">최근 반영일</a></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+      <tr class="db-config-row" data-detail-url="{% url 'dashboard-db-config-detail' row.source.pk %}" style="cursor: pointer;">
+        <td class="dash-sticky-col dash-sticky-col-1">{{ row.source.db_unique_name }}</td>
+        <td class="dash-sticky-col dash-sticky-col-2 dash-hostname">{{ row.source.asset.hostname|default:"" }}</td>
+        <td>{{ row.source.get_kind_display }}</td>
+        <td>{{ row.source.db_name|default:"" }}</td>
+        <td>{{ row.source.database_role|default:"" }}</td>
+        <td>{{ row.source.open_mode|default:"" }}</td>
+        <td>{{ row.source.instance_count }}</td>
+        {% for cell in row.dynamic_cells %}
+        {% if cell.is_manual %}
+        <td class="manual-cell dash-editable-cell" data-source-id="{{ row.source.pk }}" data-source-name="{{ row.source.db_unique_name }}"
+            data-field-id="{{ cell.field_id }}" data-field-label="{{ cell.label }}" data-value-type="{{ cell.value_type }}">
+          <span class="cell-value">{{ cell.value|default:"" }}</span><span class="dash-manual-icon" aria-hidden="true">✎</span>
+        </td>
+        {% else %}
+        <td>{{ cell.value|default:"" }}</td>
+        {% endif %}
+        {% endfor %}
+        <td>{{ row.source.last_changed_at|default:"" }}</td>
+        <td>{{ row.source.last_pushed_at }}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="100" class="has-text-grey">등록된 DB가 없습니다.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="modal" id="dbConfigModal">
+  <div class="modal-background"></div>
+  <div class="modal-card" style="width: 90%; max-width: 960px;">
+    <header class="modal-card-head">
+      <p class="modal-card-title">DB</p>
+      <button class="delete" aria-label="close" id="dbConfigModalClose"></button>
+    </header>
+    <section class="modal-card-body" id="dbConfigModalBody">불러오는 중...</section>
+  </div>
+</div>
+
+{{ field_choices_json|json_script:"db-config-field-choices" }}
+<div class="modal" id="manualCellModal">
+  <div class="modal-background"></div>
+  <div class="modal-card" style="width: 90%; max-width: 420px;">
+    <header class="modal-card-head">
+      <p class="modal-card-title" id="manualCellModalTitle">필드 편집</p>
+      <button class="delete" aria-label="close" id="manualCellModalClose"></button>
+    </header>
+    <section class="modal-card-body">
+      <div class="field" id="manualCellInputWrapper"></div>
+      <p class="help is-danger" id="manualCellError" style="display: none;"></p>
+    </section>
+    <footer class="modal-card-foot">
+      <button type="button" class="button is-link" id="manualCellSave">저장</button>
+      <button type="button" class="button" id="manualCellCancel">취소</button>
+    </footer>
+  </div>
+</div>
+
+<nav class="pagination" role="navigation" aria-label="pagination">
+  {% if page_obj.has_previous %}
+    <a class="pagination-previous" href="{% querystring page=page_obj.previous_page_number %}">이전</a>
+  {% else %}
+    <a class="pagination-previous" disabled>이전</a>
+  {% endif %}
+  {% if page_obj.has_next %}
+    <a class="pagination-next" href="{% querystring page=page_obj.next_page_number %}">다음</a>
+  {% else %}
+    <a class="pagination-next" disabled>다음</a>
+  {% endif %}
+  <span class="pagination-list">
+    <span class="pagination-link is-current">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
+  </span>
+</nav>
+{% endblock %}
+
+{% block extra_body %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  var modal = document.getElementById('dbConfigModal');
+  var modalBody = document.getElementById('dbConfigModalBody');
+
+  function closeModal() {
+    modal.classList.remove('is-active');
+  }
+
+  document.querySelectorAll('.db-config-row').forEach(function (row) {
+    row.addEventListener('click', function () {
+      modalBody.textContent = '불러오는 중...';
+      modal.classList.add('is-active');
+
+      fetch(row.dataset.detailUrl)
+        .then(function (res) { return res.text(); })
+        .then(function (html) {
+          var doc = new DOMParser().parseFromString(html, 'text/html');
+          var content = doc.getElementById('db-config-content');
+          modalBody.innerHTML = content ? content.innerHTML : '불러오기 실패';
+        })
+        .catch(function () {
+          modalBody.textContent = '불러오기 실패';
+        });
+    });
+  });
+
+  document.getElementById('dbConfigModalClose').addEventListener('click', closeModal);
+  modal.querySelector('.modal-background').addEventListener('click', closeModal);
+
+  function getCsrfToken() {
+    var input = document.querySelector('input[name=csrfmiddlewaretoken]');
+    return input ? input.value : '';
+  }
+
+  var cellModal = document.getElementById('manualCellModal');
+  var cellModalTitle = document.getElementById('manualCellModalTitle');
+  var inputWrapper = document.getElementById('manualCellInputWrapper');
+  var errorEl = document.getElementById('manualCellError');
+  var saveBtn = document.getElementById('manualCellSave');
+  var cancelBtn = document.getElementById('manualCellCancel');
+
+  var activeCell = null;
+  var activeInput = null;
+
+  var choicesByFieldId = {};
+  var choicesDataEl = document.getElementById('db-config-field-choices');
+  if (choicesDataEl) {
+    JSON.parse(choicesDataEl.textContent).forEach(function (field) {
+      if (field.choices) {
+        choicesByFieldId[field.field_id] = field.choices;
+      }
+    });
+  }
+
+  function closeCellModal() {
+    cellModal.classList.remove('is-active');
+    activeCell = null;
+    activeInput = null;
+  }
+
+  function buildInput(valueType, currentValue, fieldId) {
+    if (valueType === 'bool') {
+      var label = document.createElement('label');
+      label.className = 'checkbox';
+      var checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.checked = currentValue === 'true';
+      label.appendChild(checkbox);
+      label.appendChild(document.createTextNode(' 예'));
+      return { element: label, input: checkbox };
+    }
+
+    if (valueType === 'choice') {
+      var select = document.createElement('select');
+      var blankOption = document.createElement('option');
+      blankOption.value = '';
+      blankOption.textContent = '(선택 안 함)';
+      select.appendChild(blankOption);
+      (choicesByFieldId[fieldId] || []).forEach(function (choiceValue) {
+        var option = document.createElement('option');
+        option.value = choiceValue;
+        option.textContent = choiceValue;
+        if (choiceValue === currentValue) option.selected = true;
+        select.appendChild(option);
+      });
+      var wrapper = document.createElement('div');
+      wrapper.className = 'select';
+      wrapper.appendChild(select);
+      return { element: wrapper, input: select };
+    }
+
+    var input = document.createElement('input');
+    input.className = 'input';
+    input.value = currentValue;
+    if (valueType === 'number') {
+      input.type = 'number';
+      input.step = 'any';
+    } else if (valueType === 'date') {
+      input.type = 'date';
+    } else {
+      input.type = 'text';
+    }
+    return { element: input, input: input };
+  }
+
+  function openCellModal(cell) {
+    activeCell = cell;
+    errorEl.style.display = 'none';
+    cellModalTitle.textContent = cell.dataset.sourceName + ' · ' + cell.dataset.fieldLabel;
+
+    var currentValue = cell.querySelector('.cell-value').textContent;
+    var built = buildInput(cell.dataset.valueType, currentValue, cell.dataset.fieldId);
+    inputWrapper.innerHTML = '';
+    inputWrapper.appendChild(built.element);
+    activeInput = built.input;
+
+    cellModal.classList.add('is-active');
+    activeInput.focus();
+  }
+
+  function saveActiveCell() {
+    if (!activeCell) return;
+    var valueType = activeCell.dataset.valueType;
+    var newValue = valueType === 'bool' ? (activeInput.checked ? 'true' : 'false') : activeInput.value;
+
+    saveBtn.classList.add('is-loading');
+    fetch('/dashboard/database/' + activeCell.dataset.sourceId + '/manual-fields/', {
+      method: 'POST',
+      headers: {
+        'X-CSRFToken': getCsrfToken(),
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({ field_id: activeCell.dataset.fieldId, value: newValue }),
+    })
+      .then(function (res) { return res.json().then(function (data) { return { ok: res.ok, data: data }; }); })
+      .then(function (result) {
+        saveBtn.classList.remove('is-loading');
+        if (!result.ok) {
+          errorEl.textContent = result.data.error || '저장 실패';
+          errorEl.style.display = 'block';
+          return;
+        }
+        activeCell.querySelector('.cell-value').textContent = result.data.value;
+        closeCellModal();
+      })
+      .catch(function () {
+        saveBtn.classList.remove('is-loading');
+        errorEl.textContent = '저장 실패';
+        errorEl.style.display = 'block';
+      });
+  }
+
+  document.querySelectorAll('.manual-cell').forEach(function (cell) {
+    cell.addEventListener('click', function (e) {
+      e.stopPropagation();
+      openCellModal(cell);
+    });
+  });
+
+  saveBtn.addEventListener('click', saveActiveCell);
+  cancelBtn.addEventListener('click', closeCellModal);
+  document.getElementById('manualCellModalClose').addEventListener('click', closeCellModal);
+  cellModal.querySelector('.modal-background').addEventListener('click', closeCellModal);
+});
+</script>
+{% endblock %}

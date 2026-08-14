@@ -1,0 +1,77 @@
+{% extends "dashboard/base.html" %}
+
+{% block title %}DB 인스턴스 목록 - CMDB{% endblock %}
+
+{% block content %}
+<div class="level">
+  <div class="level-left">
+    <h1 class="title is-4">DB 인스턴스 목록</h1>
+  </div>
+  <div class="level-right">
+    <div class="buttons">
+      <a class="button is-light" href="{% url 'dashboard-db-instance-export' %}">엑셀 다운로드</a>
+    </div>
+  </div>
+</div>
+<p class="subtitle is-6 has-text-grey">인스턴스(Oracle SID) 하나가 한 행입니다 — 여러 DB를 가로질러 인스턴스 단위로 검색·정렬합니다. RAC는 노드 수만큼 여러 행으로 나옵니다. Hostname은 이 인스턴스 자신의 host_name으로 연결된 자산입니다(DB를 대표로 push한 노드와 다를 수 있음) — 아직 자산으로 등록 안 된 노드는 push 시점의 hostname 원본을 그대로 보여줍니다.</p>
+
+<form class="field has-addons" method="get">
+  <div class="control is-expanded">
+    <input class="input" type="text" name="q" value="{{ current_q }}" placeholder="db_unique_name/hostname/인스턴스명 검색">
+  </div>
+  <div class="control">
+    <button class="button is-link" type="submit">검색</button>
+  </div>
+</form>
+
+<div class="table-container">
+  <table class="table is-fullwidth is-hoverable is-striped dash-scroll-table">
+    <thead>
+      <tr>
+        <th class="dash-sticky-col dash-sticky-col-1"><a class="has-text-dark" href="{% querystring sort=columns.hostname.next_sort page=None %}">Hostname</a></th>
+        <th class="dash-sticky-col dash-sticky-col-2"><a class="has-text-dark" href="{% querystring sort=columns.ip.next_sort page=None %}">IP</a></th>
+        <th><a class="has-text-dark" href="{% querystring sort=columns.db_unique_name.next_sort page=None %}">DB</a></th>
+        <th><a class="has-text-dark" href="{% querystring sort=columns.instance_name.next_sort page=None %}">인스턴스</a></th>
+        <th><a class="has-text-dark" href="{% querystring sort=columns.instance_number.next_sort page=None %}">인스턴스 번호</a></th>
+        <th><a class="has-text-dark" href="{% querystring sort=columns.status.next_sort page=None %}">상태</a></th>
+        <th><a class="has-text-dark" href="{% querystring sort=columns.version.next_sort page=None %}">버전</a></th>
+        <th>Archiver</th>
+        <th><a class="has-text-dark" href="{% querystring sort=columns.listener_port.next_sort page=None %}">리스너 포트</a></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for instance in instances %}
+      <tr>
+        <td class="dash-sticky-col dash-sticky-col-1 dash-hostname">{{ instance.asset.hostname|default:instance.host_name }}</td>
+        <td class="dash-sticky-col dash-sticky-col-2">{{ instance.asset.primary_ip|default:"" }}</td>
+        <td>{{ instance.source.db_unique_name }}</td>
+        <td>{{ instance.instance_name }}</td>
+        <td>{{ instance.instance_number|default:"" }}</td>
+        <td>{{ instance.status|default:"" }}</td>
+        <td>{{ instance.version|default:"" }}</td>
+        <td>{{ instance.archiver|default:"" }}</td>
+        <td>{{ instance.listener_port|default:"" }}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="9" class="has-text-grey">등록된 인스턴스가 없습니다.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<nav class="pagination" role="navigation" aria-label="pagination">
+  {% if page_obj.has_previous %}
+    <a class="pagination-previous" href="{% querystring page=page_obj.previous_page_number %}">이전</a>
+  {% else %}
+    <a class="pagination-previous" disabled>이전</a>
+  {% endif %}
+  {% if page_obj.has_next %}
+    <a class="pagination-next" href="{% querystring page=page_obj.next_page_number %}">다음</a>
+  {% else %}
+    <a class="pagination-next" disabled>다음</a>
+  {% endif %}
+  <span class="pagination-list">
+    <span class="pagination-link is-current">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
+  </span>
+</nav>
+{% endblock %}
