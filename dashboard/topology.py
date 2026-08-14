@@ -12,7 +12,7 @@ import subprocess
 from django.urls import reverse
 
 from systems.models import SystemVm
-from was.models import JeusContainer, JeusWebtobConnector
+from was.models import JeusContainer, JeusDataSource, JeusWebtobConnector
 from webconfig.models import ApacheVhost, NginxVhost, WebtobVhost
 
 
@@ -44,9 +44,15 @@ def _vhost_endpoint_label(vhost) -> str | None:
 
 def build_service_topology_graph(service) -> dict:
     """서비스 하나에 걸린 WEB vhost/WAS 컨테이너를 노드로, WebToB<->JEUS 실제 연결
-    (JeusWebtobConnector)만 엣지로 만든다. 같은 asset을 가리키는 노드는 나중에
-    render_topology_svg에서 OS 클러스터 하나로 자동 합쳐진다 - 여기서는 각 노드가 자기
-    asset을 들고 있기만 하면 된다."""
+    (JeusWebtobConnector)과 JEUS<->DB 실제 연결(JeusDataSource.db_instance)만 엣지로
+    만든다. 같은 asset을 가리키는 노드는 나중에 render_topology_svg에서 OS 클러스터
+    하나로 자동 합쳐진다 - 여기서는 각 노드가 자기 asset을 들고 있기만 하면 된다.
+
+    DB는 WEB/WAS와 달리 서비스가 직접 배정되는 대상이 아니라서(서비스는 vhost/컨테이너에만
+    배정) DB 노드는 이 그래프에 이미 들어간 WAS 컨테이너가 참조하는 데이터소스를 따라가서
+    간접적으로만 편입된다 - "이 서비스가 쓰는 DB"가 아니라 "이 서비스의 WAS 컨테이너가
+    실제로 붙는 DB"라는 뜻이라 WebToB<->JEUS 엣지와 성격이 같다(둘 다 실제 연결을 따라가는
+    것이지 서비스 배정을 따라가는 게 아님)."""
     webtob_vhosts = list(WebtobVhost.objects.filter(service=service).select_related("source__asset"))
     apache_vhosts = list(ApacheVhost.objects.filter(service=service).select_related("source__asset"))
     nginx_vhosts = list(NginxVhost.objects.filter(service=service).select_related("source__asset"))
@@ -113,6 +119,37 @@ def build_service_topology_graph(service) -> dict:
                     edges.append(
                         {"from": from_id, "to": to_id, "label": connector.name or connector.registration_id}
                     )
+
+    if container_ids:
+        # 이 서비스의 WAS 컨테이너가 참조하는 데이터소스 중 DB 쪽 매칭(db_instance)이 실제로
+        # 된 것만 - JeusDataSource.db_instance가 was/sync.py에서 push 시점에 이미 해석해둔
+        # 값을 그대로 따라간다(여기서 새로 매칭하지 않음). 같은 DbInstance를 여러 컨테이너가
+        # 공유할 수 있어 노드는 instance당 하나만 만들고 엣지만 컨테이너 수만큼 추가한다.
+        data_sources = (
+            JeusDataSource.objects.filter(containers__id__in=container_ids, db_instance__isnull=False)
+            .select_related("db_instance__source", "db_instance__asset")
+            .prefetch_related("containers")
+            .distinct()
+        )
+        db_node_id_by_instance = {}
+        for data_source in data_sources:
+            instance = data_source.db_instance
+            node_id = db_node_id_by_instance.get(instance.id)
+            if node_id is None:
+                node_id = f"db_{instance.id}"
+                db_node_id_by_instance[instance.id] = node_id
+                nodes.append(
+                    {
+                        "id": node_id,
+                        "label": f"{instance.source.get_kind_display()}\n{instance.source.db_unique_name}\n{instance.instance_name}",
+                        "asset": instance.asset,
+                        "detail_url": reverse("dashboard-db-config-detail", args=[instance.source_id]),
+                    }
+                )
+            for container in data_source.containers.all():
+                from_id = was_node_id_by_container.get(container.id)
+                if from_id is not None:
+                    edges.append({"from": from_id, "to": node_id, "label": data_source.data_source_id})
 
     return {"nodes": nodes, "edges": edges}
 

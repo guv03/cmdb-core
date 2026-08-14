@@ -38,7 +38,7 @@
         {% for entry in vm_entries %}
         {% if entry.matched %}
         <tr>
-          <td class="dash-sticky-col dash-sticky-col-1 dash-hostname"><a href="{% url 'dashboard-asset-detail' entry.row.asset.id %}">{{ entry.row.asset.hostname }}</a></td>
+          <td class="dash-sticky-col dash-sticky-col-1 dash-hostname"><span class="has-text-link" style="cursor: pointer;" data-detail-url="{% url 'dashboard-asset-detail' entry.row.asset.id %}" data-content-id="asset-content" data-detail-title="자산 상세">{{ entry.row.asset.hostname }}</span></td>
           <td class="dash-sticky-col dash-sticky-col-2">{{ entry.row.asset.primary_ip|default:"" }}</td>
           <td>{{ entry.row.hostfact.os_family|default:"" }}</td>
           {% for cell in entry.row.dynamic_cells %}<td>{{ cell.value|default:"" }}</td>{% endfor %}

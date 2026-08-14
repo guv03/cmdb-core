@@ -39,7 +39,7 @@
       {% for row in linked_system_host_rows %}
       <tr>
         <td>{{ row.host.source.name }}</td>
-        <td><a href="{% url 'dashboard-system-detail' row.host.pk %}">{{ row.host.name|default:row.host.external_id }}</a></td>
+        <td><span class="has-text-link" style="cursor: pointer;" data-detail-url="{% url 'dashboard-system-detail' row.host.pk %}" data-content-id="system-content" data-detail-title="시스템 상세">{{ row.host.name|default:row.host.external_id }}</span></td>
         <td>{{ row.host.source.get_kind_display }}</td>
         <td>{{ row.host.vm_count }}</td>
         {% for cell in row.dynamic_cells %}<td>{{ cell.value|default:"" }}</td>{% endfor %}

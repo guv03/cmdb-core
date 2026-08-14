@@ -99,6 +99,22 @@
   </div>
 </div>
 
+<!-- 자산 상세 모달 안(예: "연결된 시스템")에서 다른 상세로 넘어갈 때 이 모달 위에 진짜로
+     얹히는 두 번째 모달 - 통합대시보드 도넛의 목록 모달(iframe)과 같은 "모달 위에 모달"
+     결과를 노리되, 여기 대상은 검색/정렬 같은 자체 기능이 없는 단순 상세라 iframe 없이도
+     별도 DOM 요소만으로 동일한 결과(ID 충돌 없음, 위 모달만 닫으면 자산 모달로 자연 복귀)를
+     얻는다. z-index를 명시해 항상 첫 모달 위에 뜨도록 고정. -->
+<div class="modal" id="crossDetailModal" style="z-index: 45;">
+  <div class="modal-background"></div>
+  <div class="modal-card" style="width: 90%; max-width: 960px;">
+    <header class="modal-card-head">
+      <p class="modal-card-title" id="crossDetailModalTitle">상세</p>
+      <button class="delete" aria-label="close" id="crossDetailModalClose"></button>
+    </header>
+    <section class="modal-card-body" id="crossDetailModalBody">불러오는 중...</section>
+  </div>
+</div>
+
 {{ columns|json_script:"dashboard-columns" }}
 <div class="modal" id="manualCellModal">
   <div class="modal-background"></div>
@@ -140,6 +156,7 @@ document.addEventListener('DOMContentLoaded', function () {
           var doc = new DOMParser().parseFromString(html, 'text/html');
           var content = doc.getElementById('asset-content');
           modalBody.innerHTML = content ? content.innerHTML : '불러오기 실패';
+          bindCrossDetailLinks(modalBody);
         })
         .catch(function () {
           modalBody.textContent = '불러오기 실패';
@@ -149,6 +166,46 @@ document.addEventListener('DOMContentLoaded', function () {
 
   document.getElementById('assetModalClose').addEventListener('click', closeModal);
   modal.querySelector('.modal-background').addEventListener('click', closeModal);
+
+  // 자산 상세 모달 안(예: "연결된 시스템")의 링크는 새 모달을 이 위에 진짜로 쌓는다(중첩) -
+  // crossDetailModal 참고. 그 안에서 또 다른 링크를 클릭하면 세 번째 모달을 쌓는 대신
+  // crossDetailModal 내용만 갈아끼운다(무한 중첩 방지, 첫 모달은 항상 고정된 복귀 지점).
+  var crossModal = document.getElementById('crossDetailModal');
+  var crossModalTitle = document.getElementById('crossDetailModalTitle');
+  var crossModalBody = document.getElementById('crossDetailModalBody');
+
+  function closeCrossModal() {
+    crossModal.classList.remove('is-active');
+  }
+
+  function openCrossDetail(url, contentId, title) {
+    crossModalBody.textContent = '불러오는 중...';
+    if (title) crossModalTitle.textContent = title;
+    crossModal.classList.add('is-active');
+
+    fetch(url)
+      .then(function (res) { return res.text(); })
+      .then(function (html) {
+        var doc = new DOMParser().parseFromString(html, 'text/html');
+        var content = doc.getElementById(contentId);
+        crossModalBody.innerHTML = content ? content.innerHTML : '불러오기 실패';
+        bindCrossDetailLinks(crossModalBody);
+      })
+      .catch(function () {
+        crossModalBody.textContent = '불러오기 실패';
+      });
+  }
+
+  function bindCrossDetailLinks(container) {
+    container.querySelectorAll('[data-detail-url]').forEach(function (el) {
+      el.addEventListener('click', function () {
+        openCrossDetail(el.dataset.detailUrl, el.dataset.contentId, el.dataset.detailTitle);
+      });
+    });
+  }
+
+  document.getElementById('crossDetailModalClose').addEventListener('click', closeCrossModal);
+  crossModal.querySelector('.modal-background').addEventListener('click', closeCrossModal);
 
   function getCsrfToken() {
     var input = document.querySelector('input[name=csrfmiddlewaretoken]');

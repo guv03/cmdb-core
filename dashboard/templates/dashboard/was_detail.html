@@ -46,7 +46,7 @@
         <td>{{ ds.pool_min|default:"" }} / {{ ds.pool_max|default:"" }}</td>
         <td>
           {% if ds.db_instance %}
-            {{ ds.db_instance.source.db_unique_name }} / {{ ds.db_instance.instance_name }}
+            <span class="has-text-link" style="cursor: pointer;" data-detail-url="{% url 'dashboard-db-config-detail' ds.db_instance.source_id %}" data-content-id="db-config-content" data-detail-title="DB 상세">{{ ds.db_instance.source.db_unique_name }}</span>
           {% else %}
             <span class="tag is-warning">DB 쪽 미확인</span>
           {% endif %}
@@ -69,7 +69,9 @@
         <td>{{ connector.network_address }}{% if connector.port %}:{{ connector.port }}{% endif %}</td>
         <td>
           {% if connector.webtob_server %}
-            <span class="dash-hostname">{{ connector.webtob_server.source.asset.hostname }}</span> / {{ connector.webtob_server.name }}
+            <span class="has-text-link" style="cursor: pointer;" data-detail-url="{% url 'dashboard-webconfig-detail' connector.webtob_server.source_id %}" data-content-id="webconfig-content" data-detail-title="WEB 설정 상세">
+              <span class="dash-hostname">{{ connector.webtob_server.source.asset.hostname }}</span> / {{ connector.webtob_server.name }}
+            </span>
           {% else %}
             <span class="tag is-warning">WebToB 쪽 미확인</span>
           {% endif %}
