@@ -19,22 +19,33 @@ HOSTNAME_HEADER = "hostname"
 VHOST_HEADER = "vhost"
 DOMAIN_HEADER = "domain"
 ALIASES_HEADER = "aliases"
+PORT_HEADER = "포트"
 SERVICE_NAME_HEADER = "서비스명"
+KIND_HEADER = "솔루션"
 VERSION_HEADER = "솔루션버전"
 FIX_HEADER = "Fix"
 MAX_ROWS = 2000
 
+# 다운로드 컬럼 순서를 서비스 조회 화면(webservice_list.html의 WEB 표: 서비스명/도메인/
+# 포트/Hostname/솔루션)과 맞추기 위해, 헤더는 위치가 아니라 이름으로 찾는다(hostname/vhost도
+# 예외 없이 동일 방식) - 컬럼 순서를 화면과 다르게 재배치해도 매칭 로직이 깨지지 않는다.
 # 도메인은 vhost 하나당 유일하지 않을 수 있어서(같은 도메인을 http/https vhost 두 개가
-# 나눠 쓰는 경우가 실제로 있음, 예: vhost1/vhost1_ssl) 매칭 키로 못 쓴다. domain/aliases는
-# 사람이 알아보기 위한 참고용 컬럼으로만 두고, 실제 매칭은 (hostname, vhost) 조합으로 한다
-# - vhost 이름은 source당 유일(WebtobVhost의 unique constraint)이라 안전하다.
-# 솔루션버전/Fix는 이제 push에서 자동 추출되는 AUTO 값이라(webconfig/version_extract.py)
-# 엑셀로 수정해도 다음 push 때 덮어써지므로, 여기서도 domain/aliases와 같은 참고용
-# 컬럼으로만 두고 업로드 시엔 무시한다.
-_KNOWN_EXTRA_HEADERS = {
+# 나눠 쓰는 경우가 실제로 있음, 예: vhost1/vhost1_ssl) 매칭 키로 못 쓴다. domain/aliases/
+# 포트/솔루션(kind)/솔루션버전/Fix는 사람이 알아보기 위한 참고용 컬럼으로만 두고, 실제
+# 매칭은 (hostname, vhost) 조합으로 한다 - vhost 이름은 source당 유일(WebtobVhost의 unique
+# constraint)이라 안전하다. vhost 자체는 화면엔 안 보이지만(도메인은 vhost 두 개가 나눠
+# 쓸 수 있어 화면 표시엔 불필요) 매칭 키라 엑셀엔 여전히 필요 - Hostname 바로 뒤에 둔다.
+# 솔루션(kind)/솔루션버전/Fix는 이제 push에서 자동 추출되는 AUTO 값이라(webconfig/kind는
+# 설정 파일 종류, version_extract.py) 엑셀로 수정해도 다음 push 때 덮어써지므로, 여기서도
+# domain/aliases와 같은 참고용 컬럼으로만 두고 업로드 시엔 무시한다.
+_HEADER_ROLES = {
+    HOSTNAME_HEADER: "hostname",
+    VHOST_HEADER: "vhost",
     DOMAIN_HEADER: "domain",
     ALIASES_HEADER: "aliases",
+    PORT_HEADER: "port",
     SERVICE_NAME_HEADER: "service_name",
+    KIND_HEADER: "kind",
     VERSION_HEADER: "version",
     FIX_HEADER: "fix",
 }
@@ -69,18 +80,23 @@ class ServiceImportResult:
 
 def export_service_workbook() -> HttpResponse:
     """지금 서비스 조회 화면의 전체 데이터를 그대로 xlsx로 내려준다(검색 필터 무시 - 완전한
-    사본을 줘야 재업로드할 때 행이 빠져서 헷갈리는 일이 없음). 헤더가 그대로 업로드 형식이라
-    다운로드 → 몇 칸만 고쳐서 재업로드하는 흐름으로 쓰라고 만든 것."""
+    사본을 줘야 재업로드할 때 행이 빠져서 헷갈리는 일이 없음). 컬럼 순서는 화면(WEB 표: 서비스명/
+    도메인/포트/Hostname/솔루션)과 맞추고, 화면엔 없지만 매칭 키/참고용으로 필요한 vhost/
+    aliases/솔루션버전/Fix는 각자와 가장 관련 있는 컬럼 바로 뒤에 붙인다. 헤더가 그대로 업로드
+    형식이라(이름으로 컬럼을 찾으므로 순서 자체는 문제되지 않음) 다운로드 → 몇 칸만 고쳐서
+    재업로드하는 흐름으로 쓰라고 만든 것."""
     workbook = openpyxl.Workbook()
     sheet = workbook.active
     sheet.title = "서비스"
     sheet.append(
         [
-            HOSTNAME_HEADER,
-            VHOST_HEADER,
+            SERVICE_NAME_HEADER,
             DOMAIN_HEADER,
             ALIASES_HEADER,
-            SERVICE_NAME_HEADER,
+            PORT_HEADER,
+            HOSTNAME_HEADER,
+            VHOST_HEADER,
+            KIND_HEADER,
             VERSION_HEADER,
             FIX_HEADER,
         ]
@@ -92,11 +108,13 @@ def export_service_workbook() -> HttpResponse:
     for row in rows:
         sheet.append(
             [
-                row.source.asset.hostname,
-                row.vhost_name,
+                row.service_name,
                 row.domain,
                 row.aliases,
-                row.service_name,
+                row.port,
+                row.source.asset.hostname,
+                row.vhost_name,
+                row.source.get_kind_display(),
                 row.source.solution_version,
                 row.source.solution_fix,
             ]
@@ -120,25 +138,19 @@ def parse_service_workbook(uploaded_file) -> ServiceImportResult:
     rows_iter = worksheet.iter_rows(values_only=True)
 
     header = next(rows_iter, None)
-    header_ok = (
-        header
-        and len(header) >= 2
-        and str(header[0] or "").strip() == HOSTNAME_HEADER
-        and str(header[1] or "").strip() == VHOST_HEADER
-    )
-    if not header_ok:
-        raise ImportFileError(
-            f"첫 번째/두 번째 컬럼 헤더는 '{HOSTNAME_HEADER}', '{VHOST_HEADER}'이어야 합니다."
-        )
+    if not header:
+        raise ImportFileError("헤더 행이 없습니다.")
 
+    # 컬럼을 위치가 아니라 이름으로 찾는다 - 다운로드 컬럼 순서를 화면에 맞춰 바꿔도(위
+    # export_service_workbook 참고) hostname/vhost가 몇 번째 컬럼이든 상관없이 매칭된다.
     column_roles: list[str | None] = []
     unknown_headers = []
-    for col_header in header[2:]:
+    for col_header in header:
         col_header = str(col_header).strip() if col_header is not None else ""
         if not col_header:
             column_roles.append(None)
             continue
-        role = _KNOWN_EXTRA_HEADERS.get(col_header)
+        role = _HEADER_ROLES.get(col_header)
         if role is None:
             unknown_headers.append(col_header)
         column_roles.append(role)
@@ -146,17 +158,26 @@ def parse_service_workbook(uploaded_file) -> ServiceImportResult:
     if unknown_headers:
         raise ImportFileError("다음 컬럼을 인식할 수 없습니다: " + ", ".join(unknown_headers))
 
+    if "hostname" not in column_roles or "vhost" not in column_roles:
+        raise ImportFileError(
+            f"'{HOSTNAME_HEADER}', '{VHOST_HEADER}' 컬럼이 모두 있어야 합니다."
+        )
+
+    hostname_col = column_roles.index("hostname")
+    vhost_col = column_roles.index("vhost")
     service_name_col = column_roles.index("service_name") if "service_name" in column_roles else None
 
     raw_rows = []
     for row_number, row in enumerate(rows_iter, start=2):
         if row is None or all(cell in (None, "") for cell in row):
             continue
-        hostname = normalize_hostname(str(row[0])) if row[0] is not None else ""
-        vhost_name = str(row[1]).strip() if len(row) > 1 and row[1] is not None else ""
+        hostname = normalize_hostname(str(row[hostname_col])) if row[hostname_col] is not None else ""
+        vhost_name = (
+            str(row[vhost_col]).strip() if len(row) > vhost_col and row[vhost_col] is not None else ""
+        )
         if not hostname:
             continue
-        raw_rows.append((row_number, hostname, vhost_name, row[2:]))
+        raw_rows.append((row_number, hostname, vhost_name, row))
 
         if len(raw_rows) > MAX_ROWS:
             raise ImportFileError(f"한 번에 업로드 가능한 최대 행 수({MAX_ROWS}건)를 초과했습니다.")
@@ -172,7 +193,7 @@ def parse_service_workbook(uploaded_file) -> ServiceImportResult:
     service_name_updates: list[ServiceNameUpdate] = []
     unmatched_rows: list[UnmatchedRow] = []
 
-    for row_number, hostname, vhost_name, values in raw_rows:
+    for row_number, hostname, vhost_name, row in raw_rows:
         service_domain = row_map.get((hostname, vhost_name))
         if service_domain is None:
             unmatched_rows.append(
@@ -180,8 +201,8 @@ def parse_service_workbook(uploaded_file) -> ServiceImportResult:
             )
             continue
 
-        if service_name_col is not None and service_name_col < len(values):
-            cell_value = values[service_name_col]
+        if service_name_col is not None and service_name_col < len(row):
+            cell_value = row[service_name_col]
             if cell_value not in (None, ""):
                 new_value = str(cell_value).strip()
                 if new_value != service_domain.service_name:

@@ -5,6 +5,15 @@
 
 1.0.6까지의 이력은 이 파일 도입 전이라 별도 기록 없음 — `WORKLOG.md`의 해당 날짜 항목 참고.
 
+## 1.0.40
+
+- **엑셀 다운로드 13개 화면 전수 검증 후 화면 컬럼 누락/순서 불일치 수정** — "화면에 보이는 정보가 엑셀에도 다 담기는지" 검증 요청으로 13개 다운로드 엔드포인트를 전부 실제 호출해 대조한 결과, 데이터(행)는 필터 없이 전량 내려오지만 컬럼 일부가 화면과 다른 8곳을 발견해 수정.
+  - 웹설정/WebToB/Apache/Nginx vhost·WAS/JEUS 컨테이너 6개 목록(`dashboard/list_export.py`): 화면엔 Hostname 바로 옆에 있는 **IP 컬럼**이 엑셀엔 전부 빠져 있어 추가.
+  - 자산(OS) 목록(`dashboard/excel_import.py`): 화면 마지막 두 컬럼인 **최근 변경일/최근 반영일**이 엑셀엔 없어 추가(다운로드 그대로 재업로드해도 참고용 컬럼으로 무시되도록 헤더 등록).
+  - 시스템 목록(`systems/excel_import.py`): 화면의 **VM 수** 컬럼이 엑셀엔 없어 추가 — `dashboard/queries.py`의 기존 패턴과 동일하게 `.defer("extra", "source__raw_response")` 후 `annotate(Count("vms", distinct=True))`로 계산(Oracle NCLOB이 GROUP BY에 걸리는 문제 방지).
+  - 서비스 탭(`webconfig/excel_import.py`): 엑셀 컬럼 순서(hostname/vhost가 항상 맨 앞)가 화면 순서(서비스명→도메인→포트→Hostname→솔루션)와 달라 헷갈린다는 지적으로 화면 순서에 맞춰 재배치, 화면엔 있는데 엑셀엔 없던 **포트/솔루션(종류)** 컬럼도 함께 추가. 매칭 키(hostname/vhost)가 더 이상 고정 0/1번 컬럼이 아니게 되어, 헤더를 위치가 아니라 이름으로 찾도록 `parse_service_workbook`을 리팩터링(향후 컬럼 순서를 또 바꿔도 매칭이 깨지지 않음).
+  - 13개 엔드포인트 재검증(200 OK, 엑셀 행 수=쿼리셋 count 일치) + 자산/시스템/서비스 3종 "다운로드 → 그대로 재업로드" 라운드트립(반영 0건/불일치 0건)까지 확인.
+
 ## 1.0.39
 
 - **통합대시보드 도넛 드릴다운에서 버전 조각 클릭 시 실제 목록을 모달로 표시** — 종류(OS Family/WEB kind/WAS kind) 타일 클릭으로 펼쳐지는 버전별 도넛에서, 파이 조각이나 범례 행을 클릭하면 그 버전에 해당하는 항목 목록이 모달로 뜬다. 새 테이블/뷰를 만드는 대신 기존 조회 화면(`/dashboard/assets/`, `/dashboard/webconfig/`, `/dashboard/was/`)을 그대로 재사용 — `get_asset_queryset()`/`get_webconfig_queryset()`/`get_was_config_queryset()`(`dashboard/queries.py`)에 정확 일치 필터(`os_family`/`os_version`, `kind`/`solution_version`, "버전 미상" 포함)를 추가하고, 그 화면을 필터+`embed=1` 쿼리스트링을 붙여 iframe으로 모달에 그대로 불러온다. 검색/정렬/페이지네이션/행 클릭 상세 모달까지 그 화면의 기능이 전부 그대로 동작. `embed=1`이면 상단 내비게이션/제목/버튼/검색창을 감추고 표+페이지네이션만 보이게 하고(`base.html`/세 목록 템플릿), 필터 없이 그 화면에 직접 들어오면 "필터 적용됨" 배너+해제 링크를 보여준다. Django 기본 클릭재킹 방지(`X-Frame-Options: DENY`)가 자기 자신을 iframe에 넣는 것도 막아서 `X_FRAME_OPTIONS = "SAMEORIGIN"`으로 완화(같은 origin 내장만 허용, 실제 클릭재킹 방지는 유지).

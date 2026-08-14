@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 
 import openpyxl
-from django.db.models import Prefetch
+from django.db.models import Count, Prefetch
 from django.http import HttpResponse
 
 from facts.dynamic_fields import coerce_fact_value
@@ -15,9 +15,10 @@ SOURCE_NAME_HEADER = "source_name"
 NAME_HEADER = "name"
 MAX_ROWS = 2000
 
-# 종류(kind)는 FactFieldDefinition이 아니라 SystemSource를 통해서만 나오는 참고용 컬럼이라
-# 동적 필드 목록엔 안 걸린다. AUTO 필드와 같은 취지로 다운로드엔 싣되 업로드 시엔 항상 무시.
-FIXED_REFERENCE_LABELS = ["종류"]
+# 종류(kind)/VM 수는 FactFieldDefinition이 아니라 SystemSource/vms 관계로만 나오는 참고용
+# 컬럼이라 동적 필드 목록엔 안 걸린다. AUTO 필드와 같은 취지로 다운로드엔 싣되 업로드 시엔
+# 항상 무시(VM 수는 애초에 그때그때 세는 값이라 편집 대상 자체가 아님).
+FIXED_REFERENCE_LABELS = ["종류", "VM 수"]
 
 
 class ImportFileError(Exception):
@@ -105,8 +106,13 @@ def export_system_host_workbook() -> HttpResponse:
         [SOURCE_NAME_HEADER, NAME_HEADER, *FIXED_REFERENCE_LABELS, *[fd.label for fd in dynamic_fields]]
     )
 
+    # extra/source__raw_response(JSONField)는 목록에서 안 쓰므로 defer - dashboard/queries.py의
+    # get_system_host_queryset과 동일 이유(Oracle에서 NCLOB이 annotate(Count(distinct=True))의
+    # GROUP BY에 걸리면 ORA-00932).
     hosts = (
         SystemHost.objects.select_related("source")
+        .defer("extra", "source__raw_response")
+        .annotate(vm_count=Count("vms", distinct=True))
         .prefetch_related(
             Prefetch(
                 "field_values", queryset=SystemHostFieldValue.objects.select_related("field_definition")
@@ -119,6 +125,7 @@ def export_system_host_workbook() -> HttpResponse:
             host.source.name,
             host.name or host.external_id,
             host.source.get_kind_display(),
+            host.vm_count,
             *[_current_value_display(host, fd) for fd in dynamic_fields],
         ])
 

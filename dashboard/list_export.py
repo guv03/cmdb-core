@@ -89,6 +89,7 @@ def export_webconfig_workbook() -> HttpResponse:
     rows = [
         [
             source.asset.hostname,
+            source.asset.primary_ip,
             source.get_kind_display(),
             source.solution_version,
             source.solution_fix,
@@ -101,7 +102,7 @@ def export_webconfig_workbook() -> HttpResponse:
     ]
     return _workbook_response(
         "웹 설정",
-        ["Hostname", "종류", "버전", "Fix", "VHost 수", "설정 경로", "최근 변경일", "최근 반영일"],
+        ["Hostname", "IP", "종류", "버전", "Fix", "VHost 수", "설정 경로", "최근 변경일", "최근 반영일"],
         rows,
         "cmdb_webconfig.xlsx",
     )
@@ -138,6 +139,7 @@ def export_webtob_vhost_workbook() -> HttpResponse:
         rows.append(
             [
                 vhost.source.asset.hostname,
+                vhost.source.asset.primary_ip,
                 vhost.name,
                 vhost.hostname,
                 vhost.hostalias,
@@ -159,7 +161,7 @@ def export_webtob_vhost_workbook() -> HttpResponse:
     return _workbook_response(
         "WebToB vhost",
         [
-            "Hostname", "vhost", "도메인", "HostAlias", "Port", "DocRoot", "LimitRequestBody",
+            "Hostname", "IP", "vhost", "도메인", "HostAlias", "Port", "DocRoot", "LimitRequestBody",
             "SSL", "SSL 인증서", "SSL Protocols", "SSL Ciphers", "Logging", "ErrorLog", "서비스명",
             "SvrGroup", "Server", "URI",
         ],
@@ -173,6 +175,7 @@ def export_apache_vhost_workbook() -> HttpResponse:
     rows = [
         [
             vhost.source.asset.hostname,
+            vhost.source.asset.primary_ip,
             vhost.hostname,
             vhost.hostalias,
             vhost.port,
@@ -190,7 +193,7 @@ def export_apache_vhost_workbook() -> HttpResponse:
     ]
     return _workbook_response(
         "Apache vhost",
-        ["Hostname", "Domain", "ServerAlias", "Port", "SSL", "SSL 인증서", "SSL Protocols", "SSL Ciphers", "DocRoot", "Logging", "ErrorLog", "Proxy 대상", "서비스명"],
+        ["Hostname", "IP", "Domain", "ServerAlias", "Port", "SSL", "SSL 인증서", "SSL Protocols", "SSL Ciphers", "DocRoot", "Logging", "ErrorLog", "Proxy 대상", "서비스명"],
         rows,
         "cmdb_apache_vhosts.xlsx",
     )
@@ -201,6 +204,7 @@ def export_nginx_vhost_workbook() -> HttpResponse:
     rows = [
         [
             vhost.source.asset.hostname,
+            vhost.source.asset.primary_ip,
             vhost.hostname,
             vhost.hostalias,
             vhost.port,
@@ -219,7 +223,7 @@ def export_nginx_vhost_workbook() -> HttpResponse:
     ]
     return _workbook_response(
         "Nginx vhost",
-        ["Hostname", "Domain", "Alias", "Port", "Listen", "SSL", "SSL 인증서", "SSL Protocols", "SSL Ciphers", "Root", "AccessLog", "ErrorLog", "Proxy 대상", "서비스명"],
+        ["Hostname", "IP", "Domain", "Alias", "Port", "Listen", "SSL", "SSL 인증서", "SSL Protocols", "SSL Ciphers", "Root", "AccessLog", "ErrorLog", "Proxy 대상", "서비스명"],
         rows,
         "cmdb_nginx_vhosts.xlsx",
     )
@@ -230,6 +234,7 @@ def export_was_config_workbook() -> HttpResponse:
     rows = [
         [
             source.asset.hostname,
+            source.asset.primary_ip,
             source.get_kind_display(),
             source.instance_name,
             source.solution_version,
@@ -242,7 +247,7 @@ def export_was_config_workbook() -> HttpResponse:
     ]
     return _workbook_response(
         "WAS",
-        ["Hostname", "종류", "인스턴스", "버전", "컨테이너 수", "설정 경로", "최근 변경일", "최근 반영일"],
+        ["Hostname", "IP", "종류", "인스턴스", "버전", "컨테이너 수", "설정 경로", "최근 변경일", "최근 반영일"],
         rows,
         "cmdb_was.xlsx",
     )
@@ -263,6 +268,7 @@ def export_jeus_container_workbook() -> HttpResponse:
     rows = [
         [
             row["container"].asset.hostname if row["container"].asset else "(미등록)",
+            row["container"].asset.primary_ip if row["container"].asset else "",
             row["container"].source.instance_name,
             row["container"].name,
             row["container"].node_name,
@@ -276,7 +282,7 @@ def export_jeus_container_workbook() -> HttpResponse:
     ]
     return _workbook_response(
         "JEUS 컨테이너",
-        ["Hostname", "인스턴스", "컨테이너", "Node", "Listen Port", "SSL Port", "배포된 앱", "WebToB 연결", "서비스명"],
+        ["Hostname", "IP", "인스턴스", "컨테이너", "Node", "Listen Port", "SSL Port", "배포된 앱", "WebToB 연결", "서비스명"],
         rows,
         "cmdb_jeus_containers.xlsx",
     )

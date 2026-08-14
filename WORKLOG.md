@@ -2,6 +2,19 @@
 
 일 단위로 진행한 작업을 기록한다. 새 날짜는 위에 추가한다.
 
+## 2026-08-14
+
+- **로컬 개발 환경 기동**: Docker Desktop이 꺼져있어 먼저 실행 후 엔진 준비될 때까지 대기, `.\scripts\start.ps1`로 기동 후 대시보드 200 응답까지 확인
+- **엑셀 다운로드 13개 화면 전수 검증(1.0.40)**: "전체 화면 엑셀 다운로드 기능을 검증하고 화면에 나온 정보가 다 다운로드되는지 확인해달라"는 요청 — 코드 리딩으로 13개 export 뷰와 대응 목록 템플릿의 컬럼을 먼저 대조하고, 실제 로그인 세션(Django test client `force_login`, admin 계정 비밀번호가 문서상 값과 달라 로그인 실패 → 대신 `force_login` 사용)으로 13개 엔드포인트를 전부 호출해 헤더/행 수를 대조하는 검증 스크립트를 작성해 실행
+  - 데이터(행) 자체는 필터 없이 전량 정상 다운로드됨을 확인, 다만 화면엔 있는데 엑셀엔 없는 컬럼 8곳 발견: 웹설정/WebToB/Apache/Nginx/WAS/JEUS 컨테이너 6개 목록의 **IP**, 자산 목록의 **최근 변경일/최근 반영일**, 시스템 목록의 **VM 수**
+  - 사용자 승인 후 4개 파일 수정 — `dashboard/list_export.py`(IP 6곳), `dashboard/excel_import.py`(자산 날짜 2컬럼, tz-aware datetime을 openpyxl이 못 받아 `_cell_datetime` 헬퍼로 로컬시각 변환 후 tzinfo 제거), `systems/excel_import.py`(VM 수 — `dashboard/queries.py`의 `get_system_host_queryset`과 동일하게 `.defer("extra", "source__raw_response")` 후 `annotate(Count("vms", distinct=True))`로 Oracle NCLOB GROUP BY 문제 방지)
+  - 재검증 + 자산/시스템 두 엑셀의 "다운로드 → 그대로 재업로드" 라운드트립까지 재확인(새로 추가한 참고용 컬럼이 알 수 없는 헤더로 걸리지 않고 정상 무시됨)
+  - **후속 요청으로 서비스 탭 컬럼 순서도 화면과 정렬**: 엑셀은 항상 hostname/vhost가 맨 앞인데 화면은 서비스명→도메인→포트→Hostname→솔루션 순이라 다르다는 지적 — `webconfig/excel_import.py`를 화면 순서에 맞춰 재배치(화면엔 없던 포트/솔루션(종류) 컬럼도 같이 추가)하고, 매칭 키(hostname/vhost)가 더 이상 고정 0/1번 컬럼이 아니게 되어 `parse_service_workbook`을 헤더 이름 기반 컬럼 탐색으로 리팩터링. 일부러 hostname/vhost를 맨 뒤로 옮긴 파일도 정상 매칭되는 것까지 확인해 리팩터링 검증. 나머지 12개 화면은 컬럼 순서까지 이미 화면과 일치함을 재확인(지난번 누락 컬럼을 추가할 때 화면과 같은 위치에 끼워 넣었던 덕분)
+  - 검증 과정에서 `docker compose cp`로 컨테이너(`/app`, 볼륨 마운트)에 넣은 임시 검증 스크립트가 호스트 리포지토리 루트에도 그대로 남는 걸 커밋 전에 발견해 매번 정리(컨테이너 내부 `rm`이 호스트에 바로 반영 안 되는 경우가 있어 호스트에서 직접 `rm`으로 재확인)
+- **Django admin 비밀번호 재설정**: 검증 중 실제 DB 비밀번호가 `LOCAL_ACCESS.md` 문서상 값(`admin12345`)과 다르다는 걸 발견(이 때문에 `client.login()`이 실패해 `force_login`으로 우회) — 이후 사용자가 비밀번호를 잊었다고 해 문서 값으로 재설정
+- **사용자 피드백 기록**: "코드 수정은 나한테 물어보지 말고 그냥 다 실행해도 된다"는 지시 — 메모리에 `feedback_no_confirm_code_edits`로 저장(단, 커밋 직전 확인은 CLAUDE.md 규칙대로 계속 유지)
+- 1.0.40으로 VERSION/CHANGELOG 갱신 → `docker build`/`save`/zip 압축 → 커밋 확인 → push → GitHub Release 생성, 오래된 릴리즈 첨부파일(최신 3개 제외) 정리까지 통상 절차대로 진행
+
 ## 2026-08-13
 
 - **로컬 개발 환경 기동**: Docker Desktop이 꺼져있어 먼저 실행 후 엔진 준비될 때까지 대기, `docker compose up -d --build`로 기동 후 로그인 페이지 200 응답까지 확인(기존 pgdata 볼륨 재사용이라 이전 세션 데이터 그대로 남아있음)

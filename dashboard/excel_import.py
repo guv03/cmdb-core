@@ -13,10 +13,13 @@ from facts.models import FactFieldDefinition, HostFactValue
 HOSTNAME_HEADER = "hostname"
 MAX_ROWS = 2000
 
-# hostname처럼 첫 컬럼은 아니지만, FactFieldDefinition이 아니라 LEADING_FIXED_COLUMNS(대시보드
-# 전용 하드코딩 컬럼)라 동적 필드 목록엔 안 걸리는 참고용 컬럼. AUTO 필드와 같은 취지로 다운로드엔
-# 싣되 업로드 시엔 항상 무시(편집 대상 아님, 값 자체가 push/재계산으로만 바뀜).
-FIXED_REFERENCE_LABELS = ["IP", "OS"]
+# hostname처럼 첫 컬럼은 아니지만, FactFieldDefinition이 아니라 LEADING_FIXED_COLUMNS/
+# TRAILING_FIXED_COLUMNS(대시보드 전용 하드코딩 컬럼)라 동적 필드 목록엔 안 걸리는 참고용
+# 컬럼. AUTO 필드와 같은 취지로 다운로드엔 싣되 업로드 시엔 항상 무시(편집 대상 아님, 값
+# 자체가 push/재계산/편집 시점 갱신으로만 바뀜) - 헤더 매칭은 위치가 아니라 이름으로만
+# 하므로 IP/OS(자산 목록 앞쪽)와 최근 변경일/최근 반영일(자산 목록 뒤쪽)을 한 목록에 같이
+# 둬도 무방하다.
+FIXED_REFERENCE_LABELS = ["IP", "OS", "최근 변경일", "최근 반영일"]
 
 
 class ImportFileError(Exception):
@@ -89,6 +92,14 @@ def _current_value_display(host_fact, field_definition: FactFieldDefinition) -> 
     return ""
 
 
+def _cell_datetime(value):
+    """tz-aware datetime은 openpyxl이 그대로 저장 못 한다(Excel엔 타임존 개념이 없어 저장
+    자체가 거부됨) - 대시보드 화면과 같은 로컬 시각으로 보이도록 변환 후 tzinfo를 제거한다."""
+    if value is None:
+        return ""
+    return timezone.localtime(value).replace(tzinfo=None)
+
+
 def export_manual_field_workbook() -> HttpResponse:
     """전체 자산의 hostname + 동적 필드(AUTO+MANUAL) 현재 값을 xlsx로 내려준다(서비스 조회의
     엑셀 다운로드와 동일한 취지 - 몇 칸만 고쳐서 재업로드하는 흐름). AUTO 필드는 대시보드
@@ -100,7 +111,9 @@ def export_manual_field_workbook() -> HttpResponse:
     workbook = openpyxl.Workbook()
     sheet = workbook.active
     sheet.title = "자산"
-    sheet.append([HOSTNAME_HEADER, *FIXED_REFERENCE_LABELS, *[fd.label for fd in dynamic_fields]])
+    sheet.append(
+        [HOSTNAME_HEADER, "IP", "OS", *[fd.label for fd in dynamic_fields], "최근 변경일", "최근 반영일"]
+    )
 
     assets = (
         Asset.objects.select_related("hostfact")
@@ -116,6 +129,8 @@ def export_manual_field_workbook() -> HttpResponse:
             asset.primary_ip or "",
             getattr(host_fact, "os_family", "") or "",
             *[_current_value_display(host_fact, fd) for fd in dynamic_fields],
+            _cell_datetime(asset.last_changed_at),
+            _cell_datetime(getattr(host_fact, "last_seen_at", None)),
         ])
 
     response = HttpResponse(
