@@ -1,4 +1,5 @@
 from django.db import transaction
+from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
 from core.models import Asset
@@ -16,9 +17,16 @@ def resolve_asset(host_name: str) -> Asset | None:
 
 
 def parse_dt(value):
+    """awx/push_oracle_config_to_cmdb.yml의 TO_CHAR 포맷(YYYY-MM-DD"T"HH24:MI:SS)엔 타임존
+    오프셋이 없어 parse_datetime이 naive datetime을 돌려준다 - USE_TZ=True 상태에서 naive
+    datetime을 그대로 저장하면 Django가 매번 RuntimeWarning을 낸다(값 자체는 DB 서버 로컬
+    시각이므로 Django 기본 타임존 기준으로 aware 처리하는 게 맞음)."""
     if not value:
         return None
-    return parse_datetime(value)
+    parsed = parse_datetime(value)
+    if parsed is not None and timezone.is_naive(parsed):
+        parsed = timezone.make_aware(parsed)
+    return parsed
 
 
 @transaction.atomic

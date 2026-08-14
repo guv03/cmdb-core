@@ -26,6 +26,15 @@
   - **후속 요청으로 WAS↔DB 교차 참조 추가**: "WAS가 DB 붙을 때 SID 지정하는데 그 정보도 수집되냐"는 질문에 답하다가(기존 `JeusDataSource.database_name`이 이미 SID를 갖고 있음을 확인) "그럼 이번 DB 앱이랑 연결해줄 수 있냐"는 요청으로 이어짐 — `JeusDataSource.db_instance`(FK → `database.DbInstance`) 신규, 매칭은 `database_name`(SID)을 `DbInstance.instance_name`과 대조하는 방식 하나만 채택(`was/sync.py`의 `_resolve_db_instance`). **RAC는 JEUS가 VIP/SCAN 주소로 붙는 경우가 많아 `db_host`는 `DbInstance.host_name`(실제 OS hostname)과 안 맞을 수 있다고 판단해 host 기준 매칭은 애초에 안 씀** — SID 이름 단독 매칭만 채택, 동명이인 SID가 여러 개면 매칭 포기(관대한 원칙). `was` 마이그레이션 1건 추가, `was_detail.html` Data Source 표에 "연결된 DB" 컬럼 추가. 검증: 임시 Oracle 샘플(SID=`DRNRODBS`, `samples/jeus8/domain.xml`의 실제 데이터소스 하나와 이름이 겹치도록 구성)을 push한 뒤 JEUS8 샘플을 재push해 실제로 `DRNRNX_RNRAPP` 데이터소스가 그 DB로 정확히 매칭되고, 나머지(MariaDB 등 비Oracle/미등록 SID)는 매칭 안 됨(`db_instance=null`)으로 안전하게 남는 것까지 확인 후 검증용 임시 샘플 파일은 삭제(정식 샘플셋에 안 남김)
   - **사용자가 이어서 "RAC는 VIP로 설정되는데 VIP 정보도 수집되냐"고 질문** — 조사 결과 VIP는 `gv$instance`/`v$database` 같은 일반 SQL 뷰로 못 얻는 Grid Infrastructure(Clusterware) 영역 개념이라(`srvctl`/`crsctl` 명령이나 `gv$listener_network` 같은 별도 경로 필요, 둘 다 이 환경에서 실측 검증 불가) 이번엔 구현하지 않고 조사 결과와 선택지만 사용자에게 보고(다음 턴에서 결정 예정)
   - 1.0.41로 VERSION/CHANGELOG 갱신 → `docker build`(빌드된 이미지로 `manage.py check`까지 별도 실행해 bind-mount 아닌 실제 이미지도 정상 동작 확인)/`save`/zip 압축 → 커밋 확인 → push → GitHub Release 생성까지 통상 절차대로 진행
+- **DB(Oracle) push 400 오류 긴급 수정(1.0.42)**: 사용자가 내부망 AWX에서 DB push Job Template을 실제로 처음 돌려보고 실패 스크린샷 공유 — `TASK [sqlplus로 DB 정보 조회]`는 `ok`인데 `TASK [CMDB로 DB 정보 push]`가 `{"content": ["유효한 문자열이 아닙니다."]}`로 400
+  - 원인 분석: sqlplus 출력이 `NULL`/`true`/`false` 키워드 없이 문자열·숫자만으로 구성된 순수 JSON 텍스트라(force_logging 등을 Oracle이 VARCHAR2 'YES'/'NO'로 반환) Python dict 리터럴 문법과 우연히 겹침 — Ansible이 `"{{ oracle_collect_result.stdout | trim }}"`처럼 표현식 하나짜리 템플릿의 최종 렌더 결과가 Python 리터럴로 파싱 가능하면 문자열이 아니라 실제 dict 객체로 돌려주는 동작(native jinja 타입 추론) 때문에, CMDB로 보내는 JSON의 `content`가 문자열이 아니라 중첩 객체로 전송된 것으로 결론. WebToB/JEUS 등 기존 플레이북은 원본이 XML/설정 텍스트라 리터럴 파싱이 애초에 실패해서 이 문제를 한 번도 안 겪었던 것도 같이 확인(Oracle만 처음 걸린 케이스)
+  - 근본 수정: `awx/push_oracle_config_to_cmdb.yml`의 `content` 렌더링에 `| string` 필터를 마지막에 추가(강제 문자열화, native 변환 우회)
+  - 방어 수정(다른 ansible-core 버전/설정에서 재발 대비): `database/serializers.py`의 `content`를 `CharField` → `JSONField`로 바꿔 문자열/dict 둘 다 받아들이고, `database/views.py`가 문자열이 아니면 `json.dumps`로 재직렬화 후 기존 로직(파싱/저장/diff)에 그대로 흘려보내도록 정규화
+  - 디버깅 중 발견한 부수 문제도 같이 수정: sqlplus의 `TO_CHAR` 출력엔 타임존 정보가 없어 `parse_datetime`이 naive datetime을 돌려주는데 `USE_TZ=True`라 저장 시마다 `RuntimeWarning`이 나던 것을 `database/sync.py`의 `parse_dt`가 naive면 `timezone.make_aware()`로 보정하도록 수정
+  - 검증: Django test client로 (1) 버그를 그대로 재현한 페이로드(content가 dict) → 정상 처리(201) (2) 정상 페이로드(content가 문자열) → 회귀 없이 그대로 동작(201) 둘 다 확인, naive datetime 경고도 재현 후 사라짐까지 확인. 검증용 테스트 데이터는 정리
+  - **AWX 파라미터 설정법 질문에도 답변**: Job Template 구성(인벤토리 호스트 변수로 `oracle_home`/`oracle_sid`, Extra Variables로 `cmdb_base_url`/`oracle_unix_account`, Credential 2종, become 권한 설정)을 다른 push_*.yml Job Template 문서와 같은 형식으로 안내
+  - VIP 수집 여부는 사용자가 "일단 내부망에서 수집되는 거 보고 생각해보자"고 보류 결정 — 구현 안 함
+  - 1.0.42로 VERSION/CHANGELOG 갱신 → `docker build`/`save`/zip 압축 → 커밋 확인 → push → GitHub Release 생성까지 통상 절차대로 진행
 
 ## 2026-08-13
 

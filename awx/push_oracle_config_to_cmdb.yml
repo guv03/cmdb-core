@@ -130,7 +130,12 @@
         body_format: json
         body:
           kind: oracle
-          content: "{{ oracle_collect_result.stdout | trim }}"
+          # 반드시 | string으로 끝낼 것 - sqlplus 출력이 순수 JSON 텍스트라(NULL/true/false 없이
+          # 문자열·숫자만 있으면) Ansible이 "{{ 표현식 }}" 단독 템플릿의 결과를 Python 리터럴로
+          # 오인해 문자열이 아니라 실제 dict 객체로 자동 변환해버리는 경우가 있다(실사용
+          # 환경에서 실측 확인됨 - CMDB가 "content: 유효한 문자열이 아닙니다"로 거부). | string을
+          # 마지막 필터로 붙이면 이 자동 변환이 적용되지 않고 항상 리터럴 문자열로 전송된다.
+          content: "{{ oracle_collect_result.stdout | trim | string }}"
         status_code: [200, 201]
         validate_certs: "{{ cmdb_validate_certs }}"
       delegate_to: localhost

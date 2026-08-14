@@ -1,3 +1,5 @@
+import json
+
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -43,6 +45,12 @@ class DbConfigIngestView(APIView):
 
         kind = serializer.validated_data["kind"]
         content = serializer.validated_data["content"]
+        # 정상 케이스는 이미 문자열이라 그대로 통과. dict/list로 온 경우(Ansible native
+        # jinja가 순수 JSON 텍스트를 문자열이 아니라 Python 리터럴로 오인 변환하는 경우가
+        # 실측 확인됨 - serializers.py 참고)는 문자열로 재직렬화해 이후 로직(파싱/저장/diff)이
+        # 항상 문자열만 다루도록 통일한다.
+        if not isinstance(content, str):
+            content = json.dumps(content, ensure_ascii=False)
 
         parser = PARSERS.get(kind)
         if parser is None:

@@ -5,6 +5,14 @@
 
 1.0.6까지의 이력은 이 파일 도입 전이라 별도 기록 없음 — `WORKLOG.md`의 해당 날짜 항목 참고.
 
+## 1.0.42
+
+- **DB(Oracle) push 400 오류 긴급 수정** — 실사용 환경(내부망 AWX)에서 1.0.41의 DB 수집 기능을 실제로 돌려보니 `CMDB로 DB 정보 push` 태스크가 `{"content": ["유효한 문자열이 아닙니다."]}`로 매번 400 실패. 원인은 sqlplus 출력이 `NULL`/`true`/`false` 없이 문자열·숫자만으로 구성된 순수 JSON 텍스트일 때, Ansible이 `"{{ 표현식 }}"` 단독 템플릿의 결과를 문자열이 아니라 Python 리터럴(dict)로 오인 변환(native jinja 타입 추론)해서 `content`가 문자열이 아니라 객체로 전송된 것 — WebToB/JEUS 등 기존 플레이북은 원본이 XML/설정 텍스트라 이 문제를 피해갔는데 Oracle만 출력이 순수 JSON이라 처음 걸린 케이스.
+  - `awx/push_oracle_config_to_cmdb.yml`: `content` 렌더링에 `| string` 필터를 마지막으로 추가해 근본 수정(항상 리터럴 문자열로 전송).
+  - `database/serializers.py`/`database/views.py`: 다른 ansible-core 버전/설정에서 같은 문제가 재발해도 안전하도록 `content` 필드를 `CharField`가 아니라 `JSONField`로 받아 문자열/dict 둘 다 허용하고, 문자열이 아니면 `json.dumps`로 재직렬화하는 방어 로직 추가(정상 케이스 동작은 그대로).
+  - 부수 수정: `DbInstance.startup_time`/`DbConfigSource.db_created_at` 파싱 시 naive datetime(타임존 정보 없는 sqlplus `TO_CHAR` 출력)을 Django 기본 타임존으로 aware 처리하도록 수정 — 매 push마다 나던 `RuntimeWarning` 제거.
+  - 버그 재현(문자열 대신 dict를 보내는 페이로드) + 회귀 테스트(정상 문자열 페이로드)로 양쪽 다 200대 응답 확인 후 검증용 데이터 정리.
+
 ## 1.0.41
 
 - **DB(Oracle 12c/19c) 정보 수집 신규 지원** — OS ansible facts/웹설정/WAS/시스템과 별개로 DB 인스턴스 정보를 시각화하는 새 `database` 앱. CMDB가 DB에 직접 접속하지 않고 vCenter/Nutanix와 동일 원칙으로 AWX가 DB 호스트에서 로컬 `sqlplus`(오라클 OS 계정 인증 — DB 비밀번호 저장 불필요)를 실행해 결과(JSON)를 push한다.
