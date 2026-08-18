@@ -129,6 +129,11 @@ def build_service_topology_graph(service) -> dict:
             JeusDataSource.objects.filter(containers__id__in=container_ids, db_instance__isnull=False)
             .select_related("db_instance__source", "db_instance__asset")
             .prefetch_related("containers")
+            # containers__id__in이 M2M(to-many) 조인이라 .distinct()가 실제로 필요한데,
+            # select_related로 끌려온 DbInstance.extra/DbConfigSource.raw_content·extra가
+            # Oracle NCLOB이라 DISTINCT 대상에 섞이면 ORA-00932가 난다(CLAUDE.md 환경 섹션
+            # 참고) - 이 화면에서 안 쓰는 값이라 defer로 SELECT에서 뺀다.
+            .defer("db_instance__extra", "db_instance__source__raw_content", "db_instance__source__extra")
             .distinct()
         )
         db_node_id_by_instance = {}

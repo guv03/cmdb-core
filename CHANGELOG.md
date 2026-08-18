@@ -5,6 +5,10 @@
 
 1.0.6까지의 이력은 이 파일 도입 전이라 별도 기록 없음 — `WORKLOG.md`의 해당 날짜 항목 참고.
 
+## 1.0.45
+
+- **서비스 구성도 Oracle NCLOB 오류(ORA-00932) 긴급 수정** — 1.0.43에서 추가한 DB 노드를 내부망(Oracle)에서 실제로 열어보니 `/dashboard/services/topology/`가 500 에러(`django.db.utils.DatabaseError: ORA-00932: inconsistent datatypes: expected - got NCLOB`). `dashboard/topology.py`의 `JeusDataSource` 조회가 M2M(`containers__id__in`) 조인 때문에 `.distinct()`가 필요한데, 같이 쓴 `select_related("db_instance__source", ...)`가 `DbInstance.extra`/`DbConfigSource.raw_content`/`DbConfigSource.extra`(전부 Oracle에서 NCLOB으로 매핑)까지 SELECT 목록에 끌고 들어와 DISTINCT 대상에 NCLOB이 섞인 게 원인. `.distinct()`는 실제로 필요한 조인이라 빼는 대신, 이 화면에서 안 쓰는 세 필드를 `.defer()`로 SELECT에서 제외해 수정(`dashboard/queries.py`의 기존 DB 인스턴스 목록 쿼리와 동일한 패턴). 로컬 Postgres에서는 이 제약이 없어 재현이 안 되던 사례 — CLAUDE.md에 이미 경고돼 있던 패턴이 실제로 반입 후에야 발견됨.
+
 ## 1.0.44
 
 - **DB 상세 모달 정리 + 동적 필드 노출 누락 수정** — DB 상세(`/dashboard/database/<pk>/`) 상단 요약 문단에 텍스트로 몰려있던 Role/Open Mode/Log Mode/Characterset/Platform 값을 인스턴스 카드와 동일한 표(label-value) 형태로 옮겨 가독성을 개선했다. 이 과정에서 `Db config source field definition`에 등록한 동적 필드(AUTO/MANUAL)가 목록 화면(`/dashboard/database/`)에는 컬럼으로 나오는데 상세 모달에는 아예 안 나타나던 문제를 발견 — `SystemDetailView`가 이미 쓰고 있던 패턴(`build_db_config_rows()`로 만든 row를 컨텍스트에 담아 상세 템플릿에서 `row.dynamic_cells`로 렌더링)을 `DbConfigDetailView`에도 동일하게 적용해 수정했다. 이제 OS(자산)/시스템/DB 세 상세 화면 전부 admin에서 필드를 추가하면 코드 수정 없이 목록·상세 양쪽에 반영된다(OS/시스템은 원래부터 정상 동작하고 있었음을 재확인).

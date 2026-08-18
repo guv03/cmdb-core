@@ -4,6 +4,11 @@
 
 ## 2026-08-18
 
+- **서비스 구성도 Oracle NCLOB 오류 긴급 수정(1.0.45)**: "이번 거 반입하고 구성도 보기 누르니까 에러남"이라며 K8s 로그 스크린샷 공유 — `dashboard/topology.py` line 135 `for data_source in data_sources`에서 `ORA-00932: inconsistent datatypes: expected - got NCLOB`
+  - 원인: 1.0.43에서 추가한 DB 노드용 `JeusDataSource` 조회가 `containers__id__in`(M2M)로 `.distinct()`가 필요한데, 같이 쓴 `select_related("db_instance__source", "db_instance__asset")`가 `DbInstance.extra`/`DbConfigSource.raw_content`/`DbConfigSource.extra`(Oracle NCLOB)까지 SELECT에 끌어들여 DISTINCT 대상에 NCLOB이 섞임 — CLAUDE.md에 이미 경고된 패턴을 로컬(Postgres) 검증에서 놓친 사례
+  - 수정: `.distinct()`는 실제 필요한 조인이라 유지, 안 쓰는 세 필드만 `.defer()`로 SELECT에서 제외(`dashboard/queries.py`의 `get_db_instance_queryset`과 동일 패턴 재사용)
+  - 로컬 Postgres로 실제 코드 경로(WAS 컨테이너→DB 매칭된 서비스 "CMP Web Service")를 태워 200 OK + SVG에 DB 노드/엣지 라벨(`DRNRODBS`/`DRNRNX_RNRAPP`) 정상 렌더링 확인(Oracle 자체가 없어 ORA-00932 재현은 못 하지만 원인·수정 방식은 기존 코드베이스 전역 패턴과 동일)
+  - 1.0.45로 VERSION/CHANGELOG 갱신 → `docker build`/`save`/zip 압축까지 통상 절차대로 진행
 - **로컬 개발 환경 기동**: `scripts/start.ps1`로 `docker compose up -d --build` + `migrate` 실행, curl 스모크 테스트(로그인 → `/dashboard/assets/` 200 OK, 타이틀/행 수 확인)까지 확인
 - **DB 상세 모달 정리(1.0.44)**: DB 상세(`/dashboard/database/<pk>/`)의 Role/Open Mode/Log Mode/Characterset/Platform이 상단 요약 문단에 텍스트로만 노출되던 걸 표 형태로 옮겨달라는 요청 — 인스턴스 카드와 같은 `table is-narrow is-fullwidth` label-value 표로 이동, 상단 요약은 수집 노드/최근 반영만 남김
   - 이어서 "DB명이 SID를 의미하냐"는 질문에 실제 샘플 데이터(RACDB12C: db_name=RACDB 하나에 인스턴스명 racdb1/racdb2로 갈림)로 확인해 SID는 `db_name`이 아니라 인스턴스별 `instance_name`에 해당한다고 답변
