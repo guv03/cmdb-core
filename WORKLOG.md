@@ -2,6 +2,16 @@
 
 일 단위로 진행한 작업을 기록한다. 새 날짜는 위에 추가한다.
 
+## 2026-08-18
+
+- **로컬 개발 환경 기동**: `scripts/start.ps1`로 `docker compose up -d --build` + `migrate` 실행, curl 스모크 테스트(로그인 → `/dashboard/assets/` 200 OK, 타이틀/행 수 확인)까지 확인
+- **DB 상세 모달 정리(1.0.44)**: DB 상세(`/dashboard/database/<pk>/`)의 Role/Open Mode/Log Mode/Characterset/Platform이 상단 요약 문단에 텍스트로만 노출되던 걸 표 형태로 옮겨달라는 요청 — 인스턴스 카드와 같은 `table is-narrow is-fullwidth` label-value 표로 이동, 상단 요약은 수집 노드/최근 반영만 남김
+  - 이어서 "DB명이 SID를 의미하냐"는 질문에 실제 샘플 데이터(RACDB12C: db_name=RACDB 하나에 인스턴스명 racdb1/racdb2로 갈림)로 확인해 SID는 `db_name`이 아니라 인스턴스별 `instance_name`에 해당한다고 답변
+  - **"Db config source field definition에 필드 추가하면 상세 모달에도 반영되는지" 확인 요청** — 코드 확인 결과 `DbConfigDetailView`가 동적 필드를 아예 컨텍스트에 안 담고 있어(목록 화면만 지원) 상세엔 반영 안 되는 걸 발견해 보고. 사용자 승인 후 `SystemDetailView`와 동일한 패턴(`build_db_config_rows()`로 만든 row를 컨텍스트에 추가)으로 수정, 테스트 필드로 실제 반영 확인 후 정리
+  - 후속으로 "OS/시스템 쪽도 마찬가지로 되는지" 확인 요청 — 두 화면(`AssetDetailView`/`SystemDetailView`) 모두 원래부터 동일 패턴을 쓰고 있어 정상 동작 중임을 코드 확인 + 테스트 필드로 실제 반영까지 재확인(둘 다 코드 수정 불필요)
+  - "내부망 오라클이라 오류날지" 확인 요청 — 이번 변경이 단순 pk 단건 조회(`select_related`/`prefetch_related`만 추가, `.distinct()`/`annotate()`/`order_by()` 없음)라 NCLOB(`ORA-00932`) 트리거 조건 자체가 없음을 관련 모델(TextField/JSONField 위치, Meta.ordering) 확인으로 점검해 안전하다고 답변
+  - 1.0.44로 VERSION/CHANGELOG 갱신 → `docker build`/`save`/zip 압축까지 통상 절차대로 진행
+
 ## 2026-08-14
 
 - **로컬 개발 환경 기동**: Docker Desktop이 꺼져있어 먼저 실행 후 엔진 준비될 때까지 대기, `.\scripts\start.ps1`로 기동 후 대시보드 200 응답까지 확인

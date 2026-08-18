@@ -7,14 +7,21 @@
 <h1 class="title is-4">{{ source.db_unique_name }} - {{ source.get_kind_display }}</h1>
 <p class="subtitle is-6">
   {% if source.asset %}수집 노드: <span class="dash-hostname">{{ source.asset.hostname }}</span><br>{% endif %}
-  {% if source.db_name %}DB명: {{ source.db_name }}<br>{% endif %}
-  {% if source.database_role %}Role: {{ source.database_role }}<br>{% endif %}
-  {% if source.open_mode %}Open Mode: {{ source.open_mode }}<br>{% endif %}
-  {% if source.log_mode %}Log Mode: {{ source.log_mode }}<br>{% endif %}
-  {% if source.characterset %}Characterset: {{ source.characterset }}<br>{% endif %}
-  {% if source.platform_name %}Platform: {{ source.platform_name }}<br>{% endif %}
   최근 반영: {{ source.last_pushed_at }}
 </p>
+<table class="table is-narrow is-fullwidth">
+  <tbody>
+    <tr><th style="width: 12em;">DB명</th><td>{{ source.db_name|default:"" }}</td></tr>
+    <tr><th>Role</th><td>{{ source.database_role|default:"" }}</td></tr>
+    <tr><th>Open Mode</th><td>{{ source.open_mode|default:"" }}</td></tr>
+    <tr><th>Log Mode</th><td>{{ source.log_mode|default:"" }}</td></tr>
+    <tr><th>Characterset</th><td>{{ source.characterset|default:"" }}</td></tr>
+    <tr><th>Platform</th><td>{{ source.platform_name|default:"" }}</td></tr>
+    {% for cell in row.dynamic_cells %}
+    <tr><th>{{ cell.label }}</th><td>{{ cell.value|default:"" }}</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
 <p class="help">RAC는 대표 노드 1대가 push를 실행하지만(위 "수집 노드"), 아래 인스턴스는 각자 다른 자산(물리 노드)에 속할 수 있습니다.</p>
 
 <h2 class="title is-6">인스턴스</h2>

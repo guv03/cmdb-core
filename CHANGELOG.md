@@ -5,6 +5,12 @@
 
 1.0.6까지의 이력은 이 파일 도입 전이라 별도 기록 없음 — `WORKLOG.md`의 해당 날짜 항목 참고.
 
+## 1.0.44
+
+- **DB 상세 모달 정리 + 동적 필드 노출 누락 수정** — DB 상세(`/dashboard/database/<pk>/`) 상단 요약 문단에 텍스트로 몰려있던 Role/Open Mode/Log Mode/Characterset/Platform 값을 인스턴스 카드와 동일한 표(label-value) 형태로 옮겨 가독성을 개선했다. 이 과정에서 `Db config source field definition`에 등록한 동적 필드(AUTO/MANUAL)가 목록 화면(`/dashboard/database/`)에는 컬럼으로 나오는데 상세 모달에는 아예 안 나타나던 문제를 발견 — `SystemDetailView`가 이미 쓰고 있던 패턴(`build_db_config_rows()`로 만든 row를 컨텍스트에 담아 상세 템플릿에서 `row.dynamic_cells`로 렌더링)을 `DbConfigDetailView`에도 동일하게 적용해 수정했다. 이제 OS(자산)/시스템/DB 세 상세 화면 전부 admin에서 필드를 추가하면 코드 수정 없이 목록·상세 양쪽에 반영된다(OS/시스템은 원래부터 정상 동작하고 있었음을 재확인).
+  - 단순 pk 단건 조회(`select_related`/`prefetch_related`만 추가, `.distinct()`/`annotate()`/`order_by()` 없음)라 Oracle NCLOB(`ORA-00932`) 위험과는 무관함을 모델 필드(TextField/JSONField 위치) 확인으로 별도 점검.
+  - 테스트 필드를 임시로 등록해 자산/시스템/DB 세 상세 화면에 실제로 값이 반영되는 것까지 확인 후 정리.
+
 ## 1.0.43
 
 - **서비스 구성도에 DB 노드 추가** — `/dashboard/services/topology/`가 지금까지 WEB↔WAS만 그렸는데, 이미 그래프에 있는 WAS 컨테이너가 참조하는 `JeusDataSource` 중 `db_instance`가 매칭된 것을 따라가 DB 노드/엣지까지 그린다(`dashboard/topology.py`). DB는 서비스에 직접 배정되는 대상이 아니라(서비스는 vhost/컨테이너에만 배정) 이미 그래프에 있는 WAS 컨테이너의 실제 연결을 따라 간접적으로만 편입 — WebToB<->JEUS 엣지와 같은 원칙(서비스 배정이 아니라 실제 연결을 따라감). 같은 DB 인스턴스를 여러 컨테이너가 공유하면 노드는 하나만 만들고 엣지만 컨테이너 수만큼 추가. 실제 서비스(CMP Web Service)로 WEB→WAS→DB 3단 연결이 SVG에 정상 렌더링되는 것까지 확인.

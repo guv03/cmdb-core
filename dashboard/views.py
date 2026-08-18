@@ -893,7 +893,15 @@ class DbConfigDetailView(LoginRequiredMixin, DetailView):
     context_object_name = "source"
 
     def get_queryset(self):
-        return DbConfigSource.objects.select_related("asset").prefetch_related("instances__asset")
+        return DbConfigSource.objects.select_related("asset").prefetch_related(
+            "instances__asset", "field_values__field_definition"
+        )
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        dynamic_field_definitions = list(get_db_config_dynamic_field_definitions())
+        context["row"] = build_db_config_rows([self.object], dynamic_field_definitions)[0]
+        return context
 
 
 class DbConfigHistoryListView(LoginRequiredMixin, ListView):
