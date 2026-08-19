@@ -5,6 +5,13 @@
 
 1.0.6까지의 이력은 이 파일 도입 전이라 별도 기록 없음 — `WORKLOG.md`의 해당 날짜 항목 참고.
 
+## 1.0.46
+
+- **서비스 네트워크(VIP/실서버) 매핑 신규 기능** — 운영계 이중화 구성에서 Apache/Nginx는 WebToB↔JEUS 커넥터와 달리 뒷단을 VIP/도메인 하나로만 지정해 설정 파일 내용만으로는 실서버가 몇 대인지 알 수 없다는 한계가 있어, 사람이 직접 등록하는 신규 `network` 앱(`ServiceNetworkMapping`/`ServiceNetworkBackend`)을 추가했다. 최상위 "네트워크" 탭(시스템↔서비스 사이)에서 서비스별 외부 도메인/공인 IP/내부 VIP/실서버 목록을 편집하며, 실서버는 hostname 우선·IP 재시도로 기존 자산에 자동 매칭된다. 서비스 구성도(`/dashboard/services/topology/`)에도 연동해 VIP를 마름모 노드로, 여기서 나가는 연결은 WebToB↔JEUS의 확인된 연결(실선)과 구분되게 점선으로 그린다.
+- **fix: JEUS↔WebToB 커넥터 자산 매칭 시 500 에러 잠재 버그 수정** — `was/sync.py`의 `_resolve_webtob_asset`이 `network-address`가 등록 안 된 hostname이면서 IP 형식도 아닌 경우 `Asset.primary_ip` 조회에서 바로 `ValueError`를 내며 JEUS push 전체가 실패할 수 있던 문제. 위 네트워크 매핑 기능을 구현하며 같은 패턴의 코드를 새로 작성하다 발견해 함께 수정.
+- **서비스(`core.Service`) 명시적 생성 정책으로 전환** — 지금까지 WEB/WAS 배정 화면이나 서비스 엑셀 업로드에서 새 이름을 입력하면 `get_or_create`로 조용히 새 Service가 생성됐는데, 서비스에 네트워크 매핑처럼 실제 데이터가 붙기 시작하면서 오타 하나가 기존 서비스와 어긋난 새 서비스를 만들어버리는 위험이 커져 정책을 바꿨다. 이제 배정 화면/엑셀 업로드 모두 기존에 등록된 서비스명만 선택 가능하고(입력창은 `<input list>` datalist로 오타 방지 보조), 새 서비스는 반드시 먼저 명시적으로 생성해야 한다.
+- **"서비스" 메뉴를 "서비스 관리"/"서비스 배정" 두 화면으로 분리** — "서비스 관리"(`/dashboard/services/manage/`)에서 Service 자체를 생성/이름변경/삭제하고(삭제 전 배정 건수 확인 가능, WEB/WAS FK는 SET_NULL이라 안전), "서비스 배정"(기존 `/dashboard/services/`)에서 WEB vhost/WAS 컨테이너에 서비스를 배정한다. 향후 서비스 그룹 등 Service에 속성이 늘어날 것을 염두에 둔 구조 변경.
+
 ## 1.0.45
 
 - **서비스 구성도 Oracle NCLOB 오류(ORA-00932) 긴급 수정** — 1.0.43에서 추가한 DB 노드를 내부망(Oracle)에서 실제로 열어보니 `/dashboard/services/topology/`가 500 에러(`django.db.utils.DatabaseError: ORA-00932: inconsistent datatypes: expected - got NCLOB`). `dashboard/topology.py`의 `JeusDataSource` 조회가 M2M(`containers__id__in`) 조인 때문에 `.distinct()`가 필요한데, 같이 쓴 `select_related("db_instance__source", ...)`가 `DbInstance.extra`/`DbConfigSource.raw_content`/`DbConfigSource.extra`(전부 Oracle에서 NCLOB으로 매핑)까지 SELECT 목록에 끌고 들어와 DISTINCT 대상에 NCLOB이 섞인 게 원인. `.distinct()`는 실제로 필요한 조인이라 빼는 대신, 이 화면에서 안 쓰는 세 필드를 `.defer()`로 SELECT에서 제외해 수정(`dashboard/queries.py`의 기존 DB 인스턴스 목록 쿼리와 동일한 패턴). 로컬 Postgres에서는 이 제약이 없어 재현이 안 되던 사례 — CLAUDE.md에 이미 경고돼 있던 패턴이 실제로 반입 후에야 발견됨.

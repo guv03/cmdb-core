@@ -2,6 +2,17 @@
 
 일 단위로 진행한 작업을 기록한다. 새 날짜는 위에 추가한다.
 
+## 2026-08-19
+
+- **로컬 환경 기동/종료 반복 확인**: `scripts/start.ps1`로 기동, `docker compose down`으로 종료, 다시 기동 — 볼륨(`pgdata`) 유지되는 것까지 확인.
+- **프로세스(어플리케이션 목록화) 개선 방향 검토(코드 변경 없음)**: 지금의 `ps -ef` 정규식 매칭 방식의 한계(매칭 1건만 저장, 컬럼 잘림, 오탐/미탐, 갑자기 사라짐 감지 못 함, 이미 아는 구조화 데이터와 교차검증 안 함)를 짚고 개선안 제시. WAS/WEB/DB 외 자유 등록 앱은 "떠있어야 할 자산" 기준값 자체가 없다는 한계도 논의 — 등록 기반(수동 목록)보다 관측 기반(baseline, 상태 변화 이력)이 더 실용적이라는 결론까지만 내고 "너무 딥해진다"는 판단으로 보류.
+- **운영계 이중화 구성에서 Apache↔WAS 연결 표현 방법 검토**: WebToB↔JEUS는 커넥터로 실제 연결을 설정 내용에서 뽑아낼 수 있지만, Apache는 VIP/도메인 하나로만 뒷단을 지정해 설정 파일에 실서버 정보가 전혀 없다는 근본적 한계를 확인(운영계는 단일 VIP/도메인 ProxyPass 구성이라고 확인받음). 서비스 배정 기준 추정(A안) vs 사람이 직접 VIP→실서버 매핑을 등록(B안)을 비교해 B안으로 결정.
+- **서비스 네트워크(VIP/실서버) 매핑 신규 기능 구현(1.0.46)**: 신규 `network` 앱(`ServiceNetworkMapping`/`ServiceNetworkBackend`), 최상위 "네트워크" 탭(처음엔 서비스 탭 하위에 뒀다가 사용자 요청으로 시스템↔서비스 사이 최상위 메뉴로 이동), 구성도에 VIP 노드(마름모)+점선 엣지 연동. 실서버 자산 매칭 로직(`network/resolve.py`)을 짜다가 `was/sync.py`의 `_resolve_webtob_asset`에도 같은 클래스의 버그(비-IP 문자열로 `primary_ip` 조회 시 500)가 있는 걸 발견해 같이 수정. Django test client로 자산 매칭/구성도 그래프 생성/SVG 렌더링까지 실제로 돌려 확인.
+- **서비스(`core.Service`) 명시적 생성 정책 전환**: 네트워크 매핑처럼 Service에 실제 데이터가 붙기 시작하면서 "타이핑하면 즉시 생성"(`get_or_create`) 방식이 오타로 기존 서비스와 어긋난 새 서비스를 만들 위험이 커진다는 지적을 받아, WEB/WAS 배정 편집과 서비스 엑셀 업로드 모두 기존 목록에서만 선택 가능하도록 변경(`_resolve_service`가 `ServiceNotFound` 예외, 엑셀은 `unknown_service_rows`로 분리). 서비스 엑셀 업로드 경로에도 같은 구멍이 있던 걸 놓치지 않고 함께 수정.
+- **"서비스" 메뉴를 "서비스 관리"/"서비스 배정" 두 화면으로 분리**: 사용자가 "서비스 그룹으로 묶을 계획이 있다"며 요청 — "서비스 관리"(생성/이름변경/삭제, 배정 건수 참고 표시)와 "서비스 배정"(WEB/WAS 배정)으로 나눔. 이름 변경 시 `WebServiceDomain.service_name` 비정규화 복사본도 같이 갱신되는 것, 삭제 시 FK가 SET_NULL되고 복사본이 비워지는 것까지 Django test client로 생성→배정→이름변경→중복이름거부→삭제 전체 라이프사이클 검증.
+- CLAUDE.md에 네트워크 매핑/서비스 관리·배정 분리 내용 전부 반영.
+- 1.0.46으로 VERSION/CHANGELOG 갱신 → `docker build`/`save`/zip 압축까지 통상 절차대로 진행.
+
 ## 2026-08-18
 
 - **서비스 구성도 Oracle NCLOB 오류 긴급 수정(1.0.45)**: "이번 거 반입하고 구성도 보기 누르니까 에러남"이라며 K8s 로그 스크린샷 공유 — `dashboard/topology.py` line 135 `for data_source in data_sources`에서 `ORA-00932: inconsistent datatypes: expected - got NCLOB`
