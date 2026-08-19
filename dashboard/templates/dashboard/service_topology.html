@@ -4,7 +4,7 @@
 
 {% block content %}
 <h1 class="title is-4">구성도</h1>
-<p class="subtitle is-6 has-text-grey">서비스 하나를 골라 WEB↔WAS↔시스템 연결을 확인합니다. 같은 물리 서버/OS는 한 번만 그려지고, WebToB↔JEUS로 실제 연결된 것만 화살표로 이어집니다 — Apache/Nginx는 아직 WAS 쪽 구조적 연결이 없어 독립 노드로만 나옵니다. 서비스 배정 자체를 수정하려면 <a href="{% url 'dashboard-webservice-list' %}">서비스</a> 화면을 이용하세요.</p>
+<p class="subtitle is-6 has-text-grey">서비스 하나를 골라 WEB↔WAS↔시스템 연결을 확인합니다. 같은 물리 서버/OS는 한 번만 그려지고, WebToB↔JEUS로 실제 연결된 것만 화살표로 이어집니다 — Apache/Nginx는 아직 WAS 쪽 구조적 연결이 없어 독립 노드로만 나옵니다. 서비스 배정 자체를 수정하려면 <a href="{% url 'dashboard-webservice-list' %}">서비스 배정</a> 화면을 이용하세요.</p>
 
 <form class="field has-addons" method="get">
   <div class="control is-expanded">

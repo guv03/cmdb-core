@@ -1,3 +1,5 @@
+import ipaddress
+
 from django.db import transaction
 
 from core.models import Asset
@@ -24,12 +26,20 @@ def _resolve_asset(node_name: str) -> Asset | None:
 
 def _resolve_webtob_asset(network_address: str) -> Asset | None:
     """network-address는 hostname일 수도 실제 IP일 수도 있어 hostname 매칭을 먼저
-    시도하고, 안 되면 primary_ip로 재시도한다."""
+    시도하고, 안 되면 primary_ip로 재시도한다. primary_ip(GenericIPAddressField)는 IP
+    형식이 아닌 문자열로 조회하면 DB 어댑터 단에서 바로 ValueError가 나므로(등록 안 된
+    hostname이면서 IP 형식도 아닌 값이 오는 경우 push 전체가 500으로 죽는 문제가 있었음),
+    IP 형식일 때만 그 조회를 시도한다(network.resolve.resolve_backend_asset과 동일 가드)."""
     if not network_address:
         return None
     asset = Asset.objects.filter(hostname=normalize_hostname(network_address)).first()
     if asset is not None:
         return asset
+
+    try:
+        ipaddress.ip_address(network_address)
+    except ValueError:
+        return None
     return Asset.objects.filter(primary_ip=network_address).first()
 
 

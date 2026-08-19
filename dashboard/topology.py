@@ -11,6 +11,7 @@ import subprocess
 
 from django.urls import reverse
 
+from network.models import ServiceNetworkMapping
 from systems.models import SystemVm
 from was.models import JeusContainer, JeusDataSource, JeusWebtobConnector
 from webconfig.models import ApacheVhost, NginxVhost, WebtobVhost
@@ -61,6 +62,7 @@ def build_service_topology_graph(service) -> dict:
 
     nodes = []
     web_node_id_by_vhost = {}
+    proxy_web_node_ids = []  # apache/nginx는 webtob-connector가 없어 VIP 매핑 엣지 대상
     for kind, vhosts in (
         ("webtob", webtob_vhosts),
         ("apache", apache_vhosts),
@@ -87,8 +89,11 @@ def build_service_topology_graph(service) -> dict:
             )
             if kind == "webtob":
                 web_node_id_by_vhost[vhost.id] = node_id
+            else:
+                proxy_web_node_ids.append(node_id)
 
     was_node_id_by_container = {}
+    was_node_id_by_asset = {}
     for container in containers:
         node_id = f"was_{container.id}"
         nodes.append(
@@ -100,6 +105,11 @@ def build_service_topology_graph(service) -> dict:
             }
         )
         was_node_id_by_container[container.id] = node_id
+        if container.asset_id is not None:
+            # 같은 asset에 컨테이너가 여러 개면 첫 번째만 - VIP 매핑 엣지는 "이 실서버 즈음"을
+            # 보여주는 용도라 완전한 목록보다 간단한 매칭 하나로 충분(_system_host_for_asset와
+            # 같은 원칙).
+            was_node_id_by_asset.setdefault(container.asset_id, node_id)
 
     edges = []
     if webtob_vhosts:
@@ -156,6 +166,42 @@ def build_service_topology_graph(service) -> dict:
                 if from_id is not None:
                     edges.append({"from": from_id, "to": node_id, "label": data_source.data_source_id})
 
+    # Apache/Nginx는 WebToB-JEUS와 달리 설정 내용에 뒷단 실서버 정보가 전혀 없다(VIP/도메인
+    # 하나로만 지정하는 이중화 구성) - 사람이 "서비스" 탭에서 직접 등록한 network.ServiceNetworkMapping
+    # 이 유일한 출처다. 확인된 연결(webtob-connector, db_instance)과 구분되게 점선으로 그려서
+    # "실제 파싱된 연결"과 "사람이 등록한 추정 연결"을 섞어보이지 않게 한다.
+    if proxy_web_node_ids:
+        try:
+            network_mapping = service.network_mapping
+        except ServiceNetworkMapping.DoesNotExist:
+            network_mapping = None
+
+        if network_mapping is not None:
+            target_ids = []
+            for backend in network_mapping.backends.exclude(asset=None).select_related("asset"):
+                target_id = was_node_id_by_asset.get(backend.asset_id)
+                if target_id is not None and target_id not in target_ids:
+                    target_ids.append(target_id)
+
+            if target_ids:
+                vip_label_lines = [network_mapping.internal_vip or "VIP"]
+                if network_mapping.external_domain:
+                    vip_label_lines.append(network_mapping.external_domain)
+                vip_node_id = f"vip_{service.id}"
+                nodes.append(
+                    {
+                        "id": vip_node_id,
+                        "label": "\n".join(vip_label_lines),
+                        "kind": "network",
+                        "asset": None,
+                        "detail_url": None,
+                    }
+                )
+                for from_id in proxy_web_node_ids:
+                    edges.append({"from": from_id, "to": vip_node_id, "label": "VIP", "style": "dashed"})
+                for to_id in target_ids:
+                    edges.append({"from": vip_node_id, "to": to_id, "label": "", "style": "dashed"})
+
     return {"nodes": nodes, "edges": edges}
 
 
@@ -169,7 +215,11 @@ def render_topology_svg(graph: dict) -> str:
     순으로 묶어 중첩 cluster로 만든다 - 같은 asset을 쓰는 노드가 여러 개면 자연히 한
     OS 박스 안에 같이 들어간다(예: 같은 서버에 WebToB/JEUS가 같이 뜬 경우)."""
     by_system: dict = {}
+    network_nodes = []  # VIP 등 asset(OS)에 속하지 않는 노드는 클러스터 밖에 독립 도형으로
     for node in graph["nodes"]:
+        if node.get("kind") == "network":
+            network_nodes.append(node)
+            continue
         asset = node["asset"]
         system = _system_host_for_asset(asset) if asset else None
         system_key = system.id if system else None
@@ -227,8 +277,19 @@ def render_topology_svg(graph: dict) -> str:
         if system is not None:
             lines.append("  }")
 
+    for node in network_nodes:
+        # VIP는 실제 OS 박스가 아니라 사람이 등록한 네트워크 주소 개념이라 System/OS 클러스터에
+        # 넣지 않고 마름모(diamond)로 독립 표시 - 다른 노드(box)와 형태부터 다르게 구분.
+        lines.append(
+            f'  {node["id"]} [label={_dot_escape(node["label"])}, shape=diamond, '
+            'fillcolor="#fff8e1", color="#e0c46c"];'
+        )
+
     for edge in graph["edges"]:
-        lines.append(f'  {edge["from"]} -> {edge["to"]} [label={_dot_escape(edge["label"] or "")}];')
+        style_attr = f', style={_dot_escape(edge["style"])}' if edge.get("style") else ""
+        lines.append(
+            f'  {edge["from"]} -> {edge["to"]} [label={_dot_escape(edge["label"] or "")}{style_attr}];'
+        )
 
     lines.append("}")
     dot_text = "\n".join(lines)

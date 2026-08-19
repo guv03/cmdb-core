@@ -1,0 +1,250 @@
+{% extends "dashboard/base.html" %}
+
+{% block title %}서비스 관리 - CMDB{% endblock %}
+
+{% block content %}
+{% csrf_token %}
+<div class="level">
+  <div class="level-left">
+    <h1 class="title is-4">서비스 관리</h1>
+  </div>
+  <div class="level-right">
+    <div class="buttons">
+      <button class="button is-link" type="button" id="newServiceBtn">새 서비스 등록</button>
+    </div>
+  </div>
+</div>
+<p class="subtitle is-6 has-text-grey">Service 자체를 만들고 이름을 바꾸거나 지웁니다. WEB vhost/WAS 컨테이너에 배정하는 건 <a href="{% url 'dashboard-webservice-list' %}">서비스 배정</a> 탭에서 합니다 — 새 이름을 그쪽에서 타이핑한다고 만들어지지 않습니다.</p>
+
+<form class="field has-addons" method="get">
+  <div class="control is-expanded">
+    <input class="input" type="text" name="q" value="{{ request.GET.q }}" placeholder="서비스명 검색">
+  </div>
+  <div class="control">
+    <button class="button is-link" type="submit">검색</button>
+  </div>
+</form>
+
+<div class="table-container">
+  <table class="table is-fullwidth is-hoverable is-striped">
+    <thead>
+      <tr>
+        <th>서비스명</th>
+        <th>배정 건수</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for service in services %}
+      <tr>
+        <td>
+          <span class="editable-cell dash-editable-cell" data-id="{{ service.pk }}" data-name="{{ service.name }}">
+            <span class="cell-value">{{ service.name }}</span><span class="dash-manual-icon" aria-hidden="true">✎</span>
+          </span>
+        </td>
+        <td>{{ service.assignment_count }}</td>
+        <td>
+          <a class="button is-light is-small" href="{% url 'dashboard-service-topology' %}?name={{ service.name|urlencode }}">구성도</a>
+          <button type="button" class="button is-danger is-outlined is-small dash-service-delete-btn" data-id="{{ service.pk }}" data-name="{{ service.name }}" data-count="{{ service.assignment_count }}">삭제</button>
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="3" class="has-text-grey">등록된 서비스가 없습니다.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<nav class="pagination" role="navigation" aria-label="pagination">
+  {% if page_obj.has_previous %}
+    <a class="pagination-previous" href="{% querystring page=page_obj.previous_page_number %}">이전</a>
+  {% else %}
+    <a class="pagination-previous" disabled>이전</a>
+  {% endif %}
+  {% if page_obj.has_next %}
+    <a class="pagination-next" href="{% querystring page=page_obj.next_page_number %}">다음</a>
+  {% else %}
+    <a class="pagination-next" disabled>다음</a>
+  {% endif %}
+  <span class="pagination-list">
+    <span class="pagination-link is-current">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
+  </span>
+</nav>
+
+<div class="modal" id="newServiceModal">
+  <div class="modal-background"></div>
+  <div class="modal-card" style="width: 90%; max-width: 420px;">
+    <header class="modal-card-head">
+      <p class="modal-card-title">새 서비스 등록</p>
+      <button class="delete" aria-label="close" id="newServiceModalClose"></button>
+    </header>
+    <section class="modal-card-body">
+      <div class="field">
+        <input class="input" type="text" id="newServiceNameInput" placeholder="서비스명">
+      </div>
+      <p class="help is-danger" id="newServiceError" style="display: none;"></p>
+    </section>
+    <footer class="modal-card-foot">
+      <button type="button" class="button is-link" id="newServiceSave">등록</button>
+      <button type="button" class="button" id="newServiceCancel">취소</button>
+    </footer>
+  </div>
+</div>
+
+<div class="modal" id="serviceRenameModal">
+  <div class="modal-background"></div>
+  <div class="modal-card" style="width: 90%; max-width: 420px;">
+    <header class="modal-card-head">
+      <p class="modal-card-title">서비스명 변경</p>
+      <button class="delete" aria-label="close" id="serviceRenameModalClose"></button>
+    </header>
+    <section class="modal-card-body">
+      <div class="field">
+        <input class="input" type="text" id="serviceRenameInput">
+      </div>
+      <p class="help is-danger" id="serviceRenameError" style="display: none;"></p>
+    </section>
+    <footer class="modal-card-foot">
+      <button type="button" class="button is-link" id="serviceRenameSave">저장</button>
+      <button type="button" class="button" id="serviceRenameCancel">취소</button>
+    </footer>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_body %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  function getCsrfToken() {
+    var input = document.querySelector('input[name=csrfmiddlewaretoken]');
+    return input ? input.value : '';
+  }
+
+  // 새 서비스 등록
+  var newServiceModal = document.getElementById('newServiceModal');
+  var newServiceNameInput = document.getElementById('newServiceNameInput');
+  var newServiceError = document.getElementById('newServiceError');
+  var newServiceSave = document.getElementById('newServiceSave');
+  var newServiceCancel = document.getElementById('newServiceCancel');
+
+  function closeNewServiceModal() {
+    newServiceModal.classList.remove('is-active');
+  }
+
+  document.getElementById('newServiceBtn').addEventListener('click', function () {
+    newServiceError.style.display = 'none';
+    newServiceNameInput.value = '';
+    newServiceModal.classList.add('is-active');
+    newServiceNameInput.focus();
+  });
+
+  newServiceSave.addEventListener('click', function () {
+    newServiceSave.classList.add('is-loading');
+    fetch('{% url "dashboard-service-create" %}', {
+      method: 'POST',
+      headers: {
+        'X-CSRFToken': getCsrfToken(),
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({ name: newServiceNameInput.value }),
+    })
+      .then(function (res) { return res.json(); })
+      .then(function (data) {
+        if (data.error) {
+          newServiceSave.classList.remove('is-loading');
+          newServiceError.textContent = data.error;
+          newServiceError.style.display = 'block';
+          return;
+        }
+        window.location.reload();
+      })
+      .catch(function () {
+        newServiceSave.classList.remove('is-loading');
+        newServiceError.textContent = '등록 실패';
+        newServiceError.style.display = 'block';
+      });
+  });
+
+  newServiceCancel.addEventListener('click', closeNewServiceModal);
+  document.getElementById('newServiceModalClose').addEventListener('click', closeNewServiceModal);
+  newServiceModal.querySelector('.modal-background').addEventListener('click', closeNewServiceModal);
+
+  // 이름 변경
+  var renameModal = document.getElementById('serviceRenameModal');
+  var renameInput = document.getElementById('serviceRenameInput');
+  var renameError = document.getElementById('serviceRenameError');
+  var renameSave = document.getElementById('serviceRenameSave');
+  var renameCancel = document.getElementById('serviceRenameCancel');
+  var activeRenameCell = null;
+
+  function closeRenameModal() {
+    renameModal.classList.remove('is-active');
+    activeRenameCell = null;
+  }
+
+  document.querySelectorAll('.dash-editable-cell').forEach(function (cell) {
+    cell.addEventListener('click', function () {
+      activeRenameCell = cell;
+      renameError.style.display = 'none';
+      renameInput.value = cell.dataset.name;
+      renameModal.classList.add('is-active');
+      renameInput.focus();
+    });
+  });
+
+  renameSave.addEventListener('click', function () {
+    if (!activeRenameCell) return;
+    renameSave.classList.add('is-loading');
+    fetch('/dashboard/services/' + activeRenameCell.dataset.id + '/rename/', {
+      method: 'POST',
+      headers: {
+        'X-CSRFToken': getCsrfToken(),
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({ name: renameInput.value }),
+    })
+      .then(function (res) { return res.json(); })
+      .then(function (data) {
+        if (data.error) {
+          renameSave.classList.remove('is-loading');
+          renameError.textContent = data.error;
+          renameError.style.display = 'block';
+          return;
+        }
+        window.location.reload();
+      })
+      .catch(function () {
+        renameSave.classList.remove('is-loading');
+        renameError.textContent = '저장 실패';
+        renameError.style.display = 'block';
+      });
+  });
+
+  renameCancel.addEventListener('click', closeRenameModal);
+  document.getElementById('serviceRenameModalClose').addEventListener('click', closeRenameModal);
+  renameModal.querySelector('.modal-background').addEventListener('click', closeRenameModal);
+
+  // 삭제
+  document.querySelectorAll('.dash-service-delete-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var message = '"' + btn.dataset.name + '" 서비스를 삭제할까요?';
+      if (parseInt(btn.dataset.count, 10) > 0) {
+        message += '\n현재 ' + btn.dataset.count + '건의 WEB/WAS 배정이 풀립니다(vhost/컨테이너 자체는 안 지워짐).';
+      }
+      if (!confirm(message)) return;
+
+      btn.classList.add('is-loading');
+      fetch('/dashboard/services/' + btn.dataset.id + '/delete/', {
+        method: 'POST',
+        headers: { 'X-CSRFToken': getCsrfToken() },
+      })
+        .then(function () { window.location.reload(); })
+        .catch(function () {
+          btn.classList.remove('is-loading');
+          alert('삭제 실패');
+        });
+    });
+  });
+});
+</script>
+{% endblock %}

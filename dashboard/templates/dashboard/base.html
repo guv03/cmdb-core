@@ -164,12 +164,16 @@
         </div>
         <a class="navbar-item {% if request.resolver_match.url_name == 'dashboard-system-list' %}is-active{% endif %}"
            href="{% url 'dashboard-system-list' %}">시스템</a>
+        <a class="navbar-item {% if request.resolver_match.url_name == 'dashboard-network-list' %}is-active{% endif %}"
+           href="{% url 'dashboard-network-list' %}">네트워크</a>
         <div class="navbar-item has-dropdown is-hoverable">
-          <a class="navbar-link {% if request.resolver_match.url_name == 'dashboard-webservice-list' or request.resolver_match.url_name == 'dashboard-service-topology' %}is-active{% endif %}"
+          <a class="navbar-link {% if request.resolver_match.url_name == 'dashboard-service-manage' or request.resolver_match.url_name == 'dashboard-webservice-list' or request.resolver_match.url_name == 'dashboard-service-topology' %}is-active{% endif %}"
              href="{% url 'dashboard-webservice-list' %}">서비스</a>
           <div class="navbar-dropdown">
+            <a class="navbar-item {% if request.resolver_match.url_name == 'dashboard-service-manage' %}is-active{% endif %}"
+               href="{% url 'dashboard-service-manage' %}">서비스 관리</a>
             <a class="navbar-item {% if request.resolver_match.url_name == 'dashboard-webservice-list' %}is-active{% endif %}"
-               href="{% url 'dashboard-webservice-list' %}">서비스 조회</a>
+               href="{% url 'dashboard-webservice-list' %}">서비스 배정</a>
             <a class="navbar-item {% if request.resolver_match.url_name == 'dashboard-service-topology' %}is-active{% endif %}"
                href="{% url 'dashboard-service-topology' %}">구성도</a>
           </div>

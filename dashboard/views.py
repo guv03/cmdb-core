@@ -63,6 +63,8 @@ from dashboard.queries import (
     get_os_version_breakdown,
     get_process_queryset,
     get_service_container_queryset,
+    get_service_manage_queryset,
+    get_service_network_queryset,
     get_system_host_dynamic_field_definitions,
     get_system_host_queryset,
     get_system_hosts_for_vms,
@@ -88,6 +90,8 @@ from database.excel_import import (
 from database.models import DbConfigSource, DbConfigSourceFieldDefinition, DbConfigSourceFieldValue
 from facts.dynamic_fields import coerce_fact_value, is_valid_choice
 from facts.models import FactFieldDefinition, HostFactValue
+from network.models import ServiceNetworkMapping
+from network.sync import sync_backends
 from processes.models import ProcessSnapshot
 from webconfig.diff import unified_diff_lines
 from webconfig.excel_import import (
@@ -111,13 +115,27 @@ from was.models import JeusContainer, WasConfigSource
 from webconfig.models import WebConfigSource, WebServiceDomain, WebtobVhost
 
 
+class ServiceNotFound(Exception):
+    """_resolve_service가 존재하지 않는 서비스명을 받았을 때 - 오타로 새 Service가 조용히
+    생기는 걸 막기 위해(네트워크 매핑 등 Service에 붙는 데이터가 늘면서 이제 오타 하나가
+    엉뚱한 새 Service를 만들면 기존 서비스에 매달린 정보와 어긋나 버림) get_or_create 대신
+    엄격하게 조회만 하고, 없으면 이 예외를 던져 호출부가 에러로 응답하게 한다."""
+
+    def __init__(self, name: str):
+        self.name = name
+        super().__init__(name)
+
+
 def _resolve_service(name: str) -> Service | None:
-    """서비스명 인라인 편집 입력을 core.Service로 변환 - 같은 이름이면 기존 Service를
-    재사용하고(get_or_create), 빈 문자열이면 연결 해제(None)."""
+    """서비스명 인라인 편집 입력을 core.Service로 변환 - 기존 목록에서만 찾는다(신규 서비스는
+    "서비스" 탭의 별도 등록 폼(ServiceCreateView)에서 명시적으로 먼저 만들어야 함). 빈
+    문자열이면 연결 해제(None), 존재하지 않는 이름이면 ServiceNotFound."""
     name = (name or "").strip()
     if not name:
         return None
-    service, _ = Service.objects.get_or_create(name=name)
+    service = Service.objects.filter(name=name).first()
+    if service is None:
+        raise ServiceNotFound(name)
     return service
 
 
@@ -1154,6 +1172,73 @@ class ServiceImportConfirmView(LoginRequiredMixin, View):
         return redirect("dashboard-webservice-list")
 
 
+class ServiceManageListView(LoginRequiredMixin, ListView):
+    """"서비스 관리" 탭 - Service 객체 자체의 생성/이름변경/삭제. WEB/WAS 배정("서비스 배정"
+    탭)과 분리한 이유: Service가 이제 이름 하나짜리 라벨이 아니라 실제 데이터(네트워크
+    매핑, 앞으로는 서비스 그룹 등)가 붙는 개체라서 "정의를 관리하는 화면"과 "그 정의를
+    vhost/컨테이너에 배정하는 화면"을 나누는 게 이 프로젝트의 다른 정의/값 구조(예:
+    FactFieldDefinition vs 값)와 결이 맞는다."""
+
+    template_name = "dashboard/service_manage.html"
+    context_object_name = "services"
+    paginate_by = 50
+
+    def get_queryset(self):
+        return get_service_manage_queryset(self.request)
+
+
+class ServiceCreateView(LoginRequiredMixin, View):
+    """"서비스 관리" 탭의 "새 서비스 등록" 폼 - 이름만 입력해 core.Service를 명시적으로
+    만든다. WEB/WAS 배정 편집(_resolve_service)은 기존 목록에서만 고를 수 있고(오타로 새
+    Service가 조용히 생기는 걸 막기 위해 get_or_create 폐지) 새 서비스를 쓰려면 먼저
+    여기서 만들어야 한다."""
+
+    def post(self, request):
+        name = request.POST.get("name", "").strip()
+        if not name:
+            return JsonResponse({"error": "서비스명을 입력하세요."}, status=400)
+        if Service.objects.filter(name=name).exists():
+            return JsonResponse({"error": "이미 존재하는 서비스명입니다."}, status=400)
+
+        service = Service.objects.create(name=name)
+        return JsonResponse({"id": service.id, "name": service.name})
+
+
+class ServiceRenameView(LoginRequiredMixin, View):
+    """"서비스 관리" 탭의 이름 변경. Service 자신은 FK라 이름을 바꿔도 WEB/WAS 배정(FK 참조)
+    은 자동으로 새 이름을 따라가지만, `WebServiceDomain.service_name`은 문자열 비정규화
+    복사본이라 여기서 같이 갱신해야 다음 push 전까지 헌 이름이 남아있는 걸 막을 수 있다."""
+
+    def post(self, request, pk):
+        service = get_object_or_404(Service, pk=pk)
+        new_name = request.POST.get("name", "").strip()
+        if not new_name:
+            return JsonResponse({"error": "서비스명을 입력하세요."}, status=400)
+        if Service.objects.exclude(pk=pk).filter(name=new_name).exists():
+            return JsonResponse({"error": "이미 존재하는 서비스명입니다."}, status=400)
+
+        old_name = service.name
+        service.name = new_name
+        service.save(update_fields=["name"])
+        WebServiceDomain.objects.filter(service_name=old_name).update(service_name=new_name)
+
+        return JsonResponse({"id": service.id, "name": service.name})
+
+
+class ServiceDeleteView(LoginRequiredMixin, View):
+    """"서비스 관리" 탭의 삭제. WEB/WAS의 `service` FK가 전부 SET_NULL이라 vhost/컨테이너
+    자체는 안 지워지고 배정만 풀린다(ServiceNetworkMapping은 CASCADE라 같이 지워짐 - 서비스가
+    없어졌으니 그 서비스의 네트워크 매핑도 같이 사라지는 게 맞음). `WebServiceDomain.service_name`
+    비정규화 복사본만 따로 비워준다."""
+
+    def post(self, request, pk):
+        service = get_object_or_404(Service, pk=pk)
+        name = service.name
+        service.delete()
+        WebServiceDomain.objects.filter(service_name=name).update(service_name="")
+        return JsonResponse({"deleted": True})
+
+
 class WebServiceListView(LoginRequiredMixin, ListView):
     """WEB(도메인 기준, WebServiceDomain)과 WAS(컨테이너 기준, JeusContainer)를 한 화면에
     나란히 보여준다 - 서비스 배정을 여기서만 편집하고(vhost/컨테이너 목록 화면은 읽기 전용)
@@ -1173,6 +1258,7 @@ class WebServiceListView(LoginRequiredMixin, ListView):
             self.request, ["service_name", "domain", "port", "hostname", "kind"], default="domain"
         )
         context["was_rows"] = get_service_container_queryset(self.request)
+        context["all_service_names"] = list(Service.objects.order_by("name").values_list("name", flat=True))
         return context
 
 
@@ -1187,7 +1273,12 @@ class WebServiceDomainServiceUpdateView(LoginRequiredMixin, View):
 
     def post(self, request, pk):
         service_domain = get_object_or_404(WebServiceDomain, pk=pk)
-        service = _resolve_service(request.POST.get("service_name", ""))
+        try:
+            service = _resolve_service(request.POST.get("service_name", ""))
+        except ServiceNotFound as exc:
+            return JsonResponse(
+                {"error": f'등록되지 않은 서비스명입니다: "{exc.name}". 먼저 서비스를 생성하세요.'}, status=400
+            )
         force = request.POST.get("force") == "1"
 
         if service_domain.source.kind == WebConfigSource.Kind.WEBTOB:
@@ -1227,7 +1318,12 @@ class ServiceContainerUpdateView(LoginRequiredMixin, View):
 
     def post(self, request, pk):
         container = get_object_or_404(JeusContainer, pk=pk)
-        service = _resolve_service(request.POST.get("service_name", ""))
+        try:
+            service = _resolve_service(request.POST.get("service_name", ""))
+        except ServiceNotFound as exc:
+            return JsonResponse(
+                {"error": f'등록되지 않은 서비스명입니다: "{exc.name}". 먼저 서비스를 생성하세요.'}, status=400
+            )
         force = request.POST.get("force") == "1"
 
         result = apply_container_service(container, service, force=force)
@@ -1242,6 +1338,52 @@ class ServiceContainerUpdateView(LoginRequiredMixin, View):
             )
 
         return JsonResponse({"service_name": service.name if service else ""})
+
+
+class ServiceNetworkListView(LoginRequiredMixin, ListView):
+    """네트워크 탭(최상위 메뉴, 시스템↔서비스 사이) - 서비스 단위 VIP/실서버 매핑 전용 화면.
+    Apache/Nginx는 설정 파일 내용만으로는 VIP/도메인 뒤의 실서버를 알 수 없어(운영계 이중화
+    구성) 여기서 사람이 직접 등록한다. 처음엔 서비스 탭 하위에 뒀었으나, "물리 인프라(시스템)
+    ↔ 서비스 배정" 사이를 잇는 별개의 계층(네트워크 경로)이라는 성격이 뚜렷해 최상위 메뉴로
+    분리했다. 서비스 개수 자체가 vhost 대비 훨씬 적어 WAS 표와 동일하게 별도 정렬/페이지네이션
+    없이 이름순 전체 표시."""
+
+    template_name = "dashboard/network_list.html"
+    context_object_name = "network_rows"
+
+    def get_queryset(self):
+        return get_service_network_queryset(self.request)
+
+
+class ServiceNetworkMappingUpdateView(LoginRequiredMixin, View):
+    """네트워크 탭에서의 도메인/공인IP/내부VIP/실서버 목록 편집. 어떤 push에도 안 나오는
+    순수 사람 지식이라(Apache/Nginx 설정엔 VIP 뒤 실서버 정보가 없음) 이 화면이 유일한
+    입력 창구다. 실서버 목록은 매 저장마다 통짜 교체(network.sync.sync_backends) - push가
+    아니라 사람이 그 자리에서 제출한 값이라 diff 이력 없이 바로 반영해도 안전하다."""
+
+    def post(self, request, pk):
+        service = get_object_or_404(Service, pk=pk)
+        mapping, _ = ServiceNetworkMapping.objects.get_or_create(service=service)
+
+        mapping.external_domain = request.POST.get("external_domain", "").strip()
+        mapping.external_ip = request.POST.get("external_ip", "").strip()
+        mapping.internal_vip = request.POST.get("internal_vip", "").strip()
+        mapping.save()
+
+        backend_lines = request.POST.get("backends", "").splitlines()
+        sync_backends(mapping, backend_lines)
+
+        return JsonResponse(
+            {
+                "external_domain": mapping.external_domain,
+                "external_ip": mapping.external_ip,
+                "internal_vip": mapping.internal_vip,
+                "backends": [
+                    {"ip_or_hostname": b.ip_or_hostname, "asset_hostname": b.asset.hostname if b.asset else None}
+                    for b in mapping.backends.select_related("asset").all()
+                ],
+            }
+        )
 
 
 class ServiceTopologyView(LoginRequiredMixin, TemplateView):

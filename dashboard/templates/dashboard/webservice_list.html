@@ -1,12 +1,12 @@
 {% extends "dashboard/base.html" %}
 
-{% block title %}서비스 - CMDB{% endblock %}
+{% block title %}서비스 배정 - CMDB{% endblock %}
 
 {% block content %}
 {% csrf_token %}
 <div class="level">
   <div class="level-left">
-    <h1 class="title is-4">서비스</h1>
+    <h1 class="title is-4">서비스 배정</h1>
   </div>
   <div class="level-right">
     <div class="buttons">
@@ -15,7 +15,11 @@
     </div>
   </div>
 </div>
-<p class="subtitle is-6 has-text-grey">서비스 배정은 여기서만 편집합니다 — WEB/WAS 목록 화면은 읽기 전용입니다. WebToB↔JEUS처럼 실제로 연결된 쪽은 한쪽만 고쳐도 반대쪽까지 같이 맞춰집니다(연결된 쪽이 이미 다른 서비스명을 갖고 있으면 먼저 확인을 받습니다).</p>
+<p class="subtitle is-6 has-text-grey">WEB vhost/WAS 컨테이너에 서비스를 배정합니다 — WebToB↔JEUS처럼 실제로 연결된 쪽은 한쪽만 고쳐도 반대쪽까지 같이 맞춰집니다(연결된 쪽이 이미 다른 서비스명을 갖고 있으면 먼저 확인을 받습니다). 서비스명은 여기서 새로 타이핑한다고 만들어지지 않습니다 — <a href="{% url 'dashboard-service-manage' %}">서비스 관리</a>에서 먼저 만드세요.</p>
+
+<datalist id="serviceNamesDatalist">
+  {% for name in all_service_names %}<option value="{{ name }}"></option>{% endfor %}
+</datalist>
 
 <form class="field has-addons" method="get">
   <div class="control is-expanded">
@@ -151,7 +155,7 @@
     </header>
     <section class="modal-card-body">
       <div class="field">
-        <input class="input" type="text" id="serviceCellInput">
+        <input class="input" type="text" id="serviceCellInput" list="serviceNamesDatalist" autocomplete="off">
       </div>
       <p class="help is-danger" id="serviceCellError" style="display: none;"></p>
     </section>
@@ -225,6 +229,12 @@ document.addEventListener('DOMContentLoaded', function () {
               window.location.reload();
             });
           }
+          return;
+        }
+        if (data.error) {
+          saveBtn.classList.remove('is-loading');
+          errorEl.textContent = data.error;
+          errorEl.style.display = 'block';
           return;
         }
         window.location.reload();

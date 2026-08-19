@@ -33,6 +33,7 @@ INSTALLED_APPS = [
     "was",
     "systems",
     "database",
+    "network",
     "dashboard",
 ]
 

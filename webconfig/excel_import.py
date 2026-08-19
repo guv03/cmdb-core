@@ -73,9 +73,22 @@ class UnmatchedRow:
 
 
 @dataclass
+class UnknownServiceRow:
+    """(hostname, vhost)는 매칭됐지만 새로 지정한 서비스명이 등록된 core.Service에 없는 경우
+    - 대시보드 인라인 편집(_resolve_service)과 동일하게, 오타로 새 Service가 조용히 생기는
+    걸 막기 위해 여기서도 get_or_create를 안 쓴다. 확정 대상에서 빼고 미리보기에 따로 보여준다."""
+
+    row_number: int
+    hostname: str
+    vhost_name: str
+    attempted_name: str
+
+
+@dataclass
 class ServiceImportResult:
     service_name_updates: list[ServiceNameUpdate]
     unmatched_rows: list[UnmatchedRow]
+    unknown_service_rows: list[UnknownServiceRow]
 
 
 def export_service_workbook() -> HttpResponse:
@@ -189,9 +202,14 @@ def parse_service_workbook(uploaded_file) -> ServiceImportResult:
         )
     )
     row_map = {(sd.source.asset.hostname, sd.vhost_name): sd for sd in service_domains}
+    # 대시보드 인라인 편집(_resolve_service)과 동일한 정책 - 오타로 새 Service가 조용히
+    # 생기는 걸 막기 위해 기존에 등록된 서비스명만 반영 대상으로 허용한다(새 서비스는
+    # "서비스" 탭의 "새 서비스 등록"으로 먼저 만들어야 함).
+    existing_service_names = set(Service.objects.values_list("name", flat=True))
 
     service_name_updates: list[ServiceNameUpdate] = []
     unmatched_rows: list[UnmatchedRow] = []
+    unknown_service_rows: list[UnknownServiceRow] = []
 
     for row_number, hostname, vhost_name, row in raw_rows:
         service_domain = row_map.get((hostname, vhost_name))
@@ -206,6 +224,16 @@ def parse_service_workbook(uploaded_file) -> ServiceImportResult:
             if cell_value not in (None, ""):
                 new_value = str(cell_value).strip()
                 if new_value != service_domain.service_name:
+                    if new_value not in existing_service_names:
+                        unknown_service_rows.append(
+                            UnknownServiceRow(
+                                row_number=row_number,
+                                hostname=hostname,
+                                vhost_name=vhost_name,
+                                attempted_name=new_value,
+                            )
+                        )
+                        continue
                     service_name_updates.append(
                         ServiceNameUpdate(
                             row_number=row_number,
@@ -220,6 +248,7 @@ def parse_service_workbook(uploaded_file) -> ServiceImportResult:
     return ServiceImportResult(
         service_name_updates=service_name_updates,
         unmatched_rows=unmatched_rows,
+        unknown_service_rows=unknown_service_rows,
     )
 
 
@@ -244,7 +273,10 @@ def apply_service_updates(payload: list[dict]) -> tuple[int, int]:
             new_value = item["new_value"]
             service = None
             if new_value:
-                service, _ = Service.objects.get_or_create(name=new_value)
+                # 미리보기(parse_service_workbook)가 이미 등록된 서비스명만 여기까지 넘겨주므로
+                # 정상적으로는 항상 찾아진다 - 그 사이 삭제된 경우를 대비해 방어적으로 None 허용
+                # (get_or_create로 새로 만들지는 않음 - 오타로 새 Service가 생기는 걸 막는 게 목적).
+                service = Service.objects.filter(name=new_value).first()
             model = VHOST_MODELS.get(service_domain.source.kind)
             if model is not None:
                 model.objects.filter(

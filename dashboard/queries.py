@@ -13,7 +13,7 @@ from django.db.models import (
     Subquery,
 )
 
-from core.models import Asset
+from core.models import Asset, Service
 from database.models import (
     DbConfigSource,
     DbConfigSourceFieldDefinition,
@@ -21,6 +21,7 @@ from database.models import (
     DbInstance,
 )
 from facts.models import FactChangeHistory, FactFieldDefinition, HostFact, HostFactValue
+from network.models import ServiceNetworkBackend
 from processes.models import ProcessSnapshot
 from systems.models import SystemHost, SystemHostFieldDefinition, SystemSource
 from was.models import JeusContainer, WasConfigSource, WasConfigSourceRevision
@@ -437,6 +438,51 @@ def get_service_container_queryset(request):
             | Q(node_name__icontains=q)
             | Q(name__icontains=q)
             | Q(service__name__icontains=q)
+        )
+
+    return queryset.order_by("name")
+
+
+def get_service_manage_queryset(request):
+    """"서비스 관리" 화면(Service 객체 자체의 생성/이름변경/삭제 - WEB/WAS 배정은 별개 화면인
+    "서비스 배정"에서 다룬다) - 삭제 전에 얼마나 많은 곳에 배정돼있는지 참고할 수 있게
+    배정 건수를 같이 보여준다. Service 자신은 TextField/JSONField가 없어 이 annotate는
+    NCLOB GROUP BY 위험이 없다(CLAUDE.md 환경 섹션 참고)."""
+    queryset = Service.objects.annotate(
+        assignment_count=(
+            Count("webtob_vhosts", distinct=True)
+            + Count("apache_vhosts", distinct=True)
+            + Count("nginx_vhosts", distinct=True)
+            + Count("jeus_containers", distinct=True)
+        )
+    )
+
+    q = _request_param(request, "q", "search")
+    if q:
+        queryset = queryset.filter(name__icontains=q)
+
+    return queryset.order_by("name")
+
+
+def get_service_network_queryset(request):
+    """서비스 탭의 네트워크 매핑 섹션(도메인/공인IP/내부VIP/실서버 목록) - WEB/WAS 표와 같은
+    검색창(q)을 공유한다. Apache/Nginx는 설정 내용에 뒷단 실서버 정보가 전혀 없어(VIP/도메인
+    하나로만 지정) 이 화면에서 사람이 직접 등록한 값이 유일한 출처다. 서비스 개수 자체가
+    vhost 대비 훨씬 적어 WAS 표와 동일하게 별도 정렬/페이지네이션 없이 이름순 전체 표시."""
+    queryset = Service.objects.select_related("network_mapping").prefetch_related(
+        Prefetch(
+            "network_mapping__backends",
+            queryset=ServiceNetworkBackend.objects.select_related("asset"),
+        )
+    )
+
+    q = _request_param(request, "q", "search")
+    if q:
+        queryset = queryset.filter(
+            Q(name__icontains=q)
+            | Q(network_mapping__external_domain__icontains=q)
+            | Q(network_mapping__external_ip__icontains=q)
+            | Q(network_mapping__internal_vip__icontains=q)
         )
 
     return queryset.order_by("name")

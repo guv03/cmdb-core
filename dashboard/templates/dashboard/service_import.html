@@ -31,6 +31,7 @@
 <div class="tags">
   <span class="tag is-success is-medium">✓ 서비스명 변경 예정 {{ result.service_name_updates|length }}건</span>
   <span class="tag is-warning is-medium">● 매칭 안 됨 {{ result.unmatched_rows|length }}건</span>
+  <span class="tag is-warning is-medium">● 등록되지 않은 서비스명 {{ result.unknown_service_rows|length }}건</span>
 </div>
 
 {% if result.service_name_updates %}
@@ -49,6 +50,21 @@
         <td>{{ update.old_value }}</td>
         <td>{{ update.new_value }}</td>
       </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% if result.unknown_service_rows %}
+<h3 class="title is-6">등록되지 않은 서비스명 (반영 안 됨)</h3>
+<p class="help">먼저 "서비스" 탭의 "새 서비스 등록"으로 이 이름을 만든 뒤 다시 업로드하세요 — 오타로 새 서비스가 조용히 생기는 걸 막기 위해 엑셀 업로드로는 새 서비스가 만들어지지 않습니다.</p>
+<div class="table-container">
+  <table class="table is-fullwidth is-striped is-narrow">
+    <thead><tr><th>행</th><th>Hostname</th><th>vhost</th><th>입력한 서비스명</th></tr></thead>
+    <tbody>
+      {% for row in result.unknown_service_rows %}
+      <tr><td>{{ row.row_number }}</td><td class="dash-hostname">{{ row.hostname }}</td><td>{{ row.vhost_name }}</td><td>{{ row.attempted_name }}</td></tr>
       {% endfor %}
     </tbody>
   </table>
