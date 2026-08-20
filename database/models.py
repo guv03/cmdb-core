@@ -1,6 +1,6 @@
 from django.db import models
 
-from core.models import Asset, TimeStampedModel
+from core.models import Asset, Service, TimeStampedModel
 
 
 class DbConfigSource(TimeStampedModel):
@@ -51,6 +51,14 @@ class DbConfigSource(TimeStampedModel):
     # webconfig.WebConfigSource/was.WasConfigSource와 동일하게 "최근 변경일"은 저장 컬럼이
     # 아니라 대시보드 쿼리에서 revisions__detected_at의 Max로 계산한다(get_db_config_queryset).
     last_pushed_at = models.DateTimeField(auto_now=True)
+    # 서비스 라벨은 기본적으로 이 DB의 인스턴스를 참조하는 JeusDataSource의 컨테이너를
+    # 역추적해서 계산한다(dashboard.queries.get_service_labels_for_db_config_sources) -
+    # SID가 안 맞거나 WAS가 아직 이 DB를 push 전이면 계산값이 하나도 없는 구멍이 생길 수
+    # 있어, 그 구멍을 메꾸는 수기 보정값 - core.Asset.manual_services와 동일 원칙(합집합,
+    # 대체 아님). DbInstance(자식)는 push마다 통짜 교체돼 직접 필드를 못 붙이므로, 안 지워지는
+    # 이 상위 소스에 붙인다 - RAC라도 인스턴스 단위가 아니라 DB 전체 단위로만 보정 가능한
+    # 트레이드오프(대부분 RAC 노드는 같은 서비스를 서비스하므로 실용적으로 충분).
+    manual_services = models.ManyToManyField(Service, blank=True, related_name="manual_db_config_sources")
 
     class Meta:
         constraints = [

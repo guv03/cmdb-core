@@ -44,6 +44,7 @@
           <a class="has-text-dark" href="{% querystring sort=column.next_sort page=None %}">{{ column.label }}</a>
         </th>
         {% endfor %}
+        <th>서비스</th>
       </tr>
     </thead>
     <tbody>
@@ -64,6 +65,9 @@
         {% endfor %}
         <td>{{ row.asset.last_changed_at|default:"" }}</td>
         <td>{{ row.hostfact.last_seen_at|default:"" }}</td>
+        <td>
+          {% for name in row.service_labels %}<a class="tag is-light mr-1" href="{% url 'dashboard-service-topology' %}?name={{ name|urlencode }}">{{ name }}</a>{% endfor %}<span class="dash-manual-icon manual-service-edit" style="cursor: pointer;" data-resource-id="{{ row.asset.id }}" data-resource-name="{{ row.asset.hostname }}" aria-hidden="true">✎</span>
+        </td>
       </tr>
       {% empty %}
       <tr><td colspan="100" class="has-text-grey">데이터가 없습니다.</td></tr>
@@ -130,6 +134,38 @@
     <footer class="modal-card-foot">
       <button type="button" class="button is-link" id="manualCellSave">저장</button>
       <button type="button" class="button" id="manualCellCancel">취소</button>
+    </footer>
+  </div>
+</div>
+
+<!-- "서비스" 셀의 수기 보정(manual_services) 편집 모달 - 계산값(WEB/WAS 배정 역추적)이
+     못 찾은 서비스를 사람이 직접 추가/해제한다. 기존 서비스만 고를 수 있어(datalist) 오타로
+     새 Service가 생기지 않는다. -->
+<datalist id="allServiceNames">
+  {% for name in all_service_names %}<option value="{{ name }}">{% endfor %}
+</datalist>
+<div class="modal" id="manualServiceModal">
+  <div class="modal-background"></div>
+  <div class="modal-card" style="width: 90%; max-width: 480px;">
+    <header class="modal-card-head">
+      <p class="modal-card-title" id="manualServiceModalTitle">서비스 보정</p>
+      <button class="delete" aria-label="close" id="manualServiceModalClose"></button>
+    </header>
+    <section class="modal-card-body">
+      <p class="help">자동 계산(WEB/WAS 배정 역추적)으로 못 찾은 서비스를 여기서 직접 추가할 수 있습니다. 계산값과 합쳐져서 목록에 노출됩니다. × 버튼이 없는 태그는 계산값이라 여기서 못 지웁니다 - WEB/WAS 배정을 고치세요.</p>
+      <div class="tags" id="manualServiceTags"></div>
+      <div class="field has-addons">
+        <div class="control is-expanded">
+          <input class="input" type="text" id="manualServiceInput" list="allServiceNames" placeholder="서비스명 선택/입력">
+        </div>
+        <div class="control">
+          <button type="button" class="button is-link" id="manualServiceAdd">추가</button>
+        </div>
+      </div>
+      <p class="help is-danger" id="manualServiceError" style="display: none;"></p>
+    </section>
+    <footer class="modal-card-foot">
+      <button type="button" class="button" id="manualServiceClose">닫기</button>
     </footer>
   </div>
 </div>
@@ -341,6 +377,141 @@ document.addEventListener('DOMContentLoaded', function () {
   cancelBtn.addEventListener('click', closeCellModal);
   document.getElementById('manualCellModalClose').addEventListener('click', closeCellModal);
   cellModal.querySelector('.modal-background').addEventListener('click', closeCellModal);
+
+  // "서비스" 셀 수기 보정(manual_services) 편집 - 계산값이 못 찾은 서비스를 사람이 추가/해제.
+  var serviceModal = document.getElementById('manualServiceModal');
+  var serviceModalTitle = document.getElementById('manualServiceModalTitle');
+  var serviceTagsWrapper = document.getElementById('manualServiceTags');
+  var serviceInput = document.getElementById('manualServiceInput');
+  var serviceAddBtn = document.getElementById('manualServiceAdd');
+  var serviceError = document.getElementById('manualServiceError');
+  var activeServiceResourceId = null;
+  var activeServiceCell = null;
+
+  function serviceEndpoint(resourceId) {
+    return '/dashboard/assets/' + resourceId + '/manual-services/';
+  }
+
+  function renderServiceCell(cell, labels) {
+    var icon = cell.querySelector('.manual-service-edit');
+    cell.querySelectorAll('a.tag').forEach(function (el) { el.remove(); });
+    labels.forEach(function (name) {
+      var link = document.createElement('a');
+      link.className = 'tag is-light mr-1';
+      link.href = '/dashboard/services/topology/?name=' + encodeURIComponent(name);
+      link.textContent = name;
+      cell.insertBefore(link, icon);
+    });
+  }
+
+  function renderServiceModalTags(manualServices) {
+    serviceTagsWrapper.innerHTML = '';
+    manualServices.forEach(function (entry) {
+      var tag = document.createElement('span');
+      tag.className = 'tag is-light mr-1';
+      tag.textContent = entry.name + ' ';
+      var del = document.createElement('button');
+      del.className = 'delete is-small';
+      del.addEventListener('click', function () {
+        removeManualService(entry.id);
+      });
+      tag.appendChild(del);
+      serviceTagsWrapper.appendChild(tag);
+    });
+  }
+
+  function closeServiceModal() {
+    serviceModal.classList.remove('is-active');
+    activeServiceResourceId = null;
+    activeServiceCell = null;
+  }
+
+  function openServiceModal(resourceId, resourceName, cell) {
+    activeServiceResourceId = resourceId;
+    activeServiceCell = cell;
+    serviceModalTitle.textContent = resourceName + ' · 서비스 보정';
+    serviceInput.value = '';
+    serviceError.style.display = 'none';
+    serviceTagsWrapper.innerHTML = '불러오는 중...';
+    serviceModal.classList.add('is-active');
+
+    fetch(serviceEndpoint(resourceId))
+      .then(function (res) { return res.json(); })
+      .then(function (data) {
+        renderServiceModalTags(data.manual_services);
+      })
+      .catch(function () {
+        serviceTagsWrapper.innerHTML = '';
+        serviceError.textContent = '불러오기 실패';
+        serviceError.style.display = 'block';
+      });
+  }
+
+  function addManualService() {
+    var name = serviceInput.value.trim();
+    if (!name) return;
+    serviceError.style.display = 'none';
+    fetch(serviceEndpoint(activeServiceResourceId), {
+      method: 'POST',
+      headers: {
+        'X-CSRFToken': getCsrfToken(),
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({ action: 'add', service_name: name }),
+    })
+      .then(function (res) { return res.json().then(function (data) { return { ok: res.ok, data: data }; }); })
+      .then(function (result) {
+        if (!result.ok) {
+          serviceError.textContent = result.data.error || '추가 실패';
+          serviceError.style.display = 'block';
+          return;
+        }
+        serviceInput.value = '';
+        renderServiceModalTags(result.data.manual_services);
+        if (activeServiceCell) renderServiceCell(activeServiceCell, result.data.service_labels);
+      })
+      .catch(function () {
+        serviceError.textContent = '추가 실패';
+        serviceError.style.display = 'block';
+      });
+  }
+
+  function removeManualService(serviceId) {
+    fetch(serviceEndpoint(activeServiceResourceId), {
+      method: 'POST',
+      headers: {
+        'X-CSRFToken': getCsrfToken(),
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({ action: 'remove', service_id: serviceId }),
+    })
+      .then(function (res) { return res.json().then(function (data) { return { ok: res.ok, data: data }; }); })
+      .then(function (result) {
+        if (!result.ok) {
+          serviceError.textContent = result.data.error || '해제 실패';
+          serviceError.style.display = 'block';
+          return;
+        }
+        renderServiceModalTags(result.data.manual_services);
+        if (activeServiceCell) renderServiceCell(activeServiceCell, result.data.service_labels);
+      })
+      .catch(function () {
+        serviceError.textContent = '해제 실패';
+        serviceError.style.display = 'block';
+      });
+  }
+
+  document.querySelectorAll('.manual-service-edit').forEach(function (icon) {
+    icon.addEventListener('click', function (e) {
+      e.stopPropagation();
+      openServiceModal(icon.dataset.resourceId, icon.dataset.resourceName, icon.closest('td'));
+    });
+  });
+
+  serviceAddBtn.addEventListener('click', addManualService);
+  document.getElementById('manualServiceClose').addEventListener('click', closeServiceModal);
+  document.getElementById('manualServiceModalClose').addEventListener('click', closeServiceModal);
+  serviceModal.querySelector('.modal-background').addEventListener('click', closeServiceModal);
 });
 </script>
 {% endblock %}

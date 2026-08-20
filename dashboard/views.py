@@ -5,7 +5,7 @@ import uuid
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.views import LoginView
-from django.db.models import Prefetch
+from django.db.models import Max, Prefetch
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse_lazy
@@ -31,6 +31,7 @@ from dashboard.list_export import (
     export_jeus_container_workbook,
     export_nginx_vhost_workbook,
     export_process_workbook,
+    export_tomcat_container_workbook,
     export_was_config_workbook,
     export_was_history_workbook,
     export_webconfig_history_workbook,
@@ -46,6 +47,7 @@ from dashboard.queries import (
     build_sort_columns,
     build_system_host_rows,
     build_system_host_vm_entries,
+    build_tomcat_container_rows,
     build_webtob_vhost_rows,
     describe_overview_filter,
     get_apache_vhost_queryset,
@@ -63,11 +65,16 @@ from dashboard.queries import (
     get_os_version_breakdown,
     get_process_queryset,
     get_service_container_queryset,
+    get_service_labels_for_assets,
+    get_service_labels_for_db_config_sources,
+    get_service_labels_for_db_instances,
+    get_service_labels_for_system_hosts,
     get_service_manage_queryset,
     get_service_network_queryset,
     get_system_host_dynamic_field_definitions,
     get_system_host_queryset,
     get_system_hosts_for_vms,
+    get_tomcat_container_queryset,
     get_was_config_queryset,
     get_was_history_queryset,
     get_was_overview_data,
@@ -79,7 +86,12 @@ from dashboard.queries import (
     get_webconfig_queryset,
     get_webtob_vhost_queryset,
 )
-from dashboard.topology import build_service_topology_graph, render_topology_svg
+from dashboard.topology import (
+    build_service_resource_table,
+    build_service_topology_graph,
+    collect_service_resources,
+    render_topology_svg,
+)
 from dashboard.serializers import AssetSerializer
 from database.excel_import import (
     ImportFileError as DbImportFileError,
@@ -139,6 +151,40 @@ def _resolve_service(name: str) -> Service | None:
     return service
 
 
+def _apply_manual_service_action(request, resource):
+    """Asset/SystemHost/DbConfigSource 공통 - manual_services M2M을 add/remove하는
+    엔드포인트들이 공유하는 본문. 자동 계산(WEB/WAS 배정 역추적)이 못 찾은 서비스를 사람이
+    직접 보충하는 용도(위 각 모델의 manual_services 필드 주석 참고) - 계산값을 대체하는 게
+    아니라 합집합으로 더해지므로 여기서는 add/remove만 하고 병합은 get_service_labels_for_*
+    가 담당한다. add도 _resolve_service처럼 기존 서비스만 허용(오타로 새 Service가 생기지
+    않게) - 실패 시 (None, JsonResponse) 튜플의 두 번째 값이 에러 응답이므로 그대로 return."""
+    action = request.POST.get("action")
+    if action == "add":
+        try:
+            service = _resolve_service(request.POST.get("service_name", ""))
+        except ServiceNotFound as exc:
+            return JsonResponse({"error": f'"{exc.name}" 서비스를 찾을 수 없습니다. "서비스 관리"에서 먼저 등록하세요.'}, status=400)
+        if service is None:
+            return JsonResponse({"error": "서비스명을 입력하세요."}, status=400)
+        resource.manual_services.add(service)
+        return None
+    if action == "remove":
+        service_id = request.POST.get("service_id")
+        service = resource.manual_services.filter(pk=service_id).first()
+        if service is None:
+            return JsonResponse({"error": "이미 해제된 서비스입니다."}, status=404)
+        resource.manual_services.remove(service)
+        return None
+    return JsonResponse({"error": "잘못된 요청입니다."}, status=400)
+
+
+def _manual_service_entries(resource):
+    """resource.manual_services를 모달에 그대로 뿌리기 좋은 {id, name} 목록으로 - 병합된
+    service_labels(계산값+수기값)와 별개로, "지금 수기로 등록된 것만" 알아야 모달에서
+    ×(해제) 버튼을 계산값이 아니라 수기값에만 달 수 있다(계산값은 여기서 지울 수 없음)."""
+    return [{"id": s.id, "name": s.name} for s in resource.manual_services.order_by("name")]
+
+
 class DashboardLoginView(LoginView):
     template_name = "dashboard/login.html"
 
@@ -196,6 +242,9 @@ class AssetListView(LoginRequiredMixin, ListView):
         context["overview_filter"] = describe_overview_filter(
             self.request, ("os_family", "OS"), ("os_version", "버전")
         )
+        # "서비스" 셀의 수기 보정 모달 datalist용 - 기존 서비스명만 고를 수 있게(오타 방지,
+        # _resolve_service와 동일 원칙).
+        context["all_service_names"] = list(Service.objects.order_by("name").values_list("name", flat=True))
         return context
 
 
@@ -284,6 +333,32 @@ class SystemHostManualFieldUpdateView(LoginRequiredMixin, View):
             "",
         )
         return JsonResponse({"value": str(display_value)})
+
+
+class SystemHostManualServiceUpdateView(LoginRequiredMixin, View):
+    """"시스템" 목록/상세의 "서비스" 셀에서 수기 보정값(SystemHost.manual_services)을
+    추가/해제한다 - AssetManualServiceUpdateView와 동일 패턴."""
+
+    def get(self, request, pk):
+        host = get_object_or_404(SystemHost, pk=pk)
+        return JsonResponse(
+            {
+                "manual_services": _manual_service_entries(host),
+                "service_labels": get_service_labels_for_system_hosts([host.id]).get(host.id, []),
+            }
+        )
+
+    def post(self, request, pk):
+        host = get_object_or_404(SystemHost, pk=pk)
+        error = _apply_manual_service_action(request, host)
+        if error is not None:
+            return error
+        return JsonResponse(
+            {
+                "manual_services": _manual_service_entries(host),
+                "service_labels": get_service_labels_for_system_hosts([host.id]).get(host.id, []),
+            }
+        )
 
 
 class SystemHostManualCreateView(LoginRequiredMixin, View):
@@ -390,6 +465,34 @@ class AssetManualFieldUpdateView(LoginRequiredMixin, View):
             "",
         )
         return JsonResponse({"value": str(display_value)})
+
+
+class AssetManualServiceUpdateView(LoginRequiredMixin, View):
+    """자산 목록/상세의 "서비스" 셀에서 수기 보정값(Asset.manual_services)을 추가/해제한다 -
+    계산값(WEB/WAS 배정 역추적)이 못 찾은 경우를 메꾸는 용도. GET은 모달을 열 때 현재 수기
+    등록값을 불러오는 용도, POST(add/remove) 후에는 둘 다 최신 상태로 다시 돌려줘 모달의
+    태그 목록과 목록 화면의 셀을 한 번에 갱신할 수 있게 한다."""
+
+    def get(self, request, pk):
+        asset = get_object_or_404(Asset, pk=pk)
+        return JsonResponse(
+            {
+                "manual_services": _manual_service_entries(asset),
+                "service_labels": get_service_labels_for_assets([asset.id]).get(asset.id, []),
+            }
+        )
+
+    def post(self, request, pk):
+        asset = get_object_or_404(Asset, pk=pk)
+        error = _apply_manual_service_action(request, asset)
+        if error is not None:
+            return error
+        return JsonResponse(
+            {
+                "manual_services": _manual_service_entries(asset),
+                "service_labels": get_service_labels_for_assets([asset.id]).get(asset.id, []),
+            }
+        )
 
 
 class AssetExportView(LoginRequiredMixin, View):
@@ -725,9 +828,16 @@ class WasConfigHistoryExportView(LoginRequiredMixin, View):
 
 
 class JeusContainerListView(LoginRequiredMixin, ListView):
-    """WebtobVhostListView와 같은 취지의 JEUS 전용 목록 - 다만 Hostname 컬럼은
-    container.asset(컨테이너 자신의 node-name으로 해석된 자산)을 쓴다. source.asset(=push를
-    보낸 admin 호스트)과 다를 수 있어서 소스 쪽 hostname을 쓰면 틀린 정보가 된다."""
+    """WebtobVhostListView와 같은 취지의 JEUS 전용 컨테이너 목록(kind=jeus/jeus6만 -
+    get_jeus_container_queryset에서 필터). Tomcat은 설정에 들어가는 값 자체가 달라(WebToB
+    연결 개념이 없음 등) TomcatContainerListView로 완전히 분리했다 - webconfig의 WebToB/
+    Apache/Nginx vhost 목록을 kind별로 나눈 것과 동일 원칙(JeusContainer 모델은 공유해도
+    화면은 공유하지 않음). 종합적으로 kind 무관하게 보려면 `/dashboard/was/`(공통 목록)를
+    이용한다.
+
+    Hostname 컬럼은 container.asset(컨테이너 자신의 node-name으로 해석된 자산)을 쓴다.
+    source.asset(=push를 보낸 admin 호스트)과 다를 수 있어서 소스 쪽 hostname을 쓰면 틀린
+    정보가 된다."""
 
     template_name = "dashboard/jeus_container_list.html"
     context_object_name = "containers"
@@ -762,6 +872,36 @@ class JeusContainerExportView(LoginRequiredMixin, View):
         return export_jeus_container_workbook()
 
 
+class TomcatContainerListView(LoginRequiredMixin, ListView):
+    """JeusContainerListView와 같은 골격의 Tomcat 전용 컨테이너 목록(kind=tomcat만 -
+    get_tomcat_container_queryset에서 필터). JEUS 목록과 화면을 분리한 이유는 위
+    JeusContainerListView 참고 - "Node"/"WebToB 연결" 대신 Tomcat만의 값인 데이터소스
+    목록을 보여준다."""
+
+    template_name = "dashboard/tomcat_container_list.html"
+    context_object_name = "containers"
+    paginate_by = 50
+
+    def get_queryset(self):
+        return get_tomcat_container_queryset(self.request)
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["rows"] = build_tomcat_container_rows(context["containers"])
+        context["columns"] = build_sort_columns(
+            self.request,
+            ["hostname", "ip", "instance_name", "container", "listen_port", "ssl_port", "service_name"],
+            default="hostname",
+        )
+        context["current_q"] = self.request.GET.get("q", "")
+        return context
+
+
+class TomcatContainerExportView(LoginRequiredMixin, View):
+    def get(self, request):
+        return export_tomcat_container_workbook()
+
+
 class DbConfigListView(LoginRequiredMixin, ListView):
     """DB(Standalone/RAC) 목록 - DbConfigSource 하나 = 행 하나. systems의 SystemListView와
     같은 구조(고정 컬럼 + admin 등록 동적 필드)를 그대로 따른다 - 클러스터/버전 등 실측
@@ -785,6 +925,7 @@ class DbConfigListView(LoginRequiredMixin, ListView):
             default="db_unique_name",
         )
         context["current_q"] = self.request.GET.get("q", "")
+        context["all_service_names"] = list(Service.objects.order_by("name").values_list("name", flat=True))
         # MANUAL 셀 편집 모달의 선택형(choice) 입력 구성용 - 시스템 목록과 동일 패턴.
         context["field_choices_json"] = [
             {
@@ -904,6 +1045,33 @@ class DbConfigManualFieldUpdateView(LoginRequiredMixin, View):
         return JsonResponse({"value": str(display_value)})
 
 
+class DbConfigManualServiceUpdateView(LoginRequiredMixin, View):
+    """"DB" 목록/상세의 "서비스" 셀에서 수기 보정값(DbConfigSource.manual_services)을
+    추가/해제한다 - AssetManualServiceUpdateView와 동일 패턴. DbInstance는 push마다 통짜
+    교체돼 직접 필드를 못 붙이므로 안 지워지는 상위 소스(DbConfigSource) 단위로 보정한다."""
+
+    def get(self, request, pk):
+        source = get_object_or_404(DbConfigSource, pk=pk)
+        return JsonResponse(
+            {
+                "manual_services": _manual_service_entries(source),
+                "service_labels": get_service_labels_for_db_config_sources([source.id]).get(source.id, []),
+            }
+        )
+
+    def post(self, request, pk):
+        source = get_object_or_404(DbConfigSource, pk=pk)
+        error = _apply_manual_service_action(request, source)
+        if error is not None:
+            return error
+        return JsonResponse(
+            {
+                "manual_services": _manual_service_entries(source),
+                "service_labels": get_service_labels_for_db_config_sources([source.id]).get(source.id, []),
+            }
+        )
+
+
 class DbConfigDetailView(LoginRequiredMixin, DetailView):
     """DB 상세 - 인스턴스별 카드로 보여준다(WasConfigDetailView와 같은 구조)."""
 
@@ -919,6 +1087,16 @@ class DbConfigDetailView(LoginRequiredMixin, DetailView):
         context = super().get_context_data(**kwargs)
         dynamic_field_definitions = list(get_db_config_dynamic_field_definitions())
         context["row"] = build_db_config_rows([self.object], dynamic_field_definitions)[0]
+
+        # 인스턴스별 서비스 라벨 - source 전체 합산(위 row.service_labels)과 별개로, RAC라면
+        # 인스턴스마다 실제로 붙는 컨테이너/서비스가 다를 수 있어(JeusDataSource.db_instance가
+        # 인스턴스 단위로 매칭) 인스턴스 카드마다 자기 것만 보여준다. 템플릿이 source.instances.all
+        # 대신 이 목록을 순회하도록 attribute를 얹는다.
+        instances = list(self.object.instances.all())
+        instance_labels = get_service_labels_for_db_instances([i.id for i in instances])
+        for instance in instances:
+            instance.service_labels = instance_labels.get(instance.id, [])
+        context["instances"] = instances
         return context
 
 
@@ -963,6 +1141,14 @@ class DbInstanceListView(LoginRequiredMixin, ListView):
             default="instance_name",
         )
         context["current_q"] = self.request.GET.get("q", "")
+
+        # 서비스 라벨(계산형) - 이 목록엔 row-builder가 없어 build_db_config_rows처럼 dict에
+        # 접어넣는 대신 인스턴스 객체에 직접 attribute로 얹는다(템플릿에서 바로 접근).
+        instances = list(context["instances"])
+        service_labels = get_service_labels_for_db_instances([i.id for i in instances])
+        for instance in instances:
+            instance.service_labels = service_labels.get(instance.id, [])
+        context["instances"] = instances
         return context
 
 
@@ -991,6 +1177,7 @@ class SystemListView(LoginRequiredMixin, ListView):
             ["source_name", "name", "kind", "vm_count"],
             default="name",
         )
+        context["all_service_names"] = list(Service.objects.order_by("name").values_list("name", flat=True))
         # MANUAL 셀 편집 모달의 선택형(choice) 입력 구성용 - 자산 목록의
         # {{ columns|json_script }} 패턴과 같은 이유(JS에서 field_id별 선택지 조회).
         context["field_choices_json"] = [
@@ -1355,16 +1542,58 @@ class ServiceNetworkListView(LoginRequiredMixin, ListView):
         return get_service_network_queryset(self.request)
 
 
-class ServiceNetworkMappingUpdateView(LoginRequiredMixin, View):
-    """네트워크 탭에서의 도메인/공인IP/내부VIP/실서버 목록 편집. 어떤 push에도 안 나오는
-    순수 사람 지식이라(Apache/Nginx 설정엔 VIP 뒤 실서버 정보가 없음) 이 화면이 유일한
-    입력 창구다. 실서버 목록은 매 저장마다 통짜 교체(network.sync.sync_backends) - push가
-    아니라 사람이 그 자리에서 제출한 값이라 diff 이력 없이 바로 반영해도 안전하다."""
+def _serialize_network_mapping(mapping):
+    return {
+        "id": mapping.pk,
+        "hop_order": mapping.hop_order,
+        "label": mapping.label,
+        "external_domain": mapping.external_domain,
+        "external_ip": mapping.external_ip,
+        "internal_vip": mapping.internal_vip,
+        "backends": [
+            {"ip_or_hostname": b.ip_or_hostname, "asset_hostname": b.asset.hostname if b.asset else None}
+            for b in mapping.backends.select_related("asset").all()
+        ],
+    }
+
+
+class ServiceNetworkMappingCreateView(LoginRequiredMixin, View):
+    """네트워크 탭에서 서비스에 새 홉(hop)을 추가한다 - WEB(외부 도메인/공인IP+VIP)->GW(내부
+    VIP)->WAS처럼 같은 서비스 안에서 VIP를 여러 번 거치는 구성을 hop_order 체인으로 표현한다.
+    hop_order는 그 서비스의 기존 최댓값+1로 자동 배정(사람이 순서를 직접 숫자로 안 넣어도
+    등록한 순서가 곧 체인 순서가 됨)."""
 
     def post(self, request, pk):
         service = get_object_or_404(Service, pk=pk)
-        mapping, _ = ServiceNetworkMapping.objects.get_or_create(service=service)
+        next_order = (
+            ServiceNetworkMapping.objects.filter(service=service).aggregate(Max("hop_order"))["hop_order__max"]
+        )
+        next_order = 0 if next_order is None else next_order + 1
 
+        mapping = ServiceNetworkMapping.objects.create(
+            service=service,
+            hop_order=next_order,
+            label=request.POST.get("label", "").strip(),
+            external_domain=request.POST.get("external_domain", "").strip(),
+            external_ip=request.POST.get("external_ip", "").strip(),
+            internal_vip=request.POST.get("internal_vip", "").strip(),
+        )
+        sync_backends(mapping, request.POST.get("backends", "").splitlines())
+        return JsonResponse(_serialize_network_mapping(mapping))
+
+
+class ServiceNetworkMappingUpdateView(LoginRequiredMixin, View):
+    """네트워크 탭에서의 홉(hop) 하나의 구간명/도메인/공인IP/내부VIP/실서버 목록 편집. 어떤
+    push에도 안 나오는 순수 사람 지식이라(Apache/Nginx 설정엔 VIP 뒤 실서버 정보가 없음) 이
+    화면이 유일한 입력 창구다. 실서버 목록은 매 저장마다 통짜 교체(network.sync.sync_backends)
+    - push가 아니라 사람이 그 자리에서 제출한 값이라 diff 이력 없이 바로 반영해도 안전하다.
+    pk는 이제 서비스가 아니라 이 홉(ServiceNetworkMapping) 자신을 가리킨다 - 서비스 하나에
+    홉이 여러 개일 수 있어 서비스 pk만으로는 어느 홉인지 특정할 수 없기 때문."""
+
+    def post(self, request, pk):
+        mapping = get_object_or_404(ServiceNetworkMapping, pk=pk)
+
+        mapping.label = request.POST.get("label", "").strip()
         mapping.external_domain = request.POST.get("external_domain", "").strip()
         mapping.external_ip = request.POST.get("external_ip", "").strip()
         mapping.internal_vip = request.POST.get("internal_vip", "").strip()
@@ -1373,17 +1602,18 @@ class ServiceNetworkMappingUpdateView(LoginRequiredMixin, View):
         backend_lines = request.POST.get("backends", "").splitlines()
         sync_backends(mapping, backend_lines)
 
-        return JsonResponse(
-            {
-                "external_domain": mapping.external_domain,
-                "external_ip": mapping.external_ip,
-                "internal_vip": mapping.internal_vip,
-                "backends": [
-                    {"ip_or_hostname": b.ip_or_hostname, "asset_hostname": b.asset.hostname if b.asset else None}
-                    for b in mapping.backends.select_related("asset").all()
-                ],
-            }
-        )
+        return JsonResponse(_serialize_network_mapping(mapping))
+
+
+class ServiceNetworkMappingDeleteView(LoginRequiredMixin, View):
+    """네트워크 탭에서 홉(hop) 하나를 삭제한다(딸린 실서버 목록도 CASCADE로 함께 삭제) -
+    남은 홉들의 hop_order는 그대로 둔다(중간에 구멍이 생겨도 정렬 순서로만 체인을 이으므로
+    문제 없음)."""
+
+    def post(self, request, pk):
+        mapping = get_object_or_404(ServiceNetworkMapping, pk=pk)
+        mapping.delete()
+        return JsonResponse({"deleted": True})
 
 
 class ServiceTopologyView(LoginRequiredMixin, TemplateView):
@@ -1407,7 +1637,9 @@ class ServiceTopologyView(LoginRequiredMixin, TemplateView):
                 context["not_found"] = True
             else:
                 context["service"] = service
-                graph = build_service_topology_graph(service)
+                resources = collect_service_resources(service)
+                context["resource_table"] = build_service_resource_table(resources)
+                graph = build_service_topology_graph(resources)
                 if graph["nodes"]:
                     try:
                         context["topology_svg"] = render_topology_svg(graph)

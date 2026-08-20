@@ -37,6 +37,7 @@
         <th><a class="has-text-dark" href="{% querystring sort=columns.version.next_sort page=None %}">버전</a></th>
         <th>Archiver</th>
         <th><a class="has-text-dark" href="{% querystring sort=columns.listener_port.next_sort page=None %}">리스너 포트</a></th>
+        <th>서비스</th>
       </tr>
     </thead>
     <tbody>
@@ -51,9 +52,10 @@
         <td>{{ instance.version|default:"" }}</td>
         <td>{{ instance.archiver|default:"" }}</td>
         <td>{{ instance.listener_port|default:"" }}</td>
+        <td>{% for name in instance.service_labels %}<a class="tag is-light mr-1" href="{% url 'dashboard-service-topology' %}?name={{ name|urlencode }}">{{ name }}</a>{% endfor %}</td>
       </tr>
       {% empty %}
-      <tr><td colspan="9" class="has-text-grey">등록된 인스턴스가 없습니다.</td></tr>
+      <tr><td colspan="10" class="has-text-grey">등록된 인스턴스가 없습니다.</td></tr>
       {% endfor %}
     </tbody>
   </table>

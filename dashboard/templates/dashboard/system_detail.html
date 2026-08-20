@@ -13,10 +13,9 @@
 <div class="box">
   <table class="table is-narrow is-fullwidth">
     <tbody>
+      <tr><th style="width: 12em;">서비스</th><td>{% for name in row.service_labels %}<a class="tag is-light mr-1" href="{% url 'dashboard-service-topology' %}?name={{ name|urlencode }}">{{ name }}</a>{% empty %}<span class="has-text-grey">이 장비의 VM 중 서비스가 배정된 자산이 없습니다</span>{% endfor %}</td></tr>
       {% for cell in row.dynamic_cells %}
       <tr><th style="width: 12em;">{{ cell.label }}</th><td>{{ cell.value|default:"" }}</td></tr>
-      {% empty %}
-      <tr><td class="has-text-grey">admin의 System host field definitions에 등록된 필드가 없습니다.</td></tr>
       {% endfor %}
     </tbody>
   </table>
@@ -32,6 +31,7 @@
           {% for column in os_columns %}
           <th class="{% if forloop.counter == 1 %}dash-sticky-col dash-sticky-col-1{% elif forloop.counter == 2 %}dash-sticky-col dash-sticky-col-2{% endif %}">{{ column.label }}</th>
           {% endfor %}
+          <th>서비스</th>
         </tr>
       </thead>
       <tbody>
@@ -44,15 +44,16 @@
           {% for cell in entry.row.dynamic_cells %}<td>{{ cell.value|default:"" }}</td>{% endfor %}
           <td>{{ entry.row.asset.last_changed_at|default:"" }}</td>
           <td>{{ entry.row.hostfact.last_seen_at|default:"" }}</td>
+          <td>{% for name in entry.row.service_labels %}<a class="tag is-light mr-1" href="{% url 'dashboard-service-topology' %}?name={{ name|urlencode }}">{{ name }}</a>{% endfor %}</td>
         </tr>
         {% else %}
         <tr>
           <td class="dash-sticky-col dash-sticky-col-1 dash-hostname">{{ entry.name }}</td>
-          <td colspan="{{ os_columns|length|add:"-1" }}" class="has-text-grey">자산 미매칭</td>
+          <td colspan="{{ os_columns|length }}" class="has-text-grey">자산 미매칭</td>
         </tr>
         {% endif %}
         {% empty %}
-        <tr><td colspan="{{ os_columns|length }}" class="has-text-grey">이 장비에서 확인된 VM이 없습니다.</td></tr>
+        <tr><td colspan="{{ os_columns|length|add:"1" }}" class="has-text-grey">이 장비에서 확인된 VM이 없습니다.</td></tr>
         {% endfor %}
       </tbody>
     </table>

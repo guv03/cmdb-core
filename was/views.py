@@ -13,18 +13,21 @@ from was.sync import sync_jeus
 
 SYNC_FUNCS = {
     WasConfigSource.Kind.JEUS: sync_jeus,
-    # parse_jeus6도 parse_jeus와 같은 반환 형태({"containers": [...], "data_sources": [...]})라
-    # sync_jeus를 그대로 재사용 - kind별 동기화 로직 분기가 필요 없음.
+    # parse_jeus6/parse_tomcat도 parse_jeus와 같은 반환 형태({"containers": [...],
+    # "data_sources": [...]})라 sync_jeus를 그대로 재사용 - kind별 동기화 로직 분기가 필요 없음.
     WasConfigSource.Kind.JEUS6: sync_jeus,
+    WasConfigSource.Kind.TOMCAT: sync_jeus,
 }
 
 
-def _extract_admin_hostname(kind: str, parsed: dict) -> str | None:
+def _extract_admin_hostname(kind: str, parsed: dict, payload_hostname: str | None = None) -> str | None:
     """WebToB의 *NODE절과 같은 원리 - content 안에서 결정적으로 뽑는다(AWX가 별도
     hostname을 보낼 필요 없음). JEUS(7+)는 admin-server-name에 해당하는 컨테이너의
     node-name이 이 push를 보낸(=admin 서버가 떠있는) 호스트의 hostname이다. JEUS6은
     admin 서버 개념 자체가 없고 JEUSMain.xml 하나 = 물리 노드 하나라 최상위 node_name을
-    그대로 쓴다(was/parsers.py의 parse_jeus6)."""
+    그대로 쓴다(was/parsers.py의 parse_jeus6). Tomcat은 server.xml에 자기 자신을 가리키는
+    절이 아예 없어(apache/nginx와 동일한 이유) content가 아니라 AWX가 보낸 payload_hostname을
+    그대로 쓴다(webconfig/views.py의 _extract_hostname과 동일 패턴)."""
     if kind == WasConfigSource.Kind.JEUS:
         admin_server_name = parsed.get("admin_server_name")
         if not admin_server_name:
@@ -35,14 +38,16 @@ def _extract_admin_hostname(kind: str, parsed: dict) -> str | None:
         return None
     if kind == WasConfigSource.Kind.JEUS6:
         return parsed.get("node_name") or None
+    if kind == WasConfigSource.Kind.TOMCAT:
+        return payload_hostname or None
     return None
 
 
-def _combine_jeus6_files_for_display(files: dict) -> str:
-    """JEUS6은 파일이 여러 개라 raw_content(단일 TextField)엔 사람이 구분해서 읽을 수 있게
-    파일 경계를 표시한 텍스트로 합쳐서 저장한다("원본 설정 보기"/변경 이력 diff용) - 파싱은
-    항상 원본 files(dict)로 하고(was/parsers.py의 parse_jeus6) 이 합본은 표시 전용이라
-    구분자 형식이 파싱 로직과 절대 안 섞인다."""
+def _combine_files_for_display(files: dict) -> str:
+    """파일이 여러 개인 kind(jeus6/tomcat)는 raw_content(단일 TextField)에 사람이 구분해서
+    읽을 수 있게 파일 경계를 표시한 텍스트로 합쳐서 저장한다("원본 설정 보기"/변경 이력
+    diff용) - 파싱은 항상 원본 files(dict)로 하고(was/parsers.py의 parse_jeus6/parse_tomcat)
+    이 합본은 표시 전용이라 구분자 형식이 파싱 로직과 절대 안 섞인다."""
     parts = [f"===== {name} =====\n{content}" for name, content in sorted(files.items())]
     return "\n\n".join(parts)
 
@@ -70,20 +75,27 @@ class WasConfigIngestView(APIView):
         if parser is None:
             return Response({"error": f"지원하지 않는 kind: {kind}"}, status=status.HTTP_400_BAD_REQUEST)
 
+        payload_hostname = serializer.validated_data.get("hostname", "")
         if kind == WasConfigSource.Kind.JEUS6:
             files = serializer.validated_data["files"]
             parsed = parser(files)
-            content = _combine_jeus6_files_for_display(files)
+            content = _combine_files_for_display(files)
+        elif kind == WasConfigSource.Kind.TOMCAT:
+            files = serializer.validated_data["files"]
+            parsed = parser(files, payload_hostname)
+            content = _combine_files_for_display(files)
         else:
             content = serializer.validated_data["content"]
             parsed = parser(content)
 
-        hostname = _extract_admin_hostname(kind, parsed)
+        hostname = _extract_admin_hostname(kind, parsed, payload_hostname)
         if not hostname:
-            return Response(
-                {"error": "설정 내용에서 admin 서버 호스트명을 찾지 못했습니다."},
-                status=status.HTTP_400_BAD_REQUEST,
+            message = (
+                "hostname 필드가 없습니다."
+                if kind == WasConfigSource.Kind.TOMCAT
+                else "설정 내용에서 admin 서버 호스트명을 찾지 못했습니다."
             )
+            return Response({"error": message}, status=status.HTTP_400_BAD_REQUEST)
 
         asset = Asset.objects.filter(hostname=normalize_hostname(hostname)).first()
         if asset is None:

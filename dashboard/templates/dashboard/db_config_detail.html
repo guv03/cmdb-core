@@ -17,15 +17,21 @@
     <tr><th>Log Mode</th><td>{{ source.log_mode|default:"" }}</td></tr>
     <tr><th>Characterset</th><td>{{ source.characterset|default:"" }}</td></tr>
     <tr><th>Platform</th><td>{{ source.platform_name|default:"" }}</td></tr>
+    <tr>
+      <th>서비스</th>
+      <td>
+        {% for name in row.service_labels %}<a class="tag is-light mr-1" href="{% url 'dashboard-service-topology' %}?name={{ name|urlencode }}">{{ name }}</a>{% empty %}<span class="has-text-grey">이 DB의 인스턴스를 참조하는 WAS 컨테이너에 배정된 서비스가 없습니다</span>{% endfor %}
+      </td>
+    </tr>
     {% for cell in row.dynamic_cells %}
     <tr><th>{{ cell.label }}</th><td>{{ cell.value|default:"" }}</td></tr>
     {% endfor %}
   </tbody>
 </table>
-<p class="help">RAC는 대표 노드 1대가 push를 실행하지만(위 "수집 노드"), 아래 인스턴스는 각자 다른 자산(물리 노드)에 속할 수 있습니다.</p>
+<p class="help">RAC는 대표 노드 1대가 push를 실행하지만(위 "수집 노드"), 아래 인스턴스는 각자 다른 자산(물리 노드)에 속할 수 있습니다. "서비스"는 저장된 값이 아니라 이 DB를 참조하는 WAS 컨테이너를 통해 매번 계산됩니다 - 작업 전 영향받는 서비스를 확인하는 용도입니다.</p>
 
 <h2 class="title is-6">인스턴스</h2>
-{% for instance in source.instances.all %}
+{% for instance in instances %}
 <div class="box">
   <p class="title is-6">
     {{ instance.instance_name }}{% if instance.instance_number %} <span class="tag">#{{ instance.instance_number }}</span>{% endif %}
@@ -38,6 +44,7 @@
       <tr><th>Archiver</th><td>{{ instance.archiver|default:"" }}</td></tr>
       <tr><th>리스너 포트</th><td>{{ instance.listener_port|default:"" }}</td></tr>
       <tr><th>기동 시각</th><td>{{ instance.startup_time|default:"" }}</td></tr>
+      <tr><th>서비스</th><td>{% for name in instance.service_labels %}<a class="tag is-light mr-1" href="{% url 'dashboard-service-topology' %}?name={{ name|urlencode }}">{{ name }}</a>{% empty %}<span class="has-text-grey">-</span>{% endfor %}</td></tr>
     </tbody>
   </table>
 </div>

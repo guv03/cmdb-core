@@ -253,4 +253,159 @@ def parse_jeus6(files: dict[str, str]) -> dict:
     }
 
 
-PARSERS = {"jeus": parse_jeus, "jeus6": parse_jeus6}
+_ORACLE_LONG_URL_RE = re.compile(
+    r"HOST\s*=\s*([^)\s]+).*?PORT\s*=\s*(\d+).*?SERVICE_NAME\s*=\s*([^)\s]+)",
+    re.IGNORECASE | re.DOTALL,
+)
+_ORACLE_SHORT_URL_RE = re.compile(r"@([^:/]+):(\d+)[:/]([^\s?]+)", re.IGNORECASE)
+
+
+def _parse_oracle_jdbc_url(url: str) -> tuple[str, str, str]:
+    """Oracle thin JDBC 커넥트 문자열에서 (host, port, service_name/SID)를 뽑는다 - JEUS의
+    <database-name> 프로퍼티처럼 이미 분리된 값이 아니라 문자열 하나로 되어 있어 정규식으로
+    파싱해야 한다. 긴 형식(DESCRIPTION=(ADDRESS=...)(CONNECT_DATA=(SERVICE_NAME=...)))을 먼저
+    시도하고, 안 맞으면 짧은 형식(@host:port:sid 또는 @host:port/service)을 시도한다. 뽑아낸
+    값은 JEUS와 동일하게 database_name 필드에 담겨 DbInstance.instance_name과 매칭된다
+    (was/sync.py의 _resolve_db_instance) - db_host는 매칭에 안 쓰는 것도 동일(RAC VIP/SCAN
+    문제, CLAUDE.md "데이터베이스" 섹션 참고)."""
+    if not url:
+        return "", "", ""
+    match = _ORACLE_LONG_URL_RE.search(url)
+    if match:
+        return match.group(1), match.group(2), match.group(3)
+    match = _ORACLE_SHORT_URL_RE.search(url)
+    if match:
+        return match.group(1), match.group(2), match.group(3)
+    return "", "", ""
+
+
+def _vendor_from_driver_class(driver_class_name: str) -> str:
+    if "oracle" in driver_class_name.lower():
+        return "oracle"
+    return driver_class_name
+
+
+def _parse_tomcat_datasources(context_root: ET.Element | None) -> list[dict]:
+    """context.xml(보통 $CATALINA_BASE/conf/context.xml - 이 인스턴스의 모든 웹앱에 공유되는
+    전역 설정)의 <Resource type="javax.sql.DataSource"> - JEUS의 <resources><data-source>와
+    같은 도메인(여기서는 인스턴스) 레벨 JDBC 커넥션 풀 정의다. Tomcat엔 컨테이너별로 어떤
+    데이터소스를 쓰는지 명시하는 참조 요소 자체가 없어(JEUS6과 동일한 상황 - 리소스가 인스턴스
+    전체에 암묵적으로 공용) parse_tomcat이 이 인스턴스의 모든 컨테이너에 일괄 연결한다.
+    password는 설정에 암호화된 값으로 있어도 민감정보라 JEUS와 동일하게 아예 안 뽑는다."""
+    if context_root is None:
+        return []
+    data_sources = []
+    for resource in context_root.findall(".//Resource"):
+        if resource.get("type") != "javax.sql.DataSource":
+            continue
+        name = resource.get("name", "")
+        if not name:
+            continue
+        host, port, database_name = _parse_oracle_jdbc_url(resource.get("url", ""))
+        data_sources.append(
+            {
+                "data_source_id": name,
+                "export_name": name,
+                "vendor": _vendor_from_driver_class(resource.get("driverClassName", "")),
+                "db_host": host,
+                "port": port,
+                "database_name": database_name,
+                "db_user": resource.get("username", ""),
+                "pool_min": resource.get("minIdle", ""),
+                "pool_max": resource.get("maxActive", ""),
+            }
+        )
+    return data_sources
+
+
+def _parse_tomcat_connectors(service_elem: ET.Element) -> tuple[str, str]:
+    """<Connector port="..." protocol="HTTP/1.1" .../> - SSLEnabled="true"인 첫 커넥터를
+    ssl_port로, 아닌 첫 커넥터를 listen_port로 잡는다 - JEUS의 <listeners><listener>
+    (BASE/SSL 구분)와 같은 역할."""
+    listen_port = ""
+    ssl_port = ""
+    for connector in service_elem.findall("Connector"):
+        port = connector.get("port", "")
+        if connector.get("SSLEnabled", "").lower() == "true":
+            ssl_port = ssl_port or port
+        else:
+            listen_port = listen_port or port
+    return listen_port, ssl_port
+
+
+def _parse_tomcat_deployed_apps(service_elem: ET.Element) -> str:
+    """<Engine><Host name="..."><Context path="..." docBase="..."/> - 배포된 웹앱을
+    "호스트: path(docBase)" 형태로 콤마 이어붙인다(JEUS의 deployed_apps_summary와 같은 역할).
+    path=""는 ROOT 컨텍스트(URL 루트)를 뜻해 사람이 읽기 좋게 "ROOT"로 표시."""
+    labels = []
+    for host_elem in service_elem.findall("Engine/Host"):
+        host_name = host_elem.get("name", "")
+        for context_elem in host_elem.findall("Context"):
+            path = context_elem.get("path", "") or "ROOT"
+            doc_base = context_elem.get("docBase", "")
+            label = f"{path} ({doc_base})" if doc_base else path
+            labels.append(f"{host_name}: {label}" if host_name else label)
+    return ", ".join(labels)
+
+
+def parse_tomcat(files: dict[str, str], hostname: str) -> dict:
+    """Tomcat(server.xml [+ context.xml])을 parse_jeus와 같은 반환 형태({"admin_server_name",
+    "domain_version", "containers": [...], "data_sources": [...]})로 변환해 was/sync.py의
+    sync_jeus를 그대로 재사용한다(JEUS6과 동일 전략 - kind별 동기화 로직 분기가 필요 없음).
+
+    JEUS의 domain.xml과 달리 server.xml엔 자기 자신을 가리키는 hostname 정보가 전혀 없다
+    (Apache/Nginx의 ServerName 부재와 같은 이유) - 그래서 was/views.py가 apache/nginx와 동일
+    패턴으로 AWX 페이로드의 hostname 필드를 받아 이 함수에 그대로 넘겨주고, 여기서 모든
+    컨테이너의 node_name에 그 값을 채운다(sync_jeus의 _resolve_asset이 node_name으로 asset을
+    찾으므로 - was/models.py의 kind 주석 참고). admin_server_name은 JEUS6과 동일하게 항상
+    빈 문자열(admin 서버 개념 자체가 없음).
+
+    <Service> 하나 = 컨테이너(JeusContainer) 하나 - 인스턴스 하나(server.xml 하나)에 보통
+    <Service>가 하나뿐이지만 이론상 여러 개도 지원한다. webtob_connectors는 항상 빈 리스트
+    (Tomcat은 WebToB에 등록되는 개념이 없음 - Apache가 VIP로 바로 프록시하는 구성은
+    network.ServiceNetworkMapping이 다룸, CLAUDE.md "구성도" 섹션 참고). 데이터소스는
+    JEUS6과 동일 원칙으로 이 인스턴스의 모든 컨테이너에 일괄 연결한다."""
+    server_content = files.get("server.xml", "")
+    if not server_content:
+        return {
+            "admin_server_name": "",
+            "node_name": hostname,
+            "domain_version": "",
+            "containers": [],
+            "data_sources": [],
+        }
+
+    root = ET.fromstring(server_content)
+
+    context_content = files.get("context.xml", "")
+    context_root = ET.fromstring(context_content) if context_content else None
+    data_sources = _parse_tomcat_datasources(context_root)
+    all_ds_ids = [ds["data_source_id"] for ds in data_sources if ds["data_source_id"]]
+
+    containers = []
+    for service_elem in root.findall("Service"):
+        name = service_elem.get("name", "")
+        listen_port, ssl_port = _parse_tomcat_connectors(service_elem)
+
+        containers.append(
+            {
+                "name": name,
+                "node_name": hostname,
+                "listen_port": listen_port,
+                "ssl_port": ssl_port,
+                "deployed_apps_summary": _parse_tomcat_deployed_apps(service_elem),
+                "webtob_connectors": [],
+                "data_source_names": list(all_ds_ids),
+            }
+        )
+
+    return {
+        "admin_server_name": "",
+        "node_name": hostname,
+        "domain_version": "",
+        "containers": containers,
+        "data_sources": data_sources,
+    }
+
+
+PARSERS = {"jeus": parse_jeus, "jeus6": parse_jeus6, "tomcat": parse_tomcat}

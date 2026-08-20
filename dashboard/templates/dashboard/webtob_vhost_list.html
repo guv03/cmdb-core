@@ -65,7 +65,7 @@
         <td style="word-break: break-all;">{{ row.vhost.ssl.required_ciphers|default:"" }}</td>
         <td>{{ row.vhost.logging|default:"" }}</td>
         <td>{{ row.vhost.errorlog|default:"" }}</td>
-        <td>{{ row.vhost.service.name|default:"" }}</td>
+        <td>{% if row.vhost.service %}<a class="tag is-light" href="{% url 'dashboard-service-topology' %}?name={{ row.vhost.service.name|urlencode }}">{{ row.vhost.service.name }}</a>{% endif %}</td>
         <td>{{ row.svrgroup_summary }}</td>
         <td>{{ row.server_summary }}</td>
         <td>{{ row.uri_summary }}</td>

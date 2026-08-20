@@ -2,6 +2,21 @@
 
 일 단위로 진행한 작업을 기록한다. 새 날짜는 위에 추가한다.
 
+## 2026-08-20
+
+- **프로젝트 로컬 기동**: `scripts/start.ps1`로 `docker compose up -d --build` + `migrate`, 대시보드 로그인 스모크 테스트까지 확인.
+- **"연결된 자원(시스템/OS/WEB/WAS/DB)이 보이는데 서비스 관련 자원 목록도 볼 수 있냐"는 요청으로 설계 검토부터 시작**: 구성도 그래프의 노드/엣지 수집 로직을 재사용해 표로도 보여주는 방향으로 정리(그래프=모양, 표=목록), AskUserQuestion으로 화면 위치(기존 구성도 화면에 통합 vs 별도 화면)와 vhost/컨테이너 서비스 배정을 다중값으로 바꿀지 확인받고 진행. `dashboard/topology.py`를 `collect_service_resources()`/`build_service_topology_graph()`/`build_service_resource_table()`로 리팩터링해 그래프와 표가 같은 쿼리 결과를 공유하도록 구현, 실제 push 데이터(facts→Oracle→systems→JEUS)로 WAS 3행+DB 1행(경유 컨테이너 필터링 정확) 렌더링까지 확인.
+- **"OS나 시스템, WAS, WEB에도 서비스 라벨을 붙이고 싶다(여러 개 붙을 수도 있음)"는 후속 요청**: `get_service_labels_for_assets`/`get_service_labels_for_system_hosts`(계산형, 저장 없음)를 만들어 `build_rows`/`build_system_host_rows`에 접목, 6곳(자산/시스템 목록·상세, 서로 참조하는 표까지)에 "서비스" 컬럼 추가. 실제 push 데이터로 여러 서비스 라벨이 동시에 뜨는 것까지(기존 DB에 남아있던 값과 합쳐져서) 확인.
+- **"특정 자원 작업할 때 영향받는 서비스를 알고 싶은데 지금은 안 보인다"는 추가 요청**: DB(DbConfigSource/DbInstance)에 서비스 가시성이 아예 없던 걸 발견 — `get_service_labels_for_db_instances`/`get_service_labels_for_db_config_sources` 추가로 DB 목록/인스턴스 목록/DB 상세에도 계산형 라벨 노출. 여기에 더해 System/OS/WEB/WAS/DB 5개 자원 전부의 서비스 라벨/서비스명을 구성도 화면(`?name=서비스`)으로 바로 넘어가는 링크로 바꿔 "영향받는 서비스 확인 → 클릭 → 그 서비스에 뭐가 다 물려있는지"까지 한 흐름으로 이어지게 함.
+- **"자동 계산이 빵꾸 났을 때 수기로 매핑하는 방법"질문에 설계 후 구현**: `Asset`/`SystemHost`/`DbConfigSource`에 `manual_services`(M2M, 계산값과 합집합) 추가 — `DbInstance`는 push마다 통짜 교체돼 직접 필드를 못 붙이는 걸 확인하고 상위인 `DbConfigSource`에 붙임(SystemHost가 예전에 겪은 것과 같은 클래스의 실수를 사전에 피함). 목록 화면에 ✎ 아이콘으로 추가/해제 모달(GET으로 현재 수기값 불러오기, add/remove는 즉시 반영) 붙임 - "모달에 저장 버튼이 없어서 헷갈렸다"는 피드백에 즉시반영 방식이라 그렇다고 설명하고 현재 방식 유지로 확정.
+- **네트워크 탭 한계 지적 및 다중 홉 지원으로 재설계**: "WEB→GW→WAS처럼 같은 서비스에 VIP가 두 번 나오는 구성을 지금 구조로는 못 넣는다"는 지적을 검증 후 인정 — `ServiceNetworkMapping.service`를 `OneToOneField`→`ForeignKey`로 바꾸고 `hop_order`/`label` 추가, 네트워크 탭을 서비스별 박스+홉 여러 개 표로 재구성, 구성도 그래프도 hop_order 순으로 VIP 노드를 체인으로 잇도록 수정. WEB(도메인/공인IP)+GW(내부 VIP만) 2홉을 실제로 등록해 `web_apache_1 → vip(WEB) → vip(GW) → was_컨테이너 → db` 전체 체인이 그려지는 것 확인.
+- **"네트워크 탭에 등록해도 구성도에 바로 반영 안 되는 거 아니냐" 질문에 검증**: 캐시/동기화 단계 없이 매번 새로 조회하는 구조라 즉시 반영됨을 확인해 답변. 다만 실서버 hostname→asset 매칭은 저장 시점에만 시도되고 이후 그 서버가 새로 등록돼도 자동 재시도가 안 된다는 점(다른 기능들의 "다음 push 때 재해석"과 다른 지점)을 짚어서 알림.
+- **"WEB→GW→WAS 체인의 진짜 의도(WEB/WAS 컨피그가 참조하는 도메인/VIP가 실서버 값엔 없어서 매핑 단계가 필요했다)" 확인 요청에 검증** — Apache의 `ProxyPass`가 VIP/도메인만 지정하고 실서버 정보가 설정에 없다는 게 정확히 맞다고 코드/모델로 재확인. 이어서 "Apache-Tomcat 구성일 때도 마찬가지"라는 예시를 검증하다가 **버그 발견**: 마지막 홉의 실서버가 WAS 컨테이너로 안 잡히면(Tomcat처럼 CMDB가 그 WAS 종류를 아예 안 쫓는 경우) 그래프 엣지가 통째로 사라지던 문제 — 실서버 asset이 있으면 WAS 컨테이너 없이도 OS 박스를 만들어 체인이 안 끊기도록 수정 후 재검증.
+- **Tomcat WAS 지원 신규 구현(`samples/tomcat/`의 `server.xml`/`context.xml` 샘플 기반)**: `was/parsers.py`에 `parse_tomcat` 추가 — `JeusContainer`/`JeusDataSource` 모델과 `sync_jeus`를 코드 수정 없이 재사용하는 전략(JEUS6과 동일). Oracle JDBC URL(긴 DESCRIPTION 형식/짧은 `@host:port:sid` 형식)에서 host/port/service_name을 정규식으로 파싱하는 부분이 새로 필요해서 추가. 실제 샘플로 push→파싱→저장까지 검증(컨테이너명 "Catalina", 데이터소스 "openapiDS" 필드 전부 정확). `awx/push_tomcat_config_to_cmdb.yml` 신규 작성, CLAUDE.md/awx/README.md 문서화.
+  - **"JEUS 목록은 그대로 두고 Tomcat 목록을 별도 화면으로 만들어달라"는 정정 요청**: 처음엔 기존 JEUS 컨테이너 목록에 Tomcat도 섞어서 보여주고 화면명만 "WAS 컨테이너 목록"으로 바꿨었는데, "설정에 들어가는 값이 달라서" 별도 화면을 원한다는 피드백을 받고 되돌림 — `get_jeus_container_queryset`에 `kind__in=[jeus, jeus6]` 필터를 다시 걸어 JEUS 목록을 원상 복구하고, `get_tomcat_container_queryset`/`TomcatContainerListView`/`tomcat_container_list.html`을 신규로 만들어 완전히 분리(webconfig의 WebToB/Apache/Nginx vhost 목록 분리와 동일 패턴 - JEUS의 "Node"/"WebToB 연결" 컬럼 대신 Tomcat만의 값인 데이터소스 목록 노출). 종합 조회는 기존 "WAS 목록"(kind 무관)에서 그대로 되는 것 확인.
+  - **"IP도 AWX가 같이 보내야 하는 거 아니냐" 질문에 검증**: WEB/WAS 전 화면 공통 원칙(설정 push엔 IP를 안 싣고 hostname으로 찾은 기존 자산의 `primary_ip`를 재사용)이 Tomcat에도 그대로 적용됨을 실제 자산(`drnrap01`, IP `10.150.9.165`)으로 재확인 — AWX 플레이북에 IP 필드 추가 불필요하다고 답변.
+- 1.0.47로 VERSION/CHANGELOG 갱신 → `docker build`/`save`/zip 압축까지 통상 절차대로 진행.
+
 ## 2026-08-19
 
 - **로컬 환경 기동/종료 반복 확인**: `scripts/start.ps1`로 기동, `docker compose down`으로 종료, 다시 기동 — 볼륨(`pgdata`) 유지되는 것까지 확인.

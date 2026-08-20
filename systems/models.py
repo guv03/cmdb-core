@@ -1,6 +1,6 @@
 from django.db import models
 
-from core.models import Asset, TimeStampedModel
+from core.models import Asset, Service, TimeStampedModel
 
 
 class SystemSource(TimeStampedModel):
@@ -58,6 +58,12 @@ class SystemHost(TimeStampedModel):
     # kind별로만 의미있는 나머지 정보(클러스터/CPU/메모리/모델/전원 상태 등 원본 전체) -
     # 구조화 안 하고 참고용으로 보관, SystemHostFieldDefinition이 이 안에서 값을 뽑는다.
     extra = models.JSONField(default=dict, blank=True)
+    # 서비스 라벨은 기본적으로 이 호스트의 VM들이 매칭된 asset의 서비스를 계산해서 보여준다
+    # (dashboard.queries.get_service_labels_for_system_hosts) - VM<->asset hostname 매칭이
+    # 실패하거나 아직 VM push 자체가 없으면 라벨이 하나도 안 뜨는 구멍이 생길 수 있어, 그
+    # 구멍을 메꾸는 수기 보정값 - core.Asset.manual_services와 동일 원칙(합집합으로 보충,
+    # 대체 아님). SystemHost는 push마다 upsert라(통짜 교체 아님) 이 필드를 직접 붙여도 안전.
+    manual_services = models.ManyToManyField(Service, blank=True, related_name="manual_system_hosts")
 
     class Meta:
         constraints = [

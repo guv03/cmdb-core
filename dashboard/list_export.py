@@ -18,6 +18,7 @@ from django.utils import timezone
 
 from dashboard.queries import (
     build_jeus_container_rows,
+    build_tomcat_container_rows,
     build_webtob_vhost_rows,
     get_apache_vhost_queryset,
     get_change_history_queryset,
@@ -26,6 +27,7 @@ from dashboard.queries import (
     get_jeus_container_queryset,
     get_nginx_vhost_queryset,
     get_process_queryset,
+    get_tomcat_container_queryset,
     get_was_config_queryset,
     get_was_history_queryset,
     get_webconfig_history_queryset,
@@ -287,6 +289,32 @@ def export_jeus_container_workbook() -> HttpResponse:
         ["Hostname", "IP", "인스턴스", "컨테이너", "Node", "Listen Port", "SSL Port", "배포된 앱", "WebToB 연결", "서비스명"],
         rows,
         "cmdb_jeus_containers.xlsx",
+    )
+
+
+def export_tomcat_container_workbook() -> HttpResponse:
+    """export_jeus_container_workbook과 같은 패턴 - Tomcat 목록은 Node/WebToB 연결 대신
+    데이터소스 목록을 내보낸다(dashboard/queries.py의 build_tomcat_container_rows 참고)."""
+    containers = get_tomcat_container_queryset(_NO_FILTER_REQUEST)
+    rows = [
+        [
+            row["container"].asset.hostname if row["container"].asset else "(미등록)",
+            row["container"].asset.primary_ip if row["container"].asset else "",
+            row["container"].source.instance_name,
+            row["container"].name,
+            row["container"].listen_port,
+            row["container"].ssl_port,
+            row["container"].deployed_apps_summary,
+            row["data_source_summary"],
+            row["container"].service.name if row["container"].service_id else "",
+        ]
+        for row in build_tomcat_container_rows(containers)
+    ]
+    return _workbook_response(
+        "Tomcat 컨테이너",
+        ["Hostname", "IP", "인스턴스", "컨테이너", "Listen Port", "SSL Port", "배포된 앱", "데이터소스", "서비스명"],
+        rows,
+        "cmdb_tomcat_containers.xlsx",
     )
 
 

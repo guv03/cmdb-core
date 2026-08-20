@@ -25,6 +25,16 @@
   해서 JEUS6가 여러 개 뜰 수 있어(예: `ddorap01`에 `jeuscm`/`jeuslt` 각각) `jeus6_instance_name`
   (보통 OS 계정명)을 반드시 채워야 함 — 계정별로 인벤토리 host 항목을 나누거나 Job Template을
   나눠서 실행할 것.**
+- `push_tomcat_config_to_cmdb.yml` — Tomcat 설정(`server.xml` [+ `context.xml`], `kind=tomcat`)을
+  CMDB(`POST /api/was/`)로 push하는 플레이북. JEUS와 완전히 다른 제품이라 domain.xml 개념이
+  없고, `push_jeus6_config_to_cmdb.yml`과 동일하게 `files`(파일명 → 원본 텍스트 dict)로
+  push한다. **server.xml엔 서버 자신을 가리키는 절이 없어**(Apache/Nginx의 `*NODE` 부재와
+  동일한 이유) `inventory_hostname`을 payload에 직접 실어 보낸다. `context.xml`(전역
+  데이터소스가 있는 `$CATALINA_BASE/conf/context.xml`)은 없는 인스턴스도 있어 선택 사항 -
+  파일이 없으면 조용히 건너뛴다. 컨테이너/데이터소스 모델은 JEUS와 완전히 같은 것을
+  재사용(`JeusContainer`/`JeusDataSource`)하지만 WebToB 등록 개념(`webtob-connector`)이
+  없어 그쪽 연결은 항상 비어있다 - Apache가 도메인을 받아 내부 VIP로 Tomcat에 넘기는 실제
+  구성은 대시보드의 "네트워크" 탭(`ServiceNetworkMapping`)에서 사람이 직접 등록한다.
 - `push_oracle_config_to_cmdb.yml` — DB 호스트에 SSH 접속해 오라클 OS 계정으로 로컬
   `sqlplus`(OS 인증, DB 비밀번호 저장 불필요)를 실행하고 그 결과(JSON)를
   CMDB(`POST /api/database/`)로 push하는 플레이북. WebToB처럼 텍스트를 정규식으로 파싱하는

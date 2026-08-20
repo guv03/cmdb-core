@@ -1,3 +1,4 @@
+from collections import defaultdict
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 
@@ -21,10 +22,10 @@ from database.models import (
     DbInstance,
 )
 from facts.models import FactChangeHistory, FactFieldDefinition, HostFact, HostFactValue
-from network.models import ServiceNetworkBackend
+from network.models import ServiceNetworkBackend, ServiceNetworkMapping
 from processes.models import ProcessSnapshot
-from systems.models import SystemHost, SystemHostFieldDefinition, SystemSource
-from was.models import JeusContainer, WasConfigSource, WasConfigSourceRevision
+from systems.models import SystemHost, SystemHostFieldDefinition, SystemSource, SystemVm
+from was.models import JeusContainer, JeusDataSource, WasConfigSource, WasConfigSourceRevision
 from webconfig.models import (
     ApacheVhost,
     NginxVhost,
@@ -468,11 +469,19 @@ def get_service_network_queryset(request):
     """서비스 탭의 네트워크 매핑 섹션(도메인/공인IP/내부VIP/실서버 목록) - WEB/WAS 표와 같은
     검색창(q)을 공유한다. Apache/Nginx는 설정 내용에 뒷단 실서버 정보가 전혀 없어(VIP/도메인
     하나로만 지정) 이 화면에서 사람이 직접 등록한 값이 유일한 출처다. 서비스 개수 자체가
-    vhost 대비 훨씬 적어 WAS 표와 동일하게 별도 정렬/페이지네이션 없이 이름순 전체 표시."""
-    queryset = Service.objects.select_related("network_mapping").prefetch_related(
+    vhost 대비 훨씬 적어 WAS 표와 동일하게 별도 정렬/페이지네이션 없이 이름순 전체 표시.
+
+    network_mappings는 서비스당 여러 개(hop_order로 체인) 허용하는 to-many 관계라(WEB->GW->WAS
+    처럼 hop이 여러 개인 서비스 대응, ServiceNetworkMapping 모델 참고) 검색 필터가 그 to-many를
+    거치면 서비스 행이 hop 수만큼 중복될 수 있어 .distinct()가 실제로 필요하다 - 다만
+    ServiceNetworkMapping의 필드는 전부 CharField(TextField/JSONField 아님)라 Oracle NCLOB
+    DISTINCT 제약(CLAUDE.md 환경 섹션)에 안 걸린다."""
+    queryset = Service.objects.prefetch_related(
         Prefetch(
-            "network_mapping__backends",
-            queryset=ServiceNetworkBackend.objects.select_related("asset"),
+            "network_mappings",
+            queryset=ServiceNetworkMapping.objects.prefetch_related(
+                Prefetch("backends", queryset=ServiceNetworkBackend.objects.select_related("asset"))
+            ),
         )
     )
 
@@ -480,10 +489,10 @@ def get_service_network_queryset(request):
     if q:
         queryset = queryset.filter(
             Q(name__icontains=q)
-            | Q(network_mapping__external_domain__icontains=q)
-            | Q(network_mapping__external_ip__icontains=q)
-            | Q(network_mapping__internal_vip__icontains=q)
-        )
+            | Q(network_mappings__external_domain__icontains=q)
+            | Q(network_mappings__external_ip__icontains=q)
+            | Q(network_mappings__internal_vip__icontains=q)
+        ).distinct()
 
     return queryset.order_by("name")
 
@@ -803,8 +812,15 @@ def get_jeus_container_queryset(request):
     # 뺄 수 없는데, 검색 필터가 own 필드/forward FK만 참조해 to-many 조인이 없으므로(중복
     # 행이 생길 수 없음) .distinct()가 애초에 불필요 - 걸지 않아서 NCLOB 문제를 피한다
     # (apache/nginx vhost 목록에서 확립한 원칙과 동일).
+    # kind=jeus/jeus6만 대상 - Tomcat은 설정에 들어가는 값 자체가 달라(WebToB 연결 개념이
+    # 없음, node_name이 hostname과 동일해 의미가 없음 등) get_tomcat_container_queryset로
+    # 완전히 분리했다(webconfig의 WebToB/Apache/Nginx vhost 목록을 kind별로 나눈 것과 동일
+    # 원칙 - JeusContainer 모델은 공유해도 화면은 공유하지 않음).
     queryset = (
-        JeusContainer.objects.select_related("source__asset", "asset", "service")
+        JeusContainer.objects.filter(
+            source__kind__in=[WasConfigSource.Kind.JEUS, WasConfigSource.Kind.JEUS6]
+        )
+        .select_related("source__asset", "asset", "service")
         .defer("source__raw_content")
         .prefetch_related("webtob_connectors__webtob_server__source__asset")
     )
@@ -846,7 +862,186 @@ def build_jeus_container_rows(containers):
     return rows
 
 
+TOMCAT_CONTAINER_SORT_LOOKUPS = {
+    "hostname": "asset__hostname",
+    "ip": "asset__primary_ip",
+    "instance_name": "source__instance_name",
+    "container": "name",
+    "listen_port": "listen_port",
+    "ssl_port": "ssl_port",
+    "service_name": "service__name",
+}
+
+
+def get_tomcat_container_queryset(request):
+    """JeusContainer 모델은 JEUS와 공유하지만(was/parsers.py의 parse_tomcat 참고) 화면은
+    kind=jeus/jeus6 목록과 완전히 분리한다 - Tomcat 설정엔 WebToB 연결 개념이 없고
+    node_name도 hostname과 항상 같은 값이라(was/parsers.py) JEUS 목록의 "Node"/"WebToB 연결"
+    컬럼이 Tomcat에선 의미가 없다. 대신 이 화면엔 Tomcat만의 값인 데이터소스 목록을 보여준다
+    (get_jeus_container_queryset와 동일하게 검색 필터가 own 필드/forward FK만 참조해
+    .distinct() 불필요)."""
+    queryset = (
+        JeusContainer.objects.filter(source__kind=WasConfigSource.Kind.TOMCAT)
+        .select_related("source__asset", "asset", "service")
+        .defer("source__raw_content")
+        .prefetch_related("data_sources")
+    )
+
+    q = _request_param(request, "q", "search")
+    if q:
+        queryset = queryset.filter(
+            Q(source__asset__hostname__icontains=q)
+            | Q(source__instance_name__icontains=q)
+            | Q(asset__hostname__icontains=q)
+            | Q(name__icontains=q)
+            | Q(service__name__icontains=q)
+        )
+
+    sort = _request_param(request, "sort", "ordering", default="hostname")
+    direction = "-" if sort.startswith("-") else ""
+    sort_key = sort.lstrip("-")
+    lookup = TOMCAT_CONTAINER_SORT_LOOKUPS.get(sort_key, "asset__hostname")
+
+    return queryset.order_by(f"{direction}{lookup}")
+
+
+def build_tomcat_container_rows(containers):
+    """데이터소스(JeusDataSource)는 컨테이너 하나에 여러 개씩 걸릴 수 있어(M2M) 표 한 칸에
+    요약 문자열로 모아준다 - build_jeus_container_rows의 webtob_connector_summary와 같은 패턴
+    (Tomcat엔 WebToB 연결이 없는 대신 데이터소스가 이 화면에서 의미 있는 관계형 값)."""
+    rows = []
+    for container in containers:
+        data_source_summary = ", ".join(ds.data_source_id for ds in container.data_sources.all())
+        rows.append({"container": container, "data_source_summary": data_source_summary})
+    return rows
+
+
+def get_service_labels_for_assets(asset_ids):
+    """asset.id -> 그 asset에 연결된 WEB vhost/WAS 컨테이너들의 서비스명 목록(중복 제거,
+    이름순) + Asset.manual_services(수기 보정, 아래 참고)의 합집합. vhost/컨테이너의 service
+    FK는 여전히 단일값이지만(WebtobVhost.service 등 참고), 한 asset에 서로 다른 서비스의
+    vhost/컨테이너가 같이 떠 있으면 자연히 계산값 라벨이 여러 개 모인다 - 매번 역추적해서
+    계산하지 저장하지 않는다(topology.py의 build_service_topology_graph와 같은 원칙: 캐시로
+    저장하지 않아 SystemHost 통짜교체 사고나 WebServiceDomain.service_name 비정규화 같은
+    어긋남 위험이 아예 없음). values_list로 own 필드/forward FK 컬럼만 뽑으므로 TextField/
+    JSONField가 SELECT에 안 끼어 NCLOB distinct 이슈도 없다.
+
+    이 역추적 경로(WebToB<->JEUS 커넥터, hostname 매칭 등)가 끊기면 라벨이 아예 안 뜨는
+    "구멍"이 생길 수 있어(예: WEB/WAS가 없는 DB 전용 서버), 사람이 직접 등록하는
+    manual_services를 계산값과 합쳐서(대체가 아니라 보충) 같이 보여준다."""
+    asset_ids = [aid for aid in asset_ids if aid is not None]
+    if not asset_ids:
+        return {}
+
+    labels_by_asset = defaultdict(set)
+    for model in (WebtobVhost, ApacheVhost, NginxVhost):
+        rows = model.objects.filter(
+            source__asset_id__in=asset_ids, service__isnull=False
+        ).values_list("source__asset_id", "service__name")
+        for asset_id, name in rows:
+            labels_by_asset[asset_id].add(name)
+
+    for asset_id, name in JeusContainer.objects.filter(
+        asset_id__in=asset_ids, service__isnull=False
+    ).values_list("asset_id", "service__name"):
+        labels_by_asset[asset_id].add(name)
+
+    for asset_id, name in Asset.objects.filter(
+        id__in=asset_ids, manual_services__isnull=False
+    ).values_list("id", "manual_services__name"):
+        labels_by_asset[asset_id].add(name)
+
+    return {asset_id: sorted(names) for asset_id, names in labels_by_asset.items()}
+
+
+def get_service_labels_for_system_hosts(host_ids):
+    """SystemHost.id -> 그 물리 호스트에 떠있는 VM들이 매칭된 asset들의 서비스 라벨(계산형,
+    get_service_labels_for_assets와 동일 원칙) + SystemHost.manual_services(수기 보정)의
+    합집합. 호스트 하나에 서로 다른 서비스의 VM이 같이 떠 있으면 자연히 계산값 라벨이 여러
+    개 모인다. VM<->asset 매칭이 실패하거나 아직 VM push 자체가 없으면 계산값이 하나도 안
+    나오는 구멍이 생길 수 있어, manual_services로 직접 보정할 수 있게 한다."""
+    host_ids = [hid for hid in host_ids if hid is not None]
+    if not host_ids:
+        return {}
+
+    host_to_assets = defaultdict(set)
+    all_asset_ids = set()
+    for host_id, asset_id in SystemVm.objects.filter(
+        host_id__in=host_ids, asset__isnull=False
+    ).values_list("host_id", "asset_id"):
+        host_to_assets[host_id].add(asset_id)
+        all_asset_ids.add(asset_id)
+
+    asset_labels = get_service_labels_for_assets(all_asset_ids)
+    result = defaultdict(set)
+    for host_id, asset_ids in host_to_assets.items():
+        for asset_id in asset_ids:
+            result[host_id].update(asset_labels.get(asset_id, []))
+
+    for host_id, name in SystemHost.objects.filter(
+        id__in=host_ids, manual_services__isnull=False
+    ).values_list("id", "manual_services__name"):
+        result[host_id].add(name)
+
+    return {host_id: sorted(names) for host_id, names in result.items()}
+
+
+def get_service_labels_for_db_instances(instance_ids):
+    """DbInstance.id -> 이 인스턴스를 참조하는 JeusDataSource의 컨테이너들이 속한 서비스
+    라벨 목록(계산형, get_service_labels_for_assets와 동일 원칙 - topology.py가 JEUS<->DB
+    엣지를 만들 때 따라가는 것과 같은 경로: JeusDataSource.db_instance). 인스턴스 하나를
+    서로 다른 서비스의 컨테이너가 공유하면 자연히 라벨이 여러 개 모인다. 수기 보정은
+    DbInstance가 아니라 DbConfigSource에 달려있다(get_service_labels_for_db_config_sources
+    참고 - DbInstance는 push마다 통짜 교체돼 직접 필드를 못 붙임) - 인스턴스 단위 계산값이
+    필요할 때만 이 함수를 쓴다."""
+    instance_ids = [iid for iid in instance_ids if iid is not None]
+    if not instance_ids:
+        return {}
+
+    labels_by_instance = defaultdict(set)
+    for instance_id, name in JeusDataSource.objects.filter(
+        db_instance_id__in=instance_ids, containers__service__isnull=False
+    ).values_list("db_instance_id", "containers__service__name"):
+        labels_by_instance[instance_id].add(name)
+    return {iid: sorted(names) for iid, names in labels_by_instance.items()}
+
+
+def get_service_labels_for_db_config_sources(source_ids):
+    """DbConfigSource.id -> 그 소스 산하 모든 인스턴스(RAC면 여러 개)의 서비스 라벨(계산형,
+    get_service_labels_for_system_hosts와 동일 패턴 - 호스트->VM->자산 대신 소스->인스턴스)
+    + DbConfigSource.manual_services(수기 보정)의 합집합. SID가 안 맞거나 WAS가 아직 이
+    DB를 push하지 않았으면 계산값이 하나도 안 나오는 구멍이 생길 수 있어, manual_services로
+    직접 보정할 수 있게 한다(RAC라도 인스턴스 단위가 아니라 소스 전체 단위 보정)."""
+    source_ids = [sid for sid in source_ids if sid is not None]
+    if not source_ids:
+        return {}
+
+    source_to_instances = defaultdict(set)
+    all_instance_ids = set()
+    for source_id, instance_id in DbInstance.objects.filter(source_id__in=source_ids).values_list(
+        "source_id", "id"
+    ):
+        source_to_instances[source_id].add(instance_id)
+        all_instance_ids.add(instance_id)
+
+    instance_labels = get_service_labels_for_db_instances(all_instance_ids)
+    result = defaultdict(set)
+    for source_id, instance_ids in source_to_instances.items():
+        for instance_id in instance_ids:
+            result[source_id].update(instance_labels.get(instance_id, []))
+
+    for source_id, name in DbConfigSource.objects.filter(
+        id__in=source_ids, manual_services__isnull=False
+    ).values_list("id", "manual_services__name"):
+        result[source_id].add(name)
+
+    return {source_id: sorted(names) for source_id, names in result.items()}
+
+
 def build_rows(assets, dynamic_field_definitions):
+    assets = list(assets)
+    service_labels_by_asset = get_service_labels_for_assets([a.id for a in assets])
+
     rows = []
     for asset in assets:
         hostfact = getattr(asset, "hostfact", None)
@@ -870,7 +1065,14 @@ def build_rows(assets, dynamic_field_definitions):
             }
             for fd in dynamic_field_definitions
         ]
-        rows.append({"asset": asset, "hostfact": hostfact, "dynamic_cells": dynamic_cells})
+        rows.append(
+            {
+                "asset": asset,
+                "hostfact": hostfact,
+                "dynamic_cells": dynamic_cells,
+                "service_labels": service_labels_by_asset.get(asset.id, []),
+            }
+        )
 
     return rows
 
@@ -966,6 +1168,9 @@ def build_system_host_rows(hosts, dynamic_field_definitions):
     vCenter/Nutanix와 그대로 공유하면서 물리 행에서만 입력 UI를 열어줄 수 있다(field
     definition을 kind별로 중복 등록할 필요가 없어짐). vCenter/Nutanix 행은 지금처럼 AUTO는
     읽기 전용 유지(수정해봐야 다음 push에 조용히 덮어써져 혼란만 커짐)."""
+    hosts = list(hosts)
+    service_labels_by_host = get_service_labels_for_system_hosts([h.id for h in hosts])
+
     rows = []
     for host in hosts:
         values_by_field_id = {}
@@ -986,7 +1191,13 @@ def build_system_host_rows(hosts, dynamic_field_definitions):
             }
             for fd in dynamic_field_definitions
         ]
-        rows.append({"host": host, "dynamic_cells": dynamic_cells})
+        rows.append(
+            {
+                "host": host,
+                "dynamic_cells": dynamic_cells,
+                "service_labels": service_labels_by_host.get(host.id, []),
+            }
+        )
     return rows
 
 
@@ -1093,6 +1304,9 @@ def get_db_config_dynamic_field_definitions():
 def build_db_config_rows(sources, dynamic_field_definitions):
     """DB 목록의 build_system_host_rows()와 같은 패턴 - 고정 컬럼(db_unique_name/종류/DB명/
     Role/OpenMode/인스턴스 수)에 admin이 등록한 동적 컬럼(AUTO/MANUAL)을 이어붙인다."""
+    sources = list(sources)
+    service_labels_by_source = get_service_labels_for_db_config_sources([s.id for s in sources])
+
     rows = []
     for source in sources:
         values_by_field_id = {}
@@ -1112,7 +1326,13 @@ def build_db_config_rows(sources, dynamic_field_definitions):
             }
             for fd in dynamic_field_definitions
         ]
-        rows.append({"source": source, "dynamic_cells": dynamic_cells})
+        rows.append(
+            {
+                "source": source,
+                "dynamic_cells": dynamic_cells,
+                "service_labels": service_labels_by_source.get(source.id, []),
+            }
+        )
     return rows
 
 

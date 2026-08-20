@@ -23,7 +23,7 @@
     <tbody>
       <tr>
         <th style="width: 12em;">서비스명</th>
-        <td>{{ container.service.name|default:"" }}</td>
+        <td>{% if container.service %}<a class="tag is-light" href="{% url 'dashboard-service-topology' %}?name={{ container.service.name|urlencode }}">{{ container.service.name }}</a>{% endif %}</td>
       </tr>
       <tr><th>Node</th><td>{{ container.node_name }}</td></tr>
       <tr><th>Listen Port</th><td>{{ container.listen_port }}</td></tr>

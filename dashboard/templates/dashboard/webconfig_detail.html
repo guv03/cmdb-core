@@ -39,7 +39,7 @@
     <tbody>
       <tr>
         <th style="width: 12em;">서비스명</th>
-        <td>{{ vhost.service.name|default:"" }}</td>
+        <td>{% if vhost.service %}<a class="tag is-light" href="{% url 'dashboard-service-topology' %}?name={{ vhost.service.name|urlencode }}">{{ vhost.service.name }}</a>{% endif %}</td>
       </tr>
       <tr><th>Hostname</th><td>{{ vhost.hostname }}</td></tr>
       <tr><th>HostAlias</th><td>{{ vhost.hostalias }}</td></tr>
@@ -112,7 +112,7 @@
     <tbody>
       <tr>
         <th style="width: 12em;">서비스명</th>
-        <td>{{ vhost.service.name|default:"" }}</td>
+        <td>{% if vhost.service %}<a class="tag is-light" href="{% url 'dashboard-service-topology' %}?name={{ vhost.service.name|urlencode }}">{{ vhost.service.name }}</a>{% endif %}</td>
       </tr>
       <tr><th>Domain</th><td>{{ vhost.hostname }}</td></tr>
       <tr><th>ServerAlias</th><td>{{ vhost.hostalias }}</td></tr>
@@ -145,7 +145,7 @@
     <tbody>
       <tr>
         <th style="width: 12em;">서비스명</th>
-        <td>{{ vhost.service.name|default:"" }}</td>
+        <td>{% if vhost.service %}<a class="tag is-light" href="{% url 'dashboard-service-topology' %}?name={{ vhost.service.name|urlencode }}">{{ vhost.service.name }}</a>{% endif %}</td>
       </tr>
       <tr><th>Domain</th><td>{{ vhost.hostname }}</td></tr>
       <tr><th>Alias</th><td>{{ vhost.hostalias }}</td></tr>

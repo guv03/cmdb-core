@@ -5,7 +5,7 @@
 {% block content %}
 {% csrf_token %}
 <h1 class="title is-4">네트워크</h1>
-<p class="subtitle is-6 has-text-grey">서비스별 외부 도메인/공인 IP/내부 VIP/실서버 매핑입니다. Apache/Nginx는 설정 파일 내용만으로는 VIP/도메인 뒤의 실서버를 알 수 없어(운영계 이중화 구성) 여기서 직접 등록합니다. 내부망 전용 서비스는 도메인/공인 IP를 비워두면 됩니다. 서비스 배정 자체는 <a href="{% url 'dashboard-webservice-list' %}">서비스 배정</a> 탭에서 편집합니다.</p>
+<p class="subtitle is-6 has-text-grey">서비스별 외부 도메인/공인 IP/내부 VIP/실서버 매핑입니다. Apache/Nginx는 설정 파일 내용만으로는 VIP/도메인 뒤의 실서버를 알 수 없어(운영계 이중화 구성) 여기서 직접 등록합니다. 내부망 전용 구간은 도메인/공인 IP를 비워두면 됩니다. <strong>WEB → GW → WAS처럼 같은 서비스 안에서 VIP를 여러 번 거치면</strong> "+ 홉 추가"로 구간을 여러 개 등록하세요 - 등록한 순서가 그대로 체인 순서가 되어 구성도에도 VIP가 이어서 그려집니다. 서비스 배정 자체는 <a href="{% url 'dashboard-webservice-list' %}">서비스 배정</a> 탭에서 편집합니다.</p>
 
 <form class="field has-addons" method="get">
   <div class="control is-expanded">
@@ -16,50 +16,69 @@
   </div>
 </form>
 
-<div class="table-container">
-  <table class="table is-fullwidth is-hoverable is-striped">
-    <thead>
-      <tr>
-        <th>서비스명</th>
-        <th>도메인</th>
-        <th>공인 IP</th>
-        <th>내부 VIP</th>
-        <th>실서버</th>
-        <th></th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for service in network_rows %}
-      <tr>
-        <td>
-          <a class="button is-light is-small" href="{% url 'dashboard-service-topology' %}?name={{ service.name|urlencode }}">구성도</a>
-          {{ service.name }}
-        </td>
-        <td>{{ service.network_mapping.external_domain|default:"" }}</td>
-        <td>{{ service.network_mapping.external_ip|default:"" }}</td>
-        <td>{{ service.network_mapping.internal_vip|default:"" }}</td>
-        <td>
-          {% for backend in service.network_mapping.backends.all %}
-            {{ backend.ip_or_hostname }}{% if backend.asset %}<span class="has-text-grey"> ({{ backend.asset.hostname }})</span>{% endif %}{% if not forloop.last %}, {% endif %}
-          {% endfor %}
-        </td>
-        <td>
-          <button type="button" class="button is-light is-small dash-network-edit-btn"
-              data-url="{% url 'dashboard-service-network-update' service.pk %}"
-              data-title="{{ service.name }} - 네트워크 매핑"
-              data-domain="{{ service.network_mapping.external_domain|default:'' }}"
-              data-external-ip="{{ service.network_mapping.external_ip|default:'' }}"
-              data-vip="{{ service.network_mapping.internal_vip|default:'' }}"
-              data-backends="{% for b in service.network_mapping.backends.all %}{{ b.ip_or_hostname }}
+{% for service in network_rows %}
+<div class="box">
+  <div class="level">
+    <div class="level-left">
+      <p class="title is-6">
+        {{ service.name }}
+        <a class="button is-light is-small" href="{% url 'dashboard-service-topology' %}?name={{ service.name|urlencode }}">구성도</a>
+      </p>
+    </div>
+    <div class="level-right">
+      <button type="button" class="button is-link is-small hop-add-btn" data-service-id="{{ service.pk }}" data-service-name="{{ service.name }}">+ 홉 추가</button>
+    </div>
+  </div>
+  <div class="table-container">
+    <table class="table is-narrow is-fullwidth is-hoverable">
+      <thead>
+        <tr>
+          <th style="width: 8em;">구간</th>
+          <th>도메인</th>
+          <th>공인 IP</th>
+          <th>내부 VIP</th>
+          <th>실서버</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for mapping in service.network_mappings.all %}
+        <tr>
+          <td>{{ mapping.label|default:"-" }}</td>
+          <td>{{ mapping.external_domain|default:"" }}</td>
+          <td>{{ mapping.external_ip|default:"" }}</td>
+          <td>{{ mapping.internal_vip|default:"" }}</td>
+          <td>
+            {% for backend in mapping.backends.all %}
+              {{ backend.ip_or_hostname }}{% if backend.asset %}<span class="has-text-grey"> ({{ backend.asset.hostname }})</span>{% endif %}{% if not forloop.last %}, {% endif %}
+            {% endfor %}
+          </td>
+          <td>
+            <button type="button" class="button is-light is-small dash-network-edit-btn"
+                data-url="{% url 'dashboard-service-network-update' mapping.pk %}"
+                data-title="{{ service.name }} · {{ mapping.label|default:'VIP' }}"
+                data-label="{{ mapping.label|default:'' }}"
+                data-domain="{{ mapping.external_domain|default:'' }}"
+                data-external-ip="{{ mapping.external_ip|default:'' }}"
+                data-vip="{{ mapping.internal_vip|default:'' }}"
+                data-backends="{% for b in mapping.backends.all %}{{ b.ip_or_hostname }}
 {% endfor %}">편집</button>
-        </td>
-      </tr>
-      {% empty %}
-      <tr><td colspan="6" class="has-text-grey">등록된 서비스가 없습니다.</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
+            ·
+            <button type="button" class="button is-light is-small has-text-danger hop-delete-btn"
+                data-url="{% url 'dashboard-service-network-delete' mapping.pk %}"
+                data-label="{{ mapping.label|default:'VIP' }}">삭제</button>
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="6" class="has-text-grey">등록된 네트워크 구간이 없습니다.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
 </div>
+{% empty %}
+<p class="has-text-grey">등록된 서비스가 없습니다.</p>
+{% endfor %}
 
 <div class="modal" id="networkMappingModal">
   <div class="modal-background"></div>
@@ -69,6 +88,10 @@
       <button class="delete" aria-label="close" id="networkMappingModalClose"></button>
     </header>
     <section class="modal-card-body">
+      <div class="field">
+        <label class="label">구간명 (예: WEB, GW - 홉이 하나뿐이면 비워둬도 됩니다)</label>
+        <div class="control"><input class="input" type="text" id="networkLabelInput" placeholder="예: GW"></div>
+      </div>
       <div class="field">
         <label class="label">외부 도메인</label>
         <div class="control"><input class="input" type="text" id="networkDomainInput" placeholder="예: www.example.com"></div>
@@ -105,6 +128,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
   var networkModal = document.getElementById('networkMappingModal');
   var networkModalTitle = document.getElementById('networkMappingModalTitle');
+  var networkLabelInput = document.getElementById('networkLabelInput');
   var networkDomainInput = document.getElementById('networkDomainInput');
   var networkExternalIpInput = document.getElementById('networkExternalIpInput');
   var networkVipInput = document.getElementById('networkVipInput');
@@ -112,38 +136,57 @@ document.addEventListener('DOMContentLoaded', function () {
   var networkErrorEl = document.getElementById('networkMappingError');
   var networkSaveBtn = document.getElementById('networkMappingSave');
   var networkCancelBtn = document.getElementById('networkMappingCancel');
-  var activeNetworkBtn = null;
+  var activeSaveUrl = null;
 
   function closeNetworkModal() {
     networkModal.classList.remove('is-active');
-    activeNetworkBtn = null;
+    activeSaveUrl = null;
   }
 
+  // 기존 홉 편집 - 저장 대상 URL은 이 홉(mapping) 자신의 update 엔드포인트.
   document.querySelectorAll('.dash-network-edit-btn').forEach(function (btn) {
     btn.addEventListener('click', function () {
-      activeNetworkBtn = btn;
+      activeSaveUrl = btn.dataset.url;
       networkErrorEl.style.display = 'none';
-      networkModalTitle.textContent = btn.dataset.title;
+      networkModalTitle.textContent = btn.dataset.title + ' - 네트워크 매핑 편집';
+      networkLabelInput.value = btn.dataset.label || '';
       networkDomainInput.value = btn.dataset.domain || '';
       networkExternalIpInput.value = btn.dataset.externalIp || '';
       networkVipInput.value = btn.dataset.vip || '';
       networkBackendsInput.value = (btn.dataset.backends || '').trim();
       networkModal.classList.add('is-active');
-      networkDomainInput.focus();
+      networkLabelInput.focus();
+    });
+  });
+
+  // 새 홉 추가 - 저장 대상 URL은 서비스의 create 엔드포인트, hop_order는 서버가 자동 배정.
+  document.querySelectorAll('.hop-add-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      activeSaveUrl = '/dashboard/services/' + btn.dataset.serviceId + '/network/create/';
+      networkErrorEl.style.display = 'none';
+      networkModalTitle.textContent = btn.dataset.serviceName + ' - 새 홉 추가';
+      networkLabelInput.value = '';
+      networkDomainInput.value = '';
+      networkExternalIpInput.value = '';
+      networkVipInput.value = '';
+      networkBackendsInput.value = '';
+      networkModal.classList.add('is-active');
+      networkLabelInput.focus();
     });
   });
 
   networkSaveBtn.addEventListener('click', function () {
-    if (!activeNetworkBtn) return;
+    if (!activeSaveUrl) return;
 
     networkSaveBtn.classList.add('is-loading');
-    fetch(activeNetworkBtn.dataset.url, {
+    fetch(activeSaveUrl, {
       method: 'POST',
       headers: {
         'X-CSRFToken': getCsrfToken(),
         'Content-Type': 'application/x-www-form-urlencoded',
       },
       body: new URLSearchParams({
+        label: networkLabelInput.value,
         external_domain: networkDomainInput.value,
         external_ip: networkExternalIpInput.value,
         internal_vip: networkVipInput.value,
@@ -167,6 +210,18 @@ document.addEventListener('DOMContentLoaded', function () {
   networkCancelBtn.addEventListener('click', closeNetworkModal);
   document.getElementById('networkMappingModalClose').addEventListener('click', closeNetworkModal);
   networkModal.querySelector('.modal-background').addEventListener('click', closeNetworkModal);
+
+  document.querySelectorAll('.hop-delete-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      if (!confirm('"' + btn.dataset.label + '" 구간을 삭제할까요? 등록된 실서버 목록도 함께 삭제됩니다.')) return;
+      fetch(btn.dataset.url, {
+        method: 'POST',
+        headers: { 'X-CSRFToken': getCsrfToken() },
+      }).then(function (res) {
+        if (res.ok) { window.location.reload(); } else { alert('삭제 실패'); }
+      });
+    });
+  });
 });
 </script>
 {% endblock %}

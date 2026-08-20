@@ -1,23 +1,23 @@
 {% extends "dashboard/base.html" %}
 
-{% block title %}JEUS 목록 - CMDB{% endblock %}
+{% block title %}Tomcat 목록 - CMDB{% endblock %}
 
 {% block content %}
 <div class="level">
   <div class="level-left">
-    <h1 class="title is-4">JEUS 목록</h1>
+    <h1 class="title is-4">Tomcat 목록</h1>
   </div>
   <div class="level-right">
     <div class="buttons">
-      <a class="button is-light" href="{% url 'dashboard-jeus-container-export' %}">엑셀 다운로드</a>
+      <a class="button is-light" href="{% url 'dashboard-tomcat-container-export' %}">엑셀 다운로드</a>
     </div>
   </div>
 </div>
-<p class="subtitle is-6 has-text-grey">컨테이너(&lt;server&gt;) 하나가 한 행입니다 — 여러 도메인을 가로질러 컨테이너 단위로 검색·정렬합니다. Hostname은 이 컨테이너 자신의 node-name으로 연결된 자산입니다(설정을 push한 admin 호스트와 다를 수 있음) — 아직 자산으로 등록 안 된 노드는 "(미등록)"으로 표시됩니다. 서비스명은 여기서 수정할 수 없습니다 — <a href="{% url 'dashboard-webservice-list' %}">서비스 배정</a> 화면에서 편집하세요. Tomcat 컨테이너는 <a href="{% url 'dashboard-tomcat-container-list' %}">Tomcat 목록</a>에서 따로 확인하세요.</p>
+<p class="subtitle is-6 has-text-grey">컨테이너(&lt;Service&gt;) 하나가 한 행입니다 — 여러 인스턴스를 가로질러 컨테이너 단위로 검색·정렬합니다. Hostname은 이 컨테이너가 push된 자산입니다(설정 내용에 자기 자신을 가리키는 절이 없어 AWX가 보낸 hostname을 그대로 씁니다). 서비스명은 여기서 수정할 수 없습니다 — <a href="{% url 'dashboard-webservice-list' %}">서비스 배정</a> 화면에서 편집하세요. JEUS 컨테이너는 <a href="{% url 'dashboard-jeus-container-list' %}">JEUS 목록</a>에서 따로 확인하세요.</p>
 
 <form class="field has-addons" method="get">
   <div class="control is-expanded">
-    <input class="input" type="text" name="q" value="{{ current_q }}" placeholder="hostname/노드명/컨테이너명/서비스명 검색">
+    <input class="input" type="text" name="q" value="{{ current_q }}" placeholder="hostname/컨테이너명/서비스명 검색">
   </div>
   <div class="control">
     <button class="button is-link" type="submit">검색</button>
@@ -32,11 +32,10 @@
         <th class="dash-sticky-col dash-sticky-col-2"><a class="has-text-dark" href="{% querystring sort=columns.ip.next_sort page=None %}">IP</a></th>
         <th><a class="has-text-dark" href="{% querystring sort=columns.instance_name.next_sort page=None %}">인스턴스</a></th>
         <th><a class="has-text-dark" href="{% querystring sort=columns.container.next_sort page=None %}">컨테이너</a></th>
-        <th><a class="has-text-dark" href="{% querystring sort=columns.node_name.next_sort page=None %}">Node</a></th>
         <th><a class="has-text-dark" href="{% querystring sort=columns.listen_port.next_sort page=None %}">Listen Port</a></th>
         <th><a class="has-text-dark" href="{% querystring sort=columns.ssl_port.next_sort page=None %}">SSL Port</a></th>
         <th>배포된 앱</th>
-        <th>WebToB 연결</th>
+        <th>데이터소스</th>
         <th><a class="has-text-dark" href="{% querystring sort=columns.service_name.next_sort page=None %}">서비스명</a></th>
       </tr>
     </thead>
@@ -47,15 +46,14 @@
         <td class="dash-sticky-col dash-sticky-col-2">{{ row.container.asset.primary_ip|default:"" }}</td>
         <td>{{ row.container.source.instance_name|default:"" }}</td>
         <td>{{ row.container.name }}</td>
-        <td>{{ row.container.node_name }}</td>
         <td>{{ row.container.listen_port|default:"" }}</td>
         <td>{{ row.container.ssl_port|default:"" }}</td>
         <td>{{ row.container.deployed_apps_summary|default:"" }}</td>
-        <td>{{ row.webtob_connector_summary }}</td>
+        <td>{{ row.data_source_summary }}</td>
         <td>{% if row.container.service %}<a class="tag is-light" href="{% url 'dashboard-service-topology' %}?name={{ row.container.service.name|urlencode }}">{{ row.container.service.name }}</a>{% endif %}</td>
       </tr>
       {% empty %}
-      <tr><td colspan="10" class="has-text-grey">등록된 컨테이너가 없습니다.</td></tr>
+      <tr><td colspan="9" class="has-text-grey">등록된 Tomcat 컨테이너가 없습니다.</td></tr>
       {% endfor %}
     </tbody>
   </table>
