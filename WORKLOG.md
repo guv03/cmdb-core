@@ -2,6 +2,20 @@
 
 일 단위로 진행한 작업을 기록한다. 새 날짜는 위에 추가한다.
 
+## 2026-08-25
+
+- **로컬 환경 재기동**: `docker compose up -d --build`로 기동, 마이그레이션 전부 적용된 상태 확인, 로그인/admin 페이지 스모크 테스트.
+- **"네트워크 탭이 원래 의도(도메인-VIP-realIP 매핑, 구성도가 참고)와 다르게 서비스를 키로 만들어진 것 같다"는 지적으로 재설계 착수**: AskUserQuestion으로 (1) Service 역할을 화면 그룹핑만 뺄지 FK 자체를 없앨지, (2) FK를 없애면 구성도가 어떻게 vhost의 프록시 대상과 라우트를 매칭할지(제안한 옵션: proxy_summary 텍스트 부분 문자열 매칭) 확인받고 "네트워크를 밀고 새로 만들어보자"는 승인으로 전면 재설계 진행.
+  - `network` 앱을 `ServiceNetworkMapping`/`ServiceNetworkBackend`(Service FK, hop_order 체인) → `NetworkRoute`/`NetworkRouteBackend`(도메인/VIP `key` 하나 = 행 하나, Service 무관 독립 테이블)로 교체. `network/resolve.py`에 `find_matching_route`(단어 경계 매칭으로 `10.0.0.1`이 `10.0.0.10`에 오탐되는 것 방지)/`resolve_chain`(재귀적 체인 추적, 순환 참조 차단) 추가.
+  - `dashboard/topology.py`의 그래프/표 생성 로직을 vhost별 독립 라우트 매칭으로 재작성(`add_route_chain`). 기존 스키마 배포 이력이 짧아(1.0.46/1.0.47) 데이터 보존 없이 마이그레이션 재생성(`migrate network zero` → 기존 마이그레이션 삭제 → `makemigrations`/`migrate`).
+  - CLAUDE.md의 "구성도" 섹션(Apache/Nginx→WAS 연결) 및 관련 교차 참조(`was/models.py`, `was/parsers.py`, `awx/README.md`, "서비스" 드롭다운 설명) 전부 갱신.
+  - 검증: Django test client로 CRUD(생성/중복명 거부/수정/삭제) API 확인, 실제 샘플 데이터(apache vhost의 실제 `proxy_summary`)로 매칭/다단 체인 해석/그래프·SVG 렌더링까지 end-to-end 확인.
+- **"WEB 2대 → WAS(Tomcat) 2대, 도메인/VIP 체인" 예시 데이터 요청**: `/api/facts/`, `/api/webconfig/`(apache), `/api/was/`(tomcat), 대시보드 서비스/네트워크 엔드포인트를 Django test client로 실제 호출해 자산 4개 + Apache vhost 2개(`test.com:80`, ProxyPass가 `testwas.com`을 가리킴) + Tomcat 컨테이너 2개 + 네트워크 라우트 4개(`test.com`/`10.150.10.10`/`testwas.com`/`10.150.6.10`)를 만들고 구성도 SVG/PNG로 실제 렌더링 결과를 확인 — WEB 2대가 같은 `testwas.com` 라우트로 모이고 그 뒤 VIP를 거쳐 실제 Tomcat 컨테이너 노드 2개로 정확히 연결되는 것 확인.
+  - 이 과정에서 **버그 발견**: 같은 라우트로 여러 vhost가 모일 때 라우트 노드가 vhost 수만큼 그래프에 중복 생성되던 문제 — vhost별 독립 방문 집합을 그래프 전체 공유로 바꿔 수정, 재검증까지 완료.
+- **"WAS 리슨포트도 있는데 테스트라 네트워크 라우트 백엔드 값에 포트를 안 넣은 거냐"는 질문에 확인**: Tomcat 컨테이너 자신의 `listen_port`(8080)는 정상 파싱·저장돼 있음을 확인. 반면 `NetworkRouteBackend.ip_or_hostname`에 포트를 붙이면(`10.150.6.8:8080`) `resolve_backend_asset`이 IP 형식 검사에서 바로 실패해 asset 자동 매칭이 깨지는 실제 제약을 발견해 알림 — 포트까지 지원하도록 고칠지는 사용자가 "고민 좀 해보겠다"며 보류.
+- **로컬 Docker 포트 바인딩 이슈 대응**: Docker Desktop 재시작 직후 Windows 동적 포트 제외 구간(`7939-8038`, 관리자 권한 없이 해제 불가)에 `8000`이 걸려 `docker compose up`이 계속 실패 — 사용자 요청으로 `docker-compose.yml` 포트를 임시로 `3000:8000`으로 바꿔 기동, 확인 후 다시 `8000:8000`으로 원복(커밋 대상 아님, 세션 로컬 임시 조치). 원복 시점엔 포트 제외 구간이 아직 안 풀려 있어 web 컨테이너가 `Created` 상태로 대기 중.
+- 1.0.48로 VERSION/CHANGELOG 갱신 → `docker build`/`save`/zip 압축까지 통상 절차대로 진행.
+
 ## 2026-08-20
 
 - **프로젝트 로컬 기동**: `scripts/start.ps1`로 `docker compose up -d --build` + `migrate`, 대시보드 로그인 스모크 테스트까지 확인.

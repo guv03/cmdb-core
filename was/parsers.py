@@ -363,7 +363,7 @@ def parse_tomcat(files: dict[str, str], hostname: str) -> dict:
     <Service> 하나 = 컨테이너(JeusContainer) 하나 - 인스턴스 하나(server.xml 하나)에 보통
     <Service>가 하나뿐이지만 이론상 여러 개도 지원한다. webtob_connectors는 항상 빈 리스트
     (Tomcat은 WebToB에 등록되는 개념이 없음 - Apache가 VIP로 바로 프록시하는 구성은
-    network.ServiceNetworkMapping이 다룸, CLAUDE.md "구성도" 섹션 참고). 데이터소스는
+    network.NetworkRoute가 다룸, CLAUDE.md "구성도" 섹션 참고). 데이터소스는
     JEUS6과 동일 원칙으로 이 인스턴스의 모든 컨테이너에 일괄 연결한다."""
     server_content = files.get("server.xml", "")
     if not server_content:

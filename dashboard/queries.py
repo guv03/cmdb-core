@@ -22,7 +22,7 @@ from database.models import (
     DbInstance,
 )
 from facts.models import FactChangeHistory, FactFieldDefinition, HostFact, HostFactValue
-from network.models import ServiceNetworkBackend, ServiceNetworkMapping
+from network.models import NetworkRoute, NetworkRouteBackend
 from processes.models import ProcessSnapshot
 from systems.models import SystemHost, SystemHostFieldDefinition, SystemSource, SystemVm
 from was.models import JeusContainer, JeusDataSource, WasConfigSource, WasConfigSourceRevision
@@ -465,36 +465,27 @@ def get_service_manage_queryset(request):
     return queryset.order_by("name")
 
 
-def get_service_network_queryset(request):
-    """서비스 탭의 네트워크 매핑 섹션(도메인/공인IP/내부VIP/실서버 목록) - WEB/WAS 표와 같은
-    검색창(q)을 공유한다. Apache/Nginx는 설정 내용에 뒷단 실서버 정보가 전혀 없어(VIP/도메인
-    하나로만 지정) 이 화면에서 사람이 직접 등록한 값이 유일한 출처다. 서비스 개수 자체가
-    vhost 대비 훨씬 적어 WAS 표와 동일하게 별도 정렬/페이지네이션 없이 이름순 전체 표시.
-
-    network_mappings는 서비스당 여러 개(hop_order로 체인) 허용하는 to-many 관계라(WEB->GW->WAS
-    처럼 hop이 여러 개인 서비스 대응, ServiceNetworkMapping 모델 참고) 검색 필터가 그 to-many를
-    거치면 서비스 행이 hop 수만큼 중복될 수 있어 .distinct()가 실제로 필요하다 - 다만
-    ServiceNetworkMapping의 필드는 전부 CharField(TextField/JSONField 아님)라 Oracle NCLOB
-    DISTINCT 제약(CLAUDE.md 환경 섹션)에 안 걸린다."""
-    queryset = Service.objects.prefetch_related(
-        Prefetch(
-            "network_mappings",
-            queryset=ServiceNetworkMapping.objects.prefetch_related(
-                Prefetch("backends", queryset=ServiceNetworkBackend.objects.select_related("asset"))
-            ),
-        )
+def get_network_route_queryset(request):
+    """네트워크 탭(최상위 메뉴) - 도메인/VIP 하나 = 행 하나인 독립 라우팅 테이블
+    (NetworkRoute). 과거엔 Service 하위에 그룹핑된 화면이었으나, 서비스를 먼저 골라야 하는
+    흐름이 실제 의도(도메인/VIP로 부르는 걸 보고 자동으로 추적)와 안 맞는다는 피드백으로
+    서비스와 무관한 평범한 목록 화면으로 갈아엎었다(network.models.NetworkRoute 참고).
+    NetworkRoute 필드는 전부 CharField(TextField/JSONField 아님)라 검색 필터에 .distinct()가
+    필요해져도 Oracle NCLOB DISTINCT 제약(CLAUDE.md 환경 섹션)에 안 걸린다."""
+    queryset = NetworkRoute.objects.prefetch_related(
+        Prefetch("backends", queryset=NetworkRouteBackend.objects.select_related("asset"))
     )
 
     q = _request_param(request, "q", "search")
     if q:
         queryset = queryset.filter(
-            Q(name__icontains=q)
-            | Q(network_mappings__external_domain__icontains=q)
-            | Q(network_mappings__external_ip__icontains=q)
-            | Q(network_mappings__internal_vip__icontains=q)
+            Q(key__icontains=q)
+            | Q(label__icontains=q)
+            | Q(note__icontains=q)
+            | Q(backends__ip_or_hostname__icontains=q)
         ).distinct()
 
-    return queryset.order_by("name")
+    return queryset.order_by("key")
 
 
 WEBCONFIG_SORT_LOOKUPS = {

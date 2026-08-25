@@ -12,7 +12,8 @@ import subprocess
 from django.db.models import Prefetch
 from django.urls import reverse
 
-from network.models import ServiceNetworkBackend, ServiceNetworkMapping
+from network.models import NetworkRoute, NetworkRouteBackend
+from network.resolve import find_matching_route, resolve_chain
 from systems.models import SystemVm
 from was.models import JeusContainer, JeusDataSource, JeusWebtobConnector
 from webconfig.models import ApacheVhost, NginxVhost, WebtobVhost
@@ -86,17 +87,19 @@ def collect_service_resources(service) -> dict:
         )
 
     # Apache/Nginx는 WebToB-JEUS와 달리 설정 내용에 뒷단 실서버 정보가 전혀 없어(VIP/도메인
-    # 하나로만 지정하는 이중화 구성) network.ServiceNetworkMapping(사람이 등록)이 유일한 출처.
-    # 서비스 하나에 홉(hop)이 여러 개일 수 있어(WEB->GW->WAS처럼 VIP를 두 번 거치는 구성,
-    # ServiceNetworkMapping 모델 참고) hop_order 순으로 정렬된 리스트로 받는다 - 체인을 잇는
-    # 쪽(build_service_topology_graph)이 순서를 그대로 신뢰한다.
-    network_mappings = []
+    # 하나로만 지정하는 이중화 구성) network.NetworkRoute(사람이 등록)가 유일한 출처. 이 라우트
+    # 테이블은 서비스와 무관한 독립 테이블이라(위 NetworkRoute 모델 참고) 서비스로 필터링하지
+    # 않고 전체를 가져와 key로 dict를 만든다 - 각 Apache/Nginx vhost의 proxy_summary 텍스트
+    # 안에서 이 key들을 검색해 자동으로 매칭하는 쪽(network.resolve.find_matching_route/
+    # resolve_chain)이 어떤 라우트가 이 서비스와 관련있는지 알아서 찾아낸다.
+    network_routes_by_key = {}
     if apache_vhosts or nginx_vhosts:
-        network_mappings = list(
-            ServiceNetworkMapping.objects.filter(service=service)
-            .order_by("hop_order")
-            .prefetch_related(Prefetch("backends", queryset=ServiceNetworkBackend.objects.select_related("asset")))
-        )
+        network_routes_by_key = {
+            route.key: route
+            for route in NetworkRoute.objects.prefetch_related(
+                Prefetch("backends", queryset=NetworkRouteBackend.objects.select_related("asset"))
+            )
+        }
 
     return {
         "webtob_vhosts": webtob_vhosts,
@@ -106,7 +109,7 @@ def collect_service_resources(service) -> dict:
         "container_ids": container_ids,
         "connectors": connectors,
         "data_sources": data_sources,
-        "network_mappings": network_mappings,
+        "network_routes_by_key": network_routes_by_key,
     }
 
 
@@ -170,18 +173,33 @@ def build_service_resource_table(resources: dict) -> dict:
             }
         )
 
-    # hop_order 순서 그대로 - WEB->GW->WAS처럼 여러 홉이면 등록된 순서대로 나열해서 체인이
-    # 눈으로 보이게 한다(그래프의 VIP 노드 체인과 항상 같은 순서).
-    network_hop_rows = [
-        {
-            "label": mapping.label,
-            "internal_vip": mapping.internal_vip,
-            "external_domain": mapping.external_domain,
-            "external_ip": mapping.external_ip,
-            "backends": list(mapping.backends.all()),
-        }
-        for mapping in resources["network_mappings"]
-    ]
+    # Apache/Nginx vhost마다 자기 proxy_summary 텍스트로 라우트 체인을 자동으로 찾는다(등록
+    # 순서가 아니라 매칭 결과 순서 - resolve_chain이 도메인/VIP -> VIP -> 실서버로 이어지는
+    # 체인을 재귀적으로 따라간다). vhost 하나에 체인이 없으면(매칭되는 라우트가 없으면) 행
+    # 자체를 안 만든다.
+    routes_by_key = resources["network_routes_by_key"]
+    network_hop_rows = []
+    for kind_label, vhosts in (("Apache", resources["apache_vhosts"]), ("Nginx", resources["nginx_vhosts"])):
+        for vhost in vhosts:
+            chain = resolve_chain(vhost.proxy_summary, routes_by_key)
+            if not chain:
+                continue
+            network_hop_rows.append(
+                {
+                    "vhost_kind": kind_label,
+                    "vhost_name": vhost.name,
+                    "hops": [
+                        {
+                            "label": route.label,
+                            "key": route.key,
+                            # 다른 라우트로 이어지는 backend(체인의 다음 홉)는 그 라우트 자체가
+                            # 별도 행으로 이미 나오므로 여기서는 최종 실서버만 보여준다.
+                            "backends": [b for b in route.backends.all() if b.ip_or_hostname not in routes_by_key],
+                        }
+                        for route in chain
+                    ],
+                }
+            )
 
     return {
         "web_rows": web_rows,
@@ -210,7 +228,7 @@ def build_service_topology_graph(resources: dict) -> dict:
 
     nodes = []
     web_node_id_by_vhost = {}
-    proxy_web_node_ids = []  # apache/nginx는 webtob-connector가 없어 VIP 매핑 엣지 대상
+    proxy_web_nodes = []  # apache/nginx는 webtob-connector가 없어 네트워크 라우트 매칭 대상 - (vhost, node_id) 튜플
     for kind, vhosts in (
         ("webtob", webtob_vhosts),
         ("apache", apache_vhosts),
@@ -238,7 +256,7 @@ def build_service_topology_graph(resources: dict) -> dict:
             if kind == "webtob":
                 web_node_id_by_vhost[vhost.id] = node_id
             else:
-                proxy_web_node_ids.append(node_id)
+                proxy_web_nodes.append((vhost, node_id))
 
     was_node_id_by_container = {}
     was_node_id_by_asset = {}
@@ -294,68 +312,87 @@ def build_service_topology_graph(resources: dict) -> dict:
                     edges.append({"from": from_id, "to": node_id, "label": data_source.data_source_id})
 
     # Apache/Nginx는 WebToB-JEUS와 달리 설정 내용에 뒷단 실서버 정보가 전혀 없다(VIP/도메인
-    # 하나로만 지정하는 이중화 구성) - 사람이 "네트워크" 탭에서 직접 등록한
-    # network.ServiceNetworkMapping이 유일한 출처다. 확인된 연결(webtob-connector, db_instance)
-    # 과 구분되게 점선으로 그려서 "실제 파싱된 연결"과 "사람이 등록한 추정 연결"을 섞어보이지
-    # 않게 한다. 서비스 하나에 홉(hop)이 여러 개일 수 있어(WEB->GW->WAS, ServiceNetworkMapping
-    # 모델 참고) hop_order 순서대로 VIP 노드를 체인으로 잇는다 - hop 0의 "from"은 WEB vhost
-    # 노드, hop N(N>0)의 "from"은 hop N-1의 VIP 노드. 중간 hop(예: GW)의 실서버는 CMDB가 안
-    # 쫓는 장비일 수 있어 개별 노드로는 안 그린다(전체 목록은 build_service_resource_table의
-    # network_hop_rows에서 hop마다 전부 나열).
-    if proxy_web_node_ids:
-        network_mappings = resources["network_mappings"]
-        previous_node_ids = proxy_web_node_ids
-        # 마지막 hop의 실서버 중 WAS 컨테이너로 안 잡힌 asset(예: Apache가 도메인을 받아
-        # VIP로 Tomcat에 넘기는 흔한 구성 - Tomcat은 이 CMDB가 아직 WAS 종류로 추적하지
-        # 않아 JeusContainer가 없음)도 facts push로 asset 자체는 이미 알고 있으니, 그 asset만
-        # 가리키는 OS 박스를 새로 만들어서 체인이 VIP에서 끊기지 않게 한다. 같은 asset을
-        # 다른 backend가 또 가리켜도 노드가 중복 안 되게 asset_id 기준으로 캐시.
+    # 하나로만 지정하는 이중화 구성) - 사람이 "네트워크" 탭에서 직접 등록한 network.NetworkRoute
+    # 가 유일한 출처다. 확인된 연결(webtob-connector, db_instance)과 구분되게 점선으로 그려서
+    # "실제 파싱된 연결"과 "사람이 등록한 추정 연결"을 섞어보이지 않게 한다. NetworkRoute는
+    # 서비스와 무관한 독립 테이블이라(모델 docstring 참고) 각 Apache/Nginx vhost가 자기
+    # proxy_summary 텍스트로 어떤 라우트에 연결되는지 직접 찾는다(find_matching_route) - 사람이
+    # 미리 서비스와 연결지어둘 필요가 없다. 체인(도메인/VIP -> VIP -> 실서버)은 라우트의
+    # backends가 다시 다른 라우트의 key와 일치하면 재귀로 이어간다(add_route_chain).
+    if proxy_web_nodes:
+        routes_by_key = resources["network_routes_by_key"]
+        # 체인 끝(다른 라우트로도 안 이어지는) 실서버 중 WAS 컨테이너로 안 잡힌 asset(예:
+        # Apache가 도메인을 받아 VIP로 Tomcat에 넘기는 흔한 구성 - Tomcat은 이 CMDB가 아직
+        # WAS 종류로 추적하지 않아 JeusContainer가 없음)도 facts push로 asset 자체는 이미
+        # 알고 있으니, 그 asset만 가리키는 OS 박스를 새로 만들어서 체인이 끊기지 않게 한다.
+        # 같은 asset을 다른 backend가 또 가리켜도 노드가 중복 안 되게 asset_id 기준으로 캐시.
         backend_asset_node_id_by_asset = {}
-        for index, mapping in enumerate(network_mappings):
-            vip_label_lines = [mapping.label or "VIP"]
-            if mapping.internal_vip:
-                vip_label_lines.append(mapping.internal_vip)
-            if mapping.external_domain:
-                vip_label_lines.append(mapping.external_domain)
-            vip_node_id = f"vip_{mapping.pk}"
-            nodes.append(
-                {
-                    "id": vip_node_id,
-                    "label": "\n".join(vip_label_lines),
-                    "kind": "network",
-                    "asset": None,
-                    "detail_url": None,
-                }
-            )
-            for from_id in previous_node_ids:
-                edges.append({"from": from_id, "to": vip_node_id, "label": "VIP", "style": "dashed"})
+        # vhost 여러 개가 같은 라우트로 이어질 수 있어(예: WEB 이중화 2대가 모두 같은 VIP를
+        # 호출) 라우트 노드/하위 체인은 전체에서 딱 한 번만 만들고, 새로 들어오는 "from" 엣지만
+        # 추가한다 - vhost별로 독립된 방문 집합을 쓰면 같은 라우트 노드가 vhost 수만큼
+        # 중복 생성된다.
+        visited_route_ids: set = set()
+        seen_edges: set = set()
 
-            if index == len(network_mappings) - 1:
-                target_ids = []
-                for backend in mapping.backends.all():
-                    if backend.asset_id is None:
-                        continue
-                    target_id = was_node_id_by_asset.get(backend.asset_id)
+        def add_edge(from_id, to_id):
+            key = (from_id, to_id)
+            if key in seen_edges:
+                return
+            seen_edges.add(key)
+            edges.append({"from": from_id, "to": to_id, "label": "", "style": "dashed"})
+
+        def add_route_chain(route, from_node_ids):
+            route_node_id = f"route_{route.pk}"
+            first_time = route.id not in visited_route_ids
+            if first_time:
+                visited_route_ids.add(route.id)
+                label_lines = [route.label or "VIP", route.key]
+                nodes.append(
+                    {
+                        "id": route_node_id,
+                        "label": "\n".join(line for line in label_lines if line),
+                        "kind": "network",
+                        "asset": None,
+                        "detail_url": None,
+                    }
+                )
+            for from_id in from_node_ids:
+                add_edge(from_id, route_node_id)
+
+            if not first_time:
+                return  # 하위 체인은 처음 만났을 때 이미 다 그렸으므로(순환 참조도 여기서 막힘) 다시 안 내려감
+
+            leaf_target_ids = []
+            for backend in route.backends.all():
+                next_route = routes_by_key.get(backend.ip_or_hostname)
+                if next_route is not None:
+                    add_route_chain(next_route, [route_node_id])
+                    continue
+                if backend.asset_id is None:
+                    continue
+                target_id = was_node_id_by_asset.get(backend.asset_id)
+                if target_id is None:
+                    target_id = backend_asset_node_id_by_asset.get(backend.asset_id)
                     if target_id is None:
-                        target_id = backend_asset_node_id_by_asset.get(backend.asset_id)
-                        if target_id is None:
-                            target_id = f"netbackend_{backend.asset_id}"
-                            backend_asset_node_id_by_asset[backend.asset_id] = target_id
-                            nodes.append(
-                                {
-                                    "id": target_id,
-                                    "label": backend.asset.hostname,
-                                    "asset": backend.asset,
-                                    "detail_url": reverse("dashboard-asset-detail", args=[backend.asset_id]),
-                                }
-                            )
-                    if target_id not in target_ids:
-                        target_ids.append(target_id)
-                for to_id in target_ids:
-                    edges.append({"from": vip_node_id, "to": to_id, "label": "", "style": "dashed"})
-                previous_node_ids = []
-            else:
-                previous_node_ids = [vip_node_id]
+                        target_id = f"netbackend_{backend.asset_id}"
+                        backend_asset_node_id_by_asset[backend.asset_id] = target_id
+                        nodes.append(
+                            {
+                                "id": target_id,
+                                "label": backend.asset.hostname,
+                                "asset": backend.asset,
+                                "detail_url": reverse("dashboard-asset-detail", args=[backend.asset_id]),
+                            }
+                        )
+                if target_id not in leaf_target_ids:
+                    leaf_target_ids.append(target_id)
+            for to_id in leaf_target_ids:
+                add_edge(route_node_id, to_id)
+
+        for vhost, node_id in proxy_web_nodes:
+            route = find_matching_route(vhost.proxy_summary, routes_by_key)
+            if route is not None:
+                add_route_chain(route, [node_id])
 
     return {"nodes": nodes, "edges": edges}
 

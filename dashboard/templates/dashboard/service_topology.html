@@ -112,16 +112,16 @@
   {% if resource_table.network_hop_rows %}
   <div class="box">
     <p class="title is-6">네트워크 매핑 (Apache/Nginx → 실서버)</p>
-    <p class="help">설정 파일 파싱이 아니라 사람이 직접 등록한 값입니다 - 편집은 <a href="{% url 'dashboard-network-list' %}">네트워크</a> 화면에서. 홉(hop)이 여러 개면(예: WEB → GW → WAS) 등록 순서대로 나열되고, 위 그래프에도 같은 순서로 VIP가 체인으로 이어집니다.</p>
+    <p class="help">설정 파일 파싱이 아니라 사람이 <a href="{% url 'dashboard-network-list' %}">네트워크</a> 화면에 등록한 값입니다 - 각 vhost의 ProxyPass 대상 텍스트에서 도메인/VIP를 자동으로 찾아 연결합니다. 홉(hop)이 여러 개면(예: WEB → GW → WAS) 매칭된 순서대로 나열되고, 위 그래프에도 같은 순서로 체인이 이어집니다.</p>
+    {% for row in resource_table.network_hop_rows %}
+    <p class="has-text-weight-semibold">{{ row.vhost_kind }} · {{ row.vhost_name }}</p>
     <table class="table is-narrow is-fullwidth">
-      <thead><tr><th style="width: 8em;">구간</th><th>내부 VIP</th><th>외부 도메인</th><th>외부 IP</th><th>실서버</th></tr></thead>
+      <thead><tr><th style="width: 8em;">구간</th><th>도메인/VIP</th><th>실서버</th></tr></thead>
       <tbody>
-        {% for hop in resource_table.network_hop_rows %}
+        {% for hop in row.hops %}
         <tr>
           <td>{{ hop.label|default:"-" }}</td>
-          <td>{{ hop.internal_vip|default:"" }}</td>
-          <td>{{ hop.external_domain|default:"" }}</td>
-          <td>{{ hop.external_ip|default:"" }}</td>
+          <td>{{ hop.key }}</td>
           <td>
             {% for backend in hop.backends %}
               {{ backend.ip_or_hostname }}{% if backend.asset %} (<span class="has-text-link" style="cursor: pointer;" data-detail-url="{% url 'dashboard-asset-detail' backend.asset.id %}" data-content-id="asset-content" data-detail-title="자산 상세">{{ backend.asset.hostname }}</span>){% endif %}{% if not forloop.last %}, {% endif %}
@@ -132,6 +132,7 @@
         {% endfor %}
       </tbody>
     </table>
+    {% endfor %}
   </div>
   {% endif %}
   {% endif %}

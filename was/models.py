@@ -19,10 +19,9 @@ class WasConfigSource(TimeStampedModel):
         JEUS6 = "jeus6", "JEUS6"
         # server.xml(+context.xml)을 파싱해 JeusContainer/JeusDataSource를 그대로 재사용한다
         # (was/parsers.py의 parse_tomcat, was/sync.py는 kind 무관 - sync_jeus 그대로 재사용).
-        # Apache가 도메인을 받아 내부 VIP로 Tomcat에 넘기는 구성(webconfig/network 앱의
-        # ServiceNetworkMapping)에서 그 VIP 뒤의 실서버가 실제로 뭘 하는 서버인지 보여주는
-        # 용도 - WebToB<->JEUS 같은 등록 개념(webtob-connector)이 없어 JeusWebtobConnector는
-        # 항상 비어있다.
+        # Apache가 도메인을 받아 내부 VIP로 Tomcat에 넘기는 구성(network 앱의 NetworkRoute)
+        # 에서 그 VIP 뒤의 실서버가 실제로 뭘 하는 서버인지 보여주는 용도 - WebToB<->JEUS 같은
+        # 등록 개념(webtob-connector)이 없어 JeusWebtobConnector는 항상 비어있다.
         TOMCAT = "tomcat", "Tomcat"
 
     asset = models.ForeignKey(Asset, on_delete=models.CASCADE, related_name="was_configs")

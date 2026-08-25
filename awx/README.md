@@ -34,7 +34,7 @@
   파일이 없으면 조용히 건너뛴다. 컨테이너/데이터소스 모델은 JEUS와 완전히 같은 것을
   재사용(`JeusContainer`/`JeusDataSource`)하지만 WebToB 등록 개념(`webtob-connector`)이
   없어 그쪽 연결은 항상 비어있다 - Apache가 도메인을 받아 내부 VIP로 Tomcat에 넘기는 실제
-  구성은 대시보드의 "네트워크" 탭(`ServiceNetworkMapping`)에서 사람이 직접 등록한다.
+  구성은 대시보드의 "네트워크" 탭(`NetworkRoute`)에서 사람이 직접 등록한다.
 - `push_oracle_config_to_cmdb.yml` — DB 호스트에 SSH 접속해 오라클 OS 계정으로 로컬
   `sqlplus`(OS 인증, DB 비밀번호 저장 불필요)를 실행하고 그 결과(JSON)를
   CMDB(`POST /api/database/`)로 push하는 플레이북. WebToB처럼 텍스트를 정규식으로 파싱하는

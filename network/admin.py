@@ -1,17 +1,16 @@
 from django.contrib import admin
 
-from network.models import ServiceNetworkBackend, ServiceNetworkMapping
+from network.models import NetworkRoute, NetworkRouteBackend
 
 
-class ServiceNetworkBackendInline(admin.TabularInline):
-    model = ServiceNetworkBackend
+class NetworkRouteBackendInline(admin.TabularInline):
+    model = NetworkRouteBackend
     extra = 1
     autocomplete_fields = ["asset"]
 
 
-@admin.register(ServiceNetworkMapping)
-class ServiceNetworkMappingAdmin(admin.ModelAdmin):
-    list_display = ["service", "external_domain", "external_ip", "internal_vip"]
-    search_fields = ["service__name", "external_domain", "external_ip", "internal_vip"]
-    autocomplete_fields = ["service"]
-    inlines = [ServiceNetworkBackendInline]
+@admin.register(NetworkRoute)
+class NetworkRouteAdmin(admin.ModelAdmin):
+    list_display = ["key", "label", "note"]
+    search_fields = ["key", "label", "note"]
+    inlines = [NetworkRouteBackendInline]

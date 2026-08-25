@@ -5,7 +5,7 @@ import uuid
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.views import LoginView
-from django.db.models import Max, Prefetch
+from django.db.models import Prefetch
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse_lazy
@@ -60,6 +60,7 @@ from dashboard.queries import (
     get_db_instance_queryset,
     get_dynamic_field_definitions,
     get_jeus_container_queryset,
+    get_network_route_queryset,
     get_nginx_vhost_queryset,
     get_os_overview_data,
     get_os_version_breakdown,
@@ -70,7 +71,6 @@ from dashboard.queries import (
     get_service_labels_for_db_instances,
     get_service_labels_for_system_hosts,
     get_service_manage_queryset,
-    get_service_network_queryset,
     get_system_host_dynamic_field_definitions,
     get_system_host_queryset,
     get_system_hosts_for_vms,
@@ -102,7 +102,7 @@ from database.excel_import import (
 from database.models import DbConfigSource, DbConfigSourceFieldDefinition, DbConfigSourceFieldValue
 from facts.dynamic_fields import coerce_fact_value, is_valid_choice
 from facts.models import FactFieldDefinition, HostFactValue
-from network.models import ServiceNetworkMapping
+from network.models import NetworkRoute
 from network.sync import sync_backends
 from processes.models import ProcessSnapshot
 from webconfig.diff import unified_diff_lines
@@ -1414,8 +1414,8 @@ class ServiceRenameView(LoginRequiredMixin, View):
 
 class ServiceDeleteView(LoginRequiredMixin, View):
     """"서비스 관리" 탭의 삭제. WEB/WAS의 `service` FK가 전부 SET_NULL이라 vhost/컨테이너
-    자체는 안 지워지고 배정만 풀린다(ServiceNetworkMapping은 CASCADE라 같이 지워짐 - 서비스가
-    없어졌으니 그 서비스의 네트워크 매핑도 같이 사라지는 게 맞음). `WebServiceDomain.service_name`
+    자체는 안 지워지고 배정만 풀린다. `network.NetworkRoute`는 서비스와 무관한 독립 테이블이라
+    (network/models.py 참고) 서비스를 지워도 영향 없음. `WebServiceDomain.service_name`
     비정규화 복사본만 따로 비워준다."""
 
     def post(self, request, pk):
@@ -1527,92 +1527,90 @@ class ServiceContainerUpdateView(LoginRequiredMixin, View):
         return JsonResponse({"service_name": service.name if service else ""})
 
 
-class ServiceNetworkListView(LoginRequiredMixin, ListView):
-    """네트워크 탭(최상위 메뉴, 시스템↔서비스 사이) - 서비스 단위 VIP/실서버 매핑 전용 화면.
-    Apache/Nginx는 설정 파일 내용만으로는 VIP/도메인 뒤의 실서버를 알 수 없어(운영계 이중화
-    구성) 여기서 사람이 직접 등록한다. 처음엔 서비스 탭 하위에 뒀었으나, "물리 인프라(시스템)
-    ↔ 서비스 배정" 사이를 잇는 별개의 계층(네트워크 경로)이라는 성격이 뚜렷해 최상위 메뉴로
-    분리했다. 서비스 개수 자체가 vhost 대비 훨씬 적어 WAS 표와 동일하게 별도 정렬/페이지네이션
-    없이 이름순 전체 표시."""
+class NetworkRouteListView(LoginRequiredMixin, ListView):
+    """네트워크 탭(최상위 메뉴, 시스템↔서비스 사이) - 도메인/VIP 하나 = 행 하나인 독립
+    라우팅 테이블(network.NetworkRoute) 화면. 처음엔 서비스에 FK로 묶여 "서비스를 먼저 골라
+    그 밑에 홉을 등록"하는 구조였으나, 실제 의도(도메인/VIP로 부르는 걸 보고 CMDB가 자동으로
+    추적해서 연결)와 맞지 않는다는 피드백으로 서비스와 완전히 무관한 평범한 목록으로
+    갈아엎었다 - 구성도(dashboard/topology.py)가 Apache/Nginx vhost의 proxy_summary 안에서
+    이 테이블의 key를 찾아 알아서 연결한다(network.models.NetworkRoute 참고). 행 개수 자체가
+    많지 않을 것으로 보고 WAS 서비스 배정 표와 동일하게 별도 정렬/페이지네이션 없이 전체 표시."""
 
     template_name = "dashboard/network_list.html"
     context_object_name = "network_rows"
 
     def get_queryset(self):
-        return get_service_network_queryset(self.request)
+        return get_network_route_queryset(self.request)
 
 
-def _serialize_network_mapping(mapping):
+def _serialize_network_route(route):
     return {
-        "id": mapping.pk,
-        "hop_order": mapping.hop_order,
-        "label": mapping.label,
-        "external_domain": mapping.external_domain,
-        "external_ip": mapping.external_ip,
-        "internal_vip": mapping.internal_vip,
+        "id": route.pk,
+        "key": route.key,
+        "label": route.label,
+        "note": route.note,
         "backends": [
             {"ip_or_hostname": b.ip_or_hostname, "asset_hostname": b.asset.hostname if b.asset else None}
-            for b in mapping.backends.select_related("asset").all()
+            for b in route.backends.select_related("asset").all()
         ],
     }
 
 
-class ServiceNetworkMappingCreateView(LoginRequiredMixin, View):
-    """네트워크 탭에서 서비스에 새 홉(hop)을 추가한다 - WEB(외부 도메인/공인IP+VIP)->GW(내부
-    VIP)->WAS처럼 같은 서비스 안에서 VIP를 여러 번 거치는 구성을 hop_order 체인으로 표현한다.
-    hop_order는 그 서비스의 기존 최댓값+1로 자동 배정(사람이 순서를 직접 숫자로 안 넣어도
-    등록한 순서가 곧 체인 순서가 됨)."""
+class NetworkRouteCreateView(LoginRequiredMixin, View):
+    """네트워크 탭에서 새 라우트(도메인/VIP 하나)를 등록한다. key는 유일해야 하며(모델의
+    unique 제약), 이미 등록된 값이면 에러를 돌려준다 - ServiceCreateView의 이름 중복 체크와
+    같은 패턴."""
 
-    def post(self, request, pk):
-        service = get_object_or_404(Service, pk=pk)
-        next_order = (
-            ServiceNetworkMapping.objects.filter(service=service).aggregate(Max("hop_order"))["hop_order__max"]
-        )
-        next_order = 0 if next_order is None else next_order + 1
+    def post(self, request):
+        key = request.POST.get("key", "").strip()
+        if not key:
+            return JsonResponse({"error": "도메인 또는 VIP를 입력하세요."}, status=400)
+        if NetworkRoute.objects.filter(key=key).exists():
+            return JsonResponse({"error": "이미 등록된 도메인/VIP입니다."}, status=400)
 
-        mapping = ServiceNetworkMapping.objects.create(
-            service=service,
-            hop_order=next_order,
+        route = NetworkRoute.objects.create(
+            key=key,
             label=request.POST.get("label", "").strip(),
-            external_domain=request.POST.get("external_domain", "").strip(),
-            external_ip=request.POST.get("external_ip", "").strip(),
-            internal_vip=request.POST.get("internal_vip", "").strip(),
+            note=request.POST.get("note", "").strip(),
         )
-        sync_backends(mapping, request.POST.get("backends", "").splitlines())
-        return JsonResponse(_serialize_network_mapping(mapping))
+        sync_backends(route, request.POST.get("backends", "").splitlines())
+        return JsonResponse(_serialize_network_route(route))
 
 
-class ServiceNetworkMappingUpdateView(LoginRequiredMixin, View):
-    """네트워크 탭에서의 홉(hop) 하나의 구간명/도메인/공인IP/내부VIP/실서버 목록 편집. 어떤
-    push에도 안 나오는 순수 사람 지식이라(Apache/Nginx 설정엔 VIP 뒤 실서버 정보가 없음) 이
-    화면이 유일한 입력 창구다. 실서버 목록은 매 저장마다 통짜 교체(network.sync.sync_backends)
-    - push가 아니라 사람이 그 자리에서 제출한 값이라 diff 이력 없이 바로 반영해도 안전하다.
-    pk는 이제 서비스가 아니라 이 홉(ServiceNetworkMapping) 자신을 가리킨다 - 서비스 하나에
-    홉이 여러 개일 수 있어 서비스 pk만으로는 어느 홉인지 특정할 수 없기 때문."""
+class NetworkRouteUpdateView(LoginRequiredMixin, View):
+    """네트워크 탭에서 라우트 하나의 key/구분명/비고/실서버(또는 다음 라우트) 목록을 편집한다.
+    어떤 push에도 안 나오는 순수 사람 지식이라(Apache/Nginx 설정엔 VIP 뒤 실서버 정보가 없음)
+    이 화면이 유일한 입력 창구다. 실서버 목록은 매 저장마다 통짜 교체(network.sync.sync_backends)
+    - push가 아니라 사람이 그 자리에서 제출한 값이라 diff 이력 없이 바로 반영해도 안전하다."""
 
     def post(self, request, pk):
-        mapping = get_object_or_404(ServiceNetworkMapping, pk=pk)
+        route = get_object_or_404(NetworkRoute, pk=pk)
 
-        mapping.label = request.POST.get("label", "").strip()
-        mapping.external_domain = request.POST.get("external_domain", "").strip()
-        mapping.external_ip = request.POST.get("external_ip", "").strip()
-        mapping.internal_vip = request.POST.get("internal_vip", "").strip()
-        mapping.save()
+        key = request.POST.get("key", "").strip()
+        if not key:
+            return JsonResponse({"error": "도메인 또는 VIP를 입력하세요."}, status=400)
+        if NetworkRoute.objects.filter(key=key).exclude(pk=route.pk).exists():
+            return JsonResponse({"error": "이미 등록된 도메인/VIP입니다."}, status=400)
+
+        route.key = key
+        route.label = request.POST.get("label", "").strip()
+        route.note = request.POST.get("note", "").strip()
+        route.save()
 
         backend_lines = request.POST.get("backends", "").splitlines()
-        sync_backends(mapping, backend_lines)
+        sync_backends(route, backend_lines)
 
-        return JsonResponse(_serialize_network_mapping(mapping))
+        return JsonResponse(_serialize_network_route(route))
 
 
-class ServiceNetworkMappingDeleteView(LoginRequiredMixin, View):
-    """네트워크 탭에서 홉(hop) 하나를 삭제한다(딸린 실서버 목록도 CASCADE로 함께 삭제) -
-    남은 홉들의 hop_order는 그대로 둔다(중간에 구멍이 생겨도 정렬 순서로만 체인을 이으므로
-    문제 없음)."""
+class NetworkRouteDeleteView(LoginRequiredMixin, View):
+    """네트워크 탭에서 라우트 하나를 삭제한다(딸린 실서버/다음 라우트 참조 목록도 CASCADE로
+    함께 삭제) - 이 라우트의 key를 backend 값으로 참조하던 다른 라우트는 그 값이 더 이상
+    어떤 라우트와도 안 겹치므로 체인이 거기서 끊기고 실서버 텍스트로만 보인다(관대한 원칙)."""
 
     def post(self, request, pk):
-        mapping = get_object_or_404(ServiceNetworkMapping, pk=pk)
-        mapping.delete()
+        route = get_object_or_404(NetworkRoute, pk=pk)
+        route.delete()
         return JsonResponse({"deleted": True})
 
 

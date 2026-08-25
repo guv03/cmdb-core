@@ -5,6 +5,12 @@
 
 1.0.6까지의 이력은 이 파일 도입 전이라 별도 기록 없음 — `WORKLOG.md`의 해당 날짜 항목 참고.
 
+## 1.0.48
+
+- **네트워크 탭 재설계 — 서비스 종속 매핑 → 독립 라우팅 테이블 + 자동 추적** — 1.0.46/1.0.47에서 만든 `ServiceNetworkMapping`(Service FK 필수, hop_order로 체인 관리)이 "서비스를 먼저 고르고 그 밑에 홉을 등록"하는 흐름이라, 실제 의도(도메인/VIP로 부르는 게 있으면 CMDB가 설정 내용을 보고 자동으로 추적해서 연결)와 맞지 않는다는 피드백을 받아 전면 재설계했다. `network` 앱을 `NetworkRoute`/`NetworkRouteBackend`로 교체 — 도메인 또는 VIP 하나 = 행(`key`) 하나인, `core.Service`와 완전히 무관한 독립 라우팅 테이블이 됐다. 구성도(`dashboard/topology.py`)가 Apache/Nginx vhost의 `proxy_summary`(ProxyPass 대상) 텍스트 안에서 등록된 `key` 값을 부분 문자열로 찾아 자동으로 연결하고(`network/resolve.py`의 `find_matching_route`, 단어 경계 매칭으로 오탐 방지), 백엔드 값이 다시 다른 라우트의 `key`와 일치하면 재귀적으로 다음 홉을 따라가 도메인→VIP→VIP→실서버 체인을 자동 구성한다(`resolve_chain`, 순환 참조는 자동 차단) — 더 이상 `hop_order`를 사람이 관리할 필요가 없다. 네트워크 탭 화면도 서비스 박스 그룹 없이 평범한 플랫 테이블(+"라우트 추가")로 바뀌었다. 기존 테이블은 배포 이력이 짧아(1.0.46~1.0.47) 보존 없이 새 스키마로 마이그레이션 재생성.
+  - 이 과정에서 발견한 버그도 같이 수정: 같은 라우트로 여러 WEB vhost가 모이는 구성(예: 이중화된 Apache 2대가 같은 VIP를 호출)에서 라우트 노드가 vhost 수만큼 그래프에 중복 생성되던 문제 — 방문 집합을 vhost별이 아니라 그래프 전체에서 공유하도록 수정.
+- 실제 API push(facts/webconfig/was)로 WEB(Apache) 2대 → 도메인/VIP 체인 → WAS(Tomcat) 2대 예시 데이터를 만들어 구성도가 의도대로 그려지는지 end-to-end 검증(WAS 컨테이너 노드로 정확히 매칭되는 것까지 확인).
+
 ## 1.0.47
 
 - **서비스 관련 리소스 목록 신규** — 서비스 구성도(`/dashboard/services/topology/`)가 지금까지 그래프만 보여줬는데, 그 아래에 같은 데이터를 표(WEB/WAS/DB, 각 행에 OS·시스템 컬럼 포함)로 펼쳐 검색/복사하기 쉽게 했다. `dashboard/topology.py`의 그래프 생성 로직을 `collect_service_resources()`(쿼리 수집)와 `build_service_topology_graph()`/`build_service_resource_table()`(그래프/표 각각 생성)로 분리해 같은 소스 데이터를 그림과 표가 항상 일치하게 공유한다.
