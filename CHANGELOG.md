@@ -5,6 +5,13 @@
 
 1.0.6까지의 이력은 이 파일 도입 전이라 별도 기록 없음 — `WORKLOG.md`의 해당 날짜 항목 참고.
 
+## 1.0.50
+
+- **WAS 앱의 kind 무관 공용 모델 이름 정리(`JeusContainer`/`JeusDataSource` → `WasContainer`/`WasDataSource`)** — 두 모델 모두 kind=jeus/jeus6뿐 아니라 tomcat도 그대로 담는데 이름이 JEUS 전용인 것처럼 보여, WAS 컨테이너 목록에 Tomcat 데이터가 섞여 들어가는 걸 보고 헷갈린다는 지적으로 개명했다. 모델/테이블/related_name(`jeus_containers`→`was_containers` 등)/unique 제약조건명까지 전부 정리하고, kind 무관 동기화 로직 `sync_jeus()`도 `sync_was_containers()`로 개명. 수기 연결 편집 뷰도 `JeusContainerManualRouteUpdateView`/`...DbSourceUpdateView` → `WasContainerManual...`로 이름을 맞췄다. 실제로 kind=jeus/jeus6만 걸러서 보여주는 화면 쪽 이름(`JeusContainerListView`, `get_jeus_container_queryset`, `/dashboard/was/jeus/containers/` 등)은 그대로 뒀다 — 이건 이름이 원래도 맞는 상태였음.
+  - **`JeusWebtobConnector`는 이 개명 대상에서 제외** — 검토 중 지적을 받아 확인해보니, `WasContainer`/`WasDataSource`와 달리 이 모델은 Tomcat에서는 절대 행이 생기지 않는다(`was/parsers.py`의 `parse_tomcat`이 `webtob_connectors`를 항상 빈 리스트로 반환 - Tomcat은 WebToB 등록 개념 자체가 없음). kind 무관 공용 모델이 아니라 순수 JEUS/JEUS6 전용 개념이라 이름을 그대로 유지하는 게 맞다고 판단해 원래 이름으로 되돌렸다.
+  - 마이그레이션은 `RenameModel` + related_name 정리용 `AlterField`(실제 컬럼/데이터 변화 없음, 테이블 RENAME과 제약조건 재생성뿐)로 작성 - Postgres/Oracle 둘 다 표준 SQL이라 안전. 샘플(`samples/jeus8/domain.xml`) 재push로 데이터 보존, WebToB↔JEUS 연결 함수(`was/linkage.py`) 정상 동작, 서비스 배정/구성도(Graphviz SVG 렌더링 포함) 등 전체 화면을 실제로 확인.
+  - 겸사겸사 CLAUDE.md에서 오래된 오기 하나도 발견해 수정: `/dashboard/was/jeus/containers/`가 "kind=jeus/jeus6/tomcat 전부 여기 같이 나온다"고 적혀 있었는데, 실제로는 Tomcat이 진작에 `/dashboard/was/tomcat/containers/`로 분리돼 있어 코드와 안 맞는 상태였음.
+
 ## 1.0.49
 
 - **WAS 컨테이너 수기 연결 신규(`JeusContainer.manual_routes`/`manual_db_sources`)** — 설정 파일 파싱만으로는 못 잡는 연결 두 가지를 사람이 직접 등록할 수 있게 했다: (1) WAS가 다른 WEB/WAS를 도메인·VIP로 호출하지만 그 대상이 설정 어디에도 없는 경우, (2) WAS의 DB 커넥션이 설정 파싱(`JeusDataSource`)으로 못 잡히는 경우. 둘 다 `JeusContainer`(kind 무관 공용 모델)에 다는 M2M이라 JEUS/JEUS6/Tomcat 전부 자동 지원된다. `manual_routes`(→ `network.NetworkRoute`)는 Apache/Nginx가 쓰던 네트워크 라우트 체인 추적(`add_route_chain`)을 그대로 재사용해 WAS→WEB/WAS 체인을 구성도에 점선으로 그리고, `manual_db_sources`(→ `database.DbConfigSource`)는 `JeusDataSource.db_instance`(실선, 인스턴스 단위)와 구분되는 DB 전체 단위(점선) 노드로 표시한다. 둘 다 `sync_jeus()`가 손대지 않는 필드라 WAS push가 반복돼도 안전하게 보존된다(`service` 필드와 동일한 안전성 - 실제 샘플 재push로 검증). 편집은 WAS 컨테이너 목록의 "호출 라우트"/"DB 연결" 두 컬럼에서 ✎ 아이콘으로(`manual_services` 편집 모달과 동일한 add/remove 패턴, 오타로 새 라우트/DB가 안 생기는 엄격 조회).

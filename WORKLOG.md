@@ -13,6 +13,13 @@
   - 검증: `manage.py check` 통과, 로그인 후 세 화면(JEUS/Tomcat 컨테이너 목록, 구성도) 200 확인. 실제 컨테이너(Tomcat, `wasdemo01`)에 라우트/DB 수기 연결을 add → 목록/구성도 SVG(`stroke-dasharray`로 점선 확인)에 반영되는 것 확인 → **`samples/tomcat/`을 그대로 재push해서 실제 재동기화를 일으킨 뒤 두 수기 연결이 살아있는 것까지 실측** → 오타/미등록 값 add 시 400, 이미 해제된 항목 remove 시 404 정상 동작 확인 → 테스트 데이터 정리.
   - CLAUDE.md의 "WAS 설정"/"구성도" 두 섹션에 이 기능 반영(신규 불릿 + 기존 Apache/Nginx→WAS 네트워크 라우트 설명에 WAS 컨테이너도 같은 경로를 탄다는 교차 참조 추가).
 - 1.0.49로 VERSION/CHANGELOG 갱신 → `docker build`/`save`/zip 압축까지 통상 절차대로 진행.
+- **새 세션 시작, "프로젝트 기동해줄래" 요청**: `run` 스킬로 `scripts/start.ps1` 실행(빌드+마이그레이션), 로그인→대시보드 200까지 curl로 실제 확인.
+- **"JEUS 컨테이너 목록에 Tomcat 정보까지 같이 들어가는데 이름이 JeusContainer라 헷갈린다"는 지적으로 모델명 정리 진행**:
+  - 조사: `JeusContainer`/`JeusDataSource`/`JeusWebtobConnector` 세 모델이 전부 kind=jeus/jeus6/tomcat 공용인 줄 알고 `WasContainer`/`WasDataSource`/`WasWebtobConnector`로 일괄 개명하기로 계획. `JeusContainerListView`/`get_jeus_container_queryset` 등 실제로 kind=jeus/jeus6만 필터링하는 화면 쪽 이름은 원래도 맞는 이름이라 그대로 두기로 구분.
+  - `makemigrations`로 첫 시도했다가 **자동 감지기가 `JeusContainer`/`JeusWebtobConnector`를 리네임이 아니라 "삭제 후 재생성"으로 오인하는 걸 발견**(데이터 날아갈 뻔) - 그 마이그레이션은 버리고 `RenameModel`/`AlterField`를 손으로 직접 작성. `sqlmigrate`로 실제 SQL(테이블/FK/M2M through테이블 RENAME뿐, DROP 없음) 먼저 확인 후 적용.
+  - 검증: `samples/jeus8/domain.xml` 재push로 컨테이너 11개/데이터소스 20개/커넥터 7개 정상 저장 확인, `was/linkage.py`의 WebToB↔JEUS 역추적 함수가 새 related_name(`was_connectors`)으로도 정상 동작하는 것 확인, WAS 목록/JEUS 목록/Tomcat 목록/서비스 배정/서비스 관리/구성도(Graphviz SVG 렌더링 포함)/admin 전 화면 200 확인. CLAUDE.md WAS 설정 섹션 전체 갱신 - 겸사겸사 `/dashboard/was/jeus/containers/`가 "kind=jeus/jeus6/tomcat 전부 같이 나온다"고 적힌 **오래된 오기**(Tomcat은 진작에 별도 화면으로 분리됨)도 발견해 같이 고침.
+  - **사용자가 "WasWebtobConnector는 JEUS만 단독으로 쓰는거 아니냐"고 재검토 요청** - `was/parsers.py`의 `parse_tomcat`을 확인해보니 `webtob_connectors`를 항상 빈 리스트로 반환해서 Tomcat 컨테이너에는 이 모델 행이 절대 안 생기는 걸 확인, 지적이 맞다고 판단. `WasContainer`/`WasDataSource`와 달리 진짜 kind 무관 공용 모델이 아니므로 `JeusWebtobConnector`로 원복(모델/related_name `jeus_connectors` 전부) - 아직 커밋 전이라 마이그레이션은 리네임 흔적 안 남기고 `0012` 파일 자체를 최종 형태로 재작성, 로컬 DB는 테이블명만 SQL로 직접 되돌려 정리(데이터 유실 없음 재확인).
+- 1.0.50로 VERSION/CHANGELOG 갱신 → `docker build`/`save`/zip 압축까지 통상 절차대로 진행.
 
 ## 2026-08-25
 

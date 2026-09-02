@@ -5,7 +5,7 @@ from django.db import transaction
 from core.models import Asset
 from core.reconciliation import normalize_hostname
 from database.models import DbInstance
-from was.models import JeusContainer, JeusDataSource, JeusWebtobConnector, WasConfigSource
+from was.models import JeusWebtobConnector, WasConfigSource, WasContainer, WasDataSource
 from webconfig.models import WebConfigSource, WebtobServer
 
 
@@ -55,7 +55,7 @@ def _resolve_webtob_server(registration_id: str, webtob_asset: Asset | None) -> 
 
 
 def _resolve_db_instance(database_name: str) -> DbInstance | None:
-    """JeusDataSource.database_name(Oracle JDBC DataSource의 databaseName 프로퍼티 - 실제로는
+    """WasDataSource.database_name(Oracle JDBC DataSource의 databaseName 프로퍼티 - 실제로는
     SID)을 DbInstance.instance_name과 매칭한다. db_host는 매칭에 안 쓴다(모델 docstring 참고 -
     RAC에서 VIP/SCAN 주소일 수 있어 실제 OS hostname과 다를 수 있음). 같은 SID를 쓰는
     인스턴스가 둘 이상이면(서로 다른 환경에 같은 이름을 재사용하는 경우) 어느 쪽인지 확정할
@@ -86,16 +86,17 @@ def _resolve_webtob_service(webtob_servers: list[WebtobServer]):
 
 
 @transaction.atomic
-def sync_jeus(source: WasConfigSource, parsed: dict) -> None:
-    """파싱된 컨테이너 목록으로 이 source에 딸린 JeusContainer/JeusWebtobConnector를
-    재생성한다. 컨테이너는 이름으로 upsert(수기 입력한 service_name 보존), webtob 커넥터는
-    MANUAL 필드가 없어 컨테이너별로 통짜 재생성."""
+def sync_was_containers(source: WasConfigSource, parsed: dict) -> None:
+    """파싱된 컨테이너 목록으로 이 source에 딸린 WasContainer/JeusWebtobConnector를
+    재생성한다(kind=jeus/jeus6/tomcat 공용 - was/views.py의 SYNC_FUNCS 참고). 컨테이너는
+    이름으로 upsert(수기 입력한 service_name 보존), webtob 커넥터는 MANUAL 필드가 없어
+    컨테이너별로 통짜 재생성."""
     seen_names = []
     container_by_name = {}
     container_names_by_ds_id: dict[str, list[str]] = {}
     for attrs in parsed.get("containers", []):
         name = attrs["name"]
-        container, _ = JeusContainer.objects.update_or_create(
+        container, _ = WasContainer.objects.update_or_create(
             source=source,
             name=name,
             defaults=dict(
@@ -137,14 +138,14 @@ def sync_jeus(source: WasConfigSource, parsed: dict) -> None:
             container.service_id = resolved_service_id
             container.save(update_fields=["service"])
 
-    JeusContainer.objects.filter(source=source).exclude(name__in=seen_names).delete()
+    WasContainer.objects.filter(source=source).exclude(name__in=seen_names).delete()
 
     # 데이터소스는 MANUAL 필드가 없어 컨테이너의 webtob 커넥터와 같은 방식으로 통짜 재생성.
-    JeusDataSource.objects.filter(source=source).delete()
+    WasDataSource.objects.filter(source=source).delete()
     for ds_attrs in parsed.get("data_sources", []):
         ds_id = ds_attrs.get("data_source_id", "")
         database_name = ds_attrs.get("database_name", "")
-        data_source = JeusDataSource.objects.create(
+        data_source = WasDataSource.objects.create(
             source=source,
             data_source_id=ds_id,
             export_name=ds_attrs.get("export_name", ""),

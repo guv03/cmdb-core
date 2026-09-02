@@ -25,7 +25,7 @@ from facts.models import FactChangeHistory, FactFieldDefinition, HostFact, HostF
 from network.models import NetworkRoute, NetworkRouteBackend
 from processes.models import ProcessSnapshot
 from systems.models import SystemHost, SystemHostFieldDefinition, SystemSource, SystemVm
-from was.models import JeusContainer, JeusDataSource, WasConfigSource, WasConfigSourceRevision
+from was.models import WasConfigSource, WasConfigSourceRevision, WasContainer, WasDataSource
 from webconfig.models import (
     ApacheVhost,
     NginxVhost,
@@ -430,7 +430,7 @@ def get_service_container_queryset(request):
     """서비스 탭의 WAS(컨테이너) 표 - WEB(WebServiceDomain) 표와 같은 검색창(q)을 공유한다.
     WAS 설치 규모는 WEB vhost 대비 훨씬 작은 게 보통이라(이 프로젝트 실측 기준) 별도
     정렬/페이지네이션 없이 이름순으로 전부 보여준다 - 필요해지면 그때 추가."""
-    queryset = JeusContainer.objects.select_related("asset", "source", "service")
+    queryset = WasContainer.objects.select_related("asset", "source", "service")
 
     q = _request_param(request, "q", "search")
     if q:
@@ -454,7 +454,7 @@ def get_service_manage_queryset(request):
             Count("webtob_vhosts", distinct=True)
             + Count("apache_vhosts", distinct=True)
             + Count("nginx_vhosts", distinct=True)
-            + Count("jeus_containers", distinct=True)
+            + Count("was_containers", distinct=True)
         )
     )
 
@@ -806,9 +806,9 @@ def get_jeus_container_queryset(request):
     # kind=jeus/jeus6만 대상 - Tomcat은 설정에 들어가는 값 자체가 달라(WebToB 연결 개념이
     # 없음, node_name이 hostname과 동일해 의미가 없음 등) get_tomcat_container_queryset로
     # 완전히 분리했다(webconfig의 WebToB/Apache/Nginx vhost 목록을 kind별로 나눈 것과 동일
-    # 원칙 - JeusContainer 모델은 공유해도 화면은 공유하지 않음).
+    # 원칙 - WasContainer 모델은 공유해도 화면은 공유하지 않음).
     queryset = (
-        JeusContainer.objects.filter(
+        WasContainer.objects.filter(
             source__kind__in=[WasConfigSource.Kind.JEUS, WasConfigSource.Kind.JEUS6]
         )
         .select_related("source__asset", "asset", "service")
@@ -840,14 +840,14 @@ def get_jeus_container_queryset(request):
 
 
 def format_manual_route_label(route):
-    """JeusContainer.manual_routes 표시용 - network 탭의 label(구분용 이름)이 있으면 key와
-    같이, 없으면 key만. JeusContainerManualRouteUpdateView(dashboard/views.py)와 목록 행
+    """WasContainer.manual_routes 표시용 - network 탭의 label(구분용 이름)이 있으면 key와
+    같이, 없으면 key만. WasContainerManualRouteUpdateView(dashboard/views.py)와 목록 행
     렌더링(build_jeus_container_rows/build_tomcat_container_rows) 양쪽에서 같이 쓴다."""
     return f"{route.label} ({route.key})" if route.label else route.key
 
 
 def format_manual_db_source_label(source):
-    """JeusContainer.manual_db_sources 표시용 - format_manual_route_label과 동일 취지."""
+    """WasContainer.manual_db_sources 표시용 - format_manual_route_label과 동일 취지."""
     return f"{source.db_unique_name} ({source.db_name})" if source.db_name else source.db_unique_name
 
 
@@ -902,14 +902,14 @@ TOMCAT_CONTAINER_SORT_LOOKUPS = {
 
 
 def get_tomcat_container_queryset(request):
-    """JeusContainer 모델은 JEUS와 공유하지만(was/parsers.py의 parse_tomcat 참고) 화면은
+    """WasContainer 모델은 JEUS와 공유하지만(was/parsers.py의 parse_tomcat 참고) 화면은
     kind=jeus/jeus6 목록과 완전히 분리한다 - Tomcat 설정엔 WebToB 연결 개념이 없고
     node_name도 hostname과 항상 같은 값이라(was/parsers.py) JEUS 목록의 "Node"/"WebToB 연결"
     컬럼이 Tomcat에선 의미가 없다. 대신 이 화면엔 Tomcat만의 값인 데이터소스 목록을 보여준다
     (get_jeus_container_queryset와 동일하게 검색 필터가 own 필드/forward FK만 참조해
     .distinct() 불필요)."""
     queryset = (
-        JeusContainer.objects.filter(source__kind=WasConfigSource.Kind.TOMCAT)
+        WasContainer.objects.filter(source__kind=WasConfigSource.Kind.TOMCAT)
         .select_related("source__asset", "asset", "service")
         .defer("source__raw_content")
         .prefetch_related("data_sources", "manual_routes", "manual_db_sources")
@@ -934,7 +934,7 @@ def get_tomcat_container_queryset(request):
 
 
 def build_tomcat_container_rows(containers):
-    """데이터소스(JeusDataSource)는 컨테이너 하나에 여러 개씩 걸릴 수 있어(M2M) 표 한 칸에
+    """데이터소스(WasDataSource)는 컨테이너 하나에 여러 개씩 걸릴 수 있어(M2M) 표 한 칸에
     요약 문자열로 모아준다 - build_jeus_container_rows의 webtob_connector_summary와 같은 패턴
     (Tomcat엔 WebToB 연결이 없는 대신 데이터소스가 이 화면에서 의미 있는 관계형 값)."""
     rows = []
@@ -977,7 +977,7 @@ def get_service_labels_for_assets(asset_ids):
         for asset_id, name in rows:
             labels_by_asset[asset_id].add(name)
 
-    for asset_id, name in JeusContainer.objects.filter(
+    for asset_id, name in WasContainer.objects.filter(
         asset_id__in=asset_ids, service__isnull=False
     ).values_list("asset_id", "service__name"):
         labels_by_asset[asset_id].add(name)
@@ -1023,9 +1023,9 @@ def get_service_labels_for_system_hosts(host_ids):
 
 
 def get_service_labels_for_db_instances(instance_ids):
-    """DbInstance.id -> 이 인스턴스를 참조하는 JeusDataSource의 컨테이너들이 속한 서비스
+    """DbInstance.id -> 이 인스턴스를 참조하는 WasDataSource의 컨테이너들이 속한 서비스
     라벨 목록(계산형, get_service_labels_for_assets와 동일 원칙 - topology.py가 JEUS<->DB
-    엣지를 만들 때 따라가는 것과 같은 경로: JeusDataSource.db_instance). 인스턴스 하나를
+    엣지를 만들 때 따라가는 것과 같은 경로: WasDataSource.db_instance). 인스턴스 하나를
     서로 다른 서비스의 컨테이너가 공유하면 자연히 라벨이 여러 개 모인다. 수기 보정은
     DbInstance가 아니라 DbConfigSource에 달려있다(get_service_labels_for_db_config_sources
     참고 - DbInstance는 push마다 통짜 교체돼 직접 필드를 못 붙임) - 인스턴스 단위 계산값이
@@ -1035,7 +1035,7 @@ def get_service_labels_for_db_instances(instance_ids):
         return {}
 
     labels_by_instance = defaultdict(set)
-    for instance_id, name in JeusDataSource.objects.filter(
+    for instance_id, name in WasDataSource.objects.filter(
         db_instance_id__in=instance_ids, containers__service__isnull=False
     ).values_list("db_instance_id", "containers__service__name"):
         labels_by_instance[instance_id].add(name)

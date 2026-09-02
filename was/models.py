@@ -7,7 +7,7 @@ class WasConfigSource(TimeStampedModel):
     """WAS 설정 원본. 종류(kind)+instance_name별로 자산당 1개, push마다 구조화 테이블을
     전부 지우고 다시 만든다 - webconfig.WebConfigSource와 같은 패턴. 여기서 asset은 이
     설정을 push한 admin 서버 호스트를 가리킨다(도메인 전체를 관리하는 노드) - 도메인이
-    여러 물리 노드로 클러스터링될 수 있어 이 소스에 딸린 컨테이너(JeusContainer)들의
+    여러 물리 노드로 클러스터링될 수 있어 이 소스에 딸린 컨테이너(WasContainer)들의
     asset과는 다를 수 있다.
     """
 
@@ -17,11 +17,12 @@ class WasConfigSource(TimeStampedModel):
         # (CLAUDE.md "WAS 설정" 참고).
         JEUS = "jeus", "JEUS"
         JEUS6 = "jeus6", "JEUS6"
-        # server.xml(+context.xml)을 파싱해 JeusContainer/JeusDataSource를 그대로 재사용한다
-        # (was/parsers.py의 parse_tomcat, was/sync.py는 kind 무관 - sync_jeus 그대로 재사용).
-        # Apache가 도메인을 받아 내부 VIP로 Tomcat에 넘기는 구성(network 앱의 NetworkRoute)
-        # 에서 그 VIP 뒤의 실서버가 실제로 뭘 하는 서버인지 보여주는 용도 - WebToB<->JEUS 같은
-        # 등록 개념(webtob-connector)이 없어 JeusWebtobConnector는 항상 비어있다.
+        # server.xml(+context.xml)을 파싱해 WasContainer/WasDataSource를 그대로 재사용한다
+        # (was/parsers.py의 parse_tomcat, was/sync.py는 kind 무관 - sync_was_containers 그대로
+        # 재사용). Apache가 도메인을 받아 내부 VIP로 Tomcat에 넘기는 구성(network 앱의
+        # NetworkRoute)에서 그 VIP 뒤의 실서버가 실제로 뭘 하는 서버인지 보여주는 용도 -
+        # WebToB<->JEUS 같은 등록 개념(webtob-connector)이 없어 JeusWebtobConnector는
+        # 항상 비어있다.
         TOMCAT = "tomcat", "Tomcat"
 
     asset = models.ForeignKey(Asset, on_delete=models.CASCADE, related_name="was_configs")
@@ -69,8 +70,10 @@ class WasConfigSourceRevision(TimeStampedModel):
         return f"{self.source} @ {self.detected_at}"
 
 
-class JeusContainer(TimeStampedModel):
-    """<server> 엘리먼트 하나 = 행 하나(WebToB의 VHost/Apache의 VirtualHost에 대응).
+class WasContainer(TimeStampedModel):
+    """<server> 엘리먼트 하나 = 행 하나(WebToB의 VHost/Apache의 VirtualHost에 대응) - JEUS의
+    <server>든 Tomcat의 <Service>든 kind 무관하게 이 모델 하나로 담는다(was/parsers.py가
+    kind별 파서에서 같은 반환 형태만 맞춰주면 됨, CLAUDE.md "WAS 설정" 참고).
     asset은 source.asset과 다를 수 있다 - domain.xml 하나가 여러 물리 노드의 컨테이너를
     담을 수 있어 컨테이너 자신의 node-name으로 별도 조회한다. 아직 자산으로 등록 안 된
     노드는 asset=null로 그대로 저장(하나의 push에 여러 노드가 섞여 있어 하나가 미등록이라고
@@ -78,7 +81,7 @@ class JeusContainer(TimeStampedModel):
 
     source = models.ForeignKey(WasConfigSource, on_delete=models.CASCADE, related_name="containers")
     asset = models.ForeignKey(
-        Asset, null=True, blank=True, on_delete=models.SET_NULL, related_name="jeus_containers"
+        Asset, null=True, blank=True, on_delete=models.SET_NULL, related_name="was_containers"
     )
     node_name = models.CharField(max_length=100, blank=True)
     name = models.CharField(max_length=100)
@@ -92,7 +95,7 @@ class JeusContainer(TimeStampedModel):
     # 대시보드에서 수기 입력한 값이 보존된다. webconfig.WebtobVhost.service와 같은
     # core.Service를 참조해야 오타 없이 WebToB<->JEUS 서비스 전파가 성립한다.
     service = models.ForeignKey(
-        Service, null=True, blank=True, on_delete=models.SET_NULL, related_name="jeus_containers"
+        Service, null=True, blank=True, on_delete=models.SET_NULL, related_name="was_containers"
     )
     # 설정 파일 파싱으로는 못 얻는, 사람만 아는 연결(WAS가 다른 WEB/WAS를 도메인·VIP로
     # 호출하는 경우) - network.NetworkRoute(도메인/VIP 뒤에 실서버가 뭔지 사람이 등록해둔
@@ -100,32 +103,32 @@ class JeusContainer(TimeStampedModel):
     # 문자열로 찾아 자동 매칭하지만(network/resolve.py의 find_matching_route), WAS 컨테이너엔
     # 그런 텍스트가 없어 사람이 직접 라우트를 골라 연결한다 - 구성도(dashboard/topology.py)는
     # 매칭 방식만 다를 뿐 그 뒤(체인 추적/점선 표시/백엔드 자산 매칭)는 add_route_chain()을
-    # 그대로 재사용해서 텍스트 매칭 없이도 동일하게 그려진다. 이 M2M은 sync_jeus()가 손대지
+    # 그대로 재사용해서 텍스트 매칭 없이도 동일하게 그려진다. 이 M2M은 sync_was_containers()가 손대지
     # 않는 필드라(update_or_create의 defaults에 없음) push마다 안전하게 보존된다(service
     # 필드와 동일한 안전성 - was/sync.py 참고).
     manual_routes = models.ManyToManyField(
-        "network.NetworkRoute", blank=True, related_name="jeus_containers"
+        "network.NetworkRoute", blank=True, related_name="was_containers"
     )
-    # 설정 파일 파싱(JeusDataSource)으로 못 잡는 DB 커넥션을 사람이 직접 등록. DbInstance는
+    # 설정 파일 파싱(WasDataSource)으로 못 잡는 DB 커넥션을 사람이 직접 등록. DbInstance는
     # DB push마다 통짜 교체돼 직접 못 걸므로(DbConfigSource.manual_services와 동일 이유)
     # 안 지워지는 상위 DbConfigSource 단위로 연결한다.
     manual_db_sources = models.ManyToManyField(
-        "database.DbConfigSource", blank=True, related_name="manual_jeus_containers"
+        "database.DbConfigSource", blank=True, related_name="manual_was_containers"
     )
 
     class Meta:
         constraints = [
-            models.UniqueConstraint(fields=["source", "name"], name="unique_jeus_container_name_per_source")
+            models.UniqueConstraint(fields=["source", "name"], name="unique_was_container_name_per_source")
         ]
 
     def __str__(self):
         return self.name
 
 
-class JeusDataSource(TimeStampedModel):
+class WasDataSource(TimeStampedModel):
     """<resources><data-source><database> 엘리먼트 하나 = 행 하나 - domain.xml 레벨에서
     정의되는 JDBC 커넥션 풀로, 특정 컨테이너에 속하지 않는다(WebToB의 SvrGroup/Uri처럼
-    도메인 공용 리소스). 각 <server>(JeusContainer)의 <data-sources><data-source>이름
+    도메인 공용 리소스). 각 <server>(WasContainer)의 <data-sources><data-source>이름
     </data-source>이 이 data_source_id를 이름으로 참조하는 방식이고, 하나의 데이터소스를
     여러 컨테이너가 공유하는 게 일반적이라(SvrGroup이 VhostName으로 여러 vhost를 참조하는
     것과 같은 이유) M2M으로 연결한다(was/sync.py). password는 설정 파일에 암호화된 값으로
@@ -141,7 +144,7 @@ class JeusDataSource(TimeStampedModel):
     db_instance=null로 두고 다음 JEUS push 때 재해석."""
 
     source = models.ForeignKey(WasConfigSource, on_delete=models.CASCADE, related_name="data_sources")
-    containers = models.ManyToManyField(JeusContainer, blank=True, related_name="data_sources")
+    containers = models.ManyToManyField(WasContainer, blank=True, related_name="data_sources")
     data_source_id = models.CharField(max_length=100)
     export_name = models.CharField(max_length=100, blank=True)
     vendor = models.CharField(max_length=50, blank=True)
@@ -156,13 +159,13 @@ class JeusDataSource(TimeStampedModel):
         null=True,
         blank=True,
         on_delete=models.SET_NULL,
-        related_name="jeus_data_sources",
+        related_name="was_data_sources",
     )
 
     class Meta:
         constraints = [
             models.UniqueConstraint(
-                fields=["source", "data_source_id"], name="unique_jeus_datasource_per_source"
+                fields=["source", "data_source_id"], name="unique_was_datasource_per_source"
             )
         ]
 
@@ -171,7 +174,11 @@ class JeusDataSource(TimeStampedModel):
 
 
 class JeusWebtobConnector(TimeStampedModel):
-    """<webtob-connector> 하나 = 행 하나. 이 JEUS 컨테이너가 등록되는 WebToB 쪽 정보
+    """<webtob-connector> 하나 = 행 하나. WasContainer/WasDataSource와 달리 이 모델은
+    kind=jeus/jeus6에서만 실제로 채워진다 - Tomcat엔 WebToB 등록 개념 자체가 없어
+    was/parsers.py의 parse_tomcat이 webtob_connectors를 항상 빈 리스트로 반환하므로
+    Tomcat 컨테이너용 행은 절대 생기지 않는다(그래서 이름을 Was*로 개명하지 않고
+    JEUS 전용임을 그대로 드러냄). 이 JEUS 컨테이너가 등록되는 WebToB 쪽 정보
     (registration-id/network-address)를 담고, 동기화 시점에 webconfig 앱의
     WebtobServer로 실제 연결을 해석해둔다(registration-id == WebtobServer.name,
     network-address로 그 WebToB가 설치된 자산을 찾아 같은 자산+같은 이름인 서버로 매칭).
@@ -179,7 +186,7 @@ class JeusWebtobConnector(TimeStampedModel):
     같은 관대한 원칙 - WebToB 쪽 데이터가 아직 안 들어왔을 수 있어서 이 push 자체를 막지 않음).
     """
 
-    container = models.ForeignKey(JeusContainer, on_delete=models.CASCADE, related_name="webtob_connectors")
+    container = models.ForeignKey(WasContainer, on_delete=models.CASCADE, related_name="webtob_connectors")
     name = models.CharField(max_length=100)
     registration_id = models.CharField(max_length=100, blank=True)
     network_address = models.CharField(max_length=255, blank=True)

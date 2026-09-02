@@ -106,7 +106,7 @@ class WebtobVhost(TimeStampedModel):
     errorlog = models.CharField(max_length=255, blank=True)
     # 수기 입력: 이 vhost가 어떤 서비스인지. AUTO 필드와 달리 push로 덮어쓰지 않음(sync_webtob이
     # vhost를 이름으로 upsert하고 이 필드는 defaults에서 빠져있어 보존됨). Service FK라
-    # 오타 없이 WAS(JeusContainer.service)와 정확히 같은 값을 참조할 수 있다.
+    # 오타 없이 WAS(WasContainer.service)와 정확히 같은 값을 참조할 수 있다.
     service = models.ForeignKey(
         Service, null=True, blank=True, on_delete=models.SET_NULL, related_name="webtob_vhosts"
     )

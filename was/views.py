@@ -9,14 +9,15 @@ from core.reconciliation import normalize_hostname
 from was.models import WasConfigSource, WasConfigSourceRevision
 from was.parsers import PARSERS
 from was.serializers import WasConfigIngestSerializer
-from was.sync import sync_jeus
+from was.sync import sync_was_containers
 
 SYNC_FUNCS = {
-    WasConfigSource.Kind.JEUS: sync_jeus,
+    WasConfigSource.Kind.JEUS: sync_was_containers,
     # parse_jeus6/parse_tomcat도 parse_jeus와 같은 반환 형태({"containers": [...],
-    # "data_sources": [...]})라 sync_jeus를 그대로 재사용 - kind별 동기화 로직 분기가 필요 없음.
-    WasConfigSource.Kind.JEUS6: sync_jeus,
-    WasConfigSource.Kind.TOMCAT: sync_jeus,
+    # "data_sources": [...]})라 sync_was_containers를 그대로 재사용 - kind별 동기화 로직
+    # 분기가 필요 없음.
+    WasConfigSource.Kind.JEUS6: sync_was_containers,
+    WasConfigSource.Kind.TOMCAT: sync_was_containers,
 }
 
 

@@ -15,7 +15,7 @@ from django.urls import reverse
 from network.models import NetworkRoute, NetworkRouteBackend
 from network.resolve import find_matching_route, resolve_chain
 from systems.models import SystemVm
-from was.models import JeusContainer, JeusDataSource, JeusWebtobConnector
+from was.models import JeusWebtobConnector, WasContainer, WasDataSource
 from webconfig.models import ApacheVhost, NginxVhost, WebtobVhost
 
 
@@ -55,7 +55,7 @@ def collect_service_resources(service) -> dict:
     apache_vhosts = list(ApacheVhost.objects.filter(service=service).select_related("source__asset"))
     nginx_vhosts = list(NginxVhost.objects.filter(service=service).select_related("source__asset"))
     containers = list(
-        JeusContainer.objects.filter(service=service)
+        WasContainer.objects.filter(service=service)
         .select_related("asset", "source")
         .prefetch_related("manual_db_sources__asset", "manual_routes")
     )
@@ -76,10 +76,10 @@ def collect_service_resources(service) -> dict:
     data_sources = []
     if container_ids:
         # 이 서비스의 WAS 컨테이너가 참조하는 데이터소스 중 DB 쪽 매칭(db_instance)이 실제로
-        # 된 것만 - JeusDataSource.db_instance가 was/sync.py에서 push 시점에 이미 해석해둔
+        # 된 것만 - WasDataSource.db_instance가 was/sync.py에서 push 시점에 이미 해석해둔
         # 값을 그대로 따라간다(여기서 새로 매칭하지 않음).
         data_sources = list(
-            JeusDataSource.objects.filter(containers__id__in=container_ids, db_instance__isnull=False)
+            WasDataSource.objects.filter(containers__id__in=container_ids, db_instance__isnull=False)
             .select_related("db_instance__source", "db_instance__asset")
             .prefetch_related("containers")
             # containers__id__in이 M2M(to-many) 조인이라 .distinct()가 실제로 필요한데,
@@ -232,7 +232,7 @@ def build_service_resource_table(resources: dict) -> dict:
             )
 
     # WAS 컨테이너의 manual_db_sources(설정 파일 파싱으로 못 잡는 DB 커넥션을 사람이 직접
-    # 등록) - db_rows(JeusDataSource 기반, 인스턴스 단위)와 구분되는 별도 표.
+    # 등록) - db_rows(WasDataSource 기반, 인스턴스 단위)와 구분되는 별도 표.
     manual_db_rows = []
     for container in resources["containers"]:
         for source in container.manual_db_sources.all():
@@ -259,7 +259,7 @@ def build_service_resource_table(resources: dict) -> dict:
 
 def build_service_topology_graph(resources: dict) -> dict:
     """collect_service_resources 결과를 받아 WEB vhost/WAS 컨테이너를 노드로, WebToB<->JEUS
-    실제 연결(JeusWebtobConnector)과 JEUS<->DB 실제 연결(JeusDataSource.db_instance)만
+    실제 연결(JeusWebtobConnector)과 JEUS<->DB 실제 연결(WasDataSource.db_instance)만
     엣지로 만든다. 같은 asset을 가리키는 노드는 나중에 render_topology_svg에서 OS 클러스터
     하나로 자동 합쳐진다 - 여기서는 각 노드가 자기 asset을 들고 있기만 하면 된다.
 
@@ -373,9 +373,9 @@ def build_service_topology_graph(resources: dict) -> dict:
     if proxy_web_nodes or has_manual_routes:
         routes_by_key = resources["network_routes_by_key"]
         # 체인 끝(다른 라우트로도 안 이어지는) 실서버 중 WAS 컨테이너로 안 잡힌 asset(예:
-        # Apache가 도메인을 받아 VIP로 Tomcat에 넘기는 흔한 구성 - Tomcat은 이 CMDB가 아직
-        # WAS 종류로 추적하지 않아 JeusContainer가 없음)도 facts push로 asset 자체는 이미
-        # 알고 있으니, 그 asset만 가리키는 OS 박스를 새로 만들어서 체인이 끊기지 않게 한다.
+        # 이 서비스에 배정되지 않은 WAS이거나, WAS 자체가 아예 없는 순수 DB/배치 서버)도
+        # facts push로 asset 자체는 이미 알고 있으니, 그 asset만 가리키는 OS 박스를 새로
+        # 만들어서 체인이 끊기지 않게 한다.
         # 같은 asset을 다른 backend가 또 가리켜도 노드가 중복 안 되게 asset_id 기준으로 캐시.
         backend_asset_node_id_by_asset = {}
         # vhost 여러 개가 같은 라우트로 이어질 수 있어(예: WEB 이중화 2대가 모두 같은 VIP를
@@ -457,8 +457,8 @@ def build_service_topology_graph(resources: dict) -> dict:
                 canonical_route = routes_by_key.get(route.key, route)
                 add_route_chain(canonical_route, [was_node_id])
 
-    # WAS 컨테이너의 manual_db_sources(설정 파일 파싱(JeusDataSource)으로 못 잡는 DB 커넥션을
-    # 사람이 직접 등록, was/models.py 참고) - 위 JeusDataSource 기반 DB 노드(실선, 인스턴스
+    # WAS 컨테이너의 manual_db_sources(설정 파일 파싱(WasDataSource)으로 못 잡는 DB 커넥션을
+    # 사람이 직접 등록, was/models.py 참고) - 위 WasDataSource 기반 DB 노드(실선, 인스턴스
     # 단위)와 구분되게 DbConfigSource 단위(점선)로 별도 노드를 그린다. 특정 인스턴스를 안
     # 골라둔 값이라 db_instance 노드와 억지로 합치지 않는다.
     db_source_node_id_by_source = {}

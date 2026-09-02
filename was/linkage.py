@@ -11,12 +11,12 @@ from webconfig.models import WebServiceDomain, WebtobVhost
 
 
 def get_connected_containers(vhost: WebtobVhost):
-    """이 vhost가 걸린 SvrGroup의 Server(WebToB)에 연결된 JeusContainer 전체(중복 제거).
-    SvrGroup-vhost M2M 조인이라 .distinct()가 필요한데, JeusContainer.deployed_apps_summary가
+    """이 vhost가 걸린 SvrGroup의 Server(WebToB)에 연결된 WasContainer 전체(중복 제거).
+    SvrGroup-vhost M2M 조인이라 .distinct()가 필요한데, WasContainer.deployed_apps_summary가
     TextField(Oracle NCLOB)라 그대로 두면 ORA-00932가 남 - 여기서 그 값을 쓰지 않으므로 defer."""
-    from was.models import JeusContainer
+    from was.models import WasContainer
 
-    return JeusContainer.objects.filter(
+    return WasContainer.objects.filter(
         webtob_connectors__webtob_server__svrgroup__vhosts=vhost
     ).defer("deployed_apps_summary").distinct()
 
@@ -45,8 +45,8 @@ def _sync_web_service_domains(vhosts, service):
 
 
 def apply_vhost_service(vhost: WebtobVhost, service, force: bool = False) -> dict:
-    """vhost.service를 바꾸고 연결된 JeusContainer 전체에 전파한다."""
-    from was.models import JeusContainer
+    """vhost.service를 바꾸고 연결된 WasContainer 전체에 전파한다."""
+    from was.models import WasContainer
 
     containers = list(get_connected_containers(vhost))
     conflicts = _conflicting_peers(containers, service)
@@ -62,7 +62,7 @@ def apply_vhost_service(vhost: WebtobVhost, service, force: bool = False) -> dic
     vhost.save(update_fields=["service"])
     _sync_web_service_domains([vhost], service)
     if containers:
-        JeusContainer.objects.filter(id__in=[c.id for c in containers]).update(service=service)
+        WasContainer.objects.filter(id__in=[c.id for c in containers]).update(service=service)
 
     return {"conflict": False, "propagated_count": len(containers)}
 

@@ -125,7 +125,7 @@ from systems.excel_import import (
 from systems.models import SystemHost, SystemHostFieldDefinition, SystemHostFieldValue, SystemSource
 from systems.sync import get_or_create_physical_source, sync_physical_host_asset
 from was.linkage import apply_container_service, apply_vhost_service
-from was.models import JeusContainer, WasConfigSource
+from was.models import WasConfigSource, WasContainer
 from webconfig.models import WebConfigSource, WebServiceDomain, WebtobVhost
 
 
@@ -189,7 +189,7 @@ def _manual_service_entries(resource):
 
 def _apply_manual_route_action(request, container):
     """WAS 컨테이너 목록의 "호출 라우트" 셀 - 설정 파일에 없는 WAS→WEB/WAS 호출(도메인/VIP로
-    부르는 대상)을 JeusContainer.manual_routes(M2M → network.NetworkRoute)로 등록한다.
+    부르는 대상)을 WasContainer.manual_routes(M2M → network.NetworkRoute)로 등록한다.
     manual_services와 달리 자동 계산값과 합쳐지는 게 아니라 이 M2M 자체가 전부라 "보정"이
     아니라 "등록"이지만, 오타로 새 NetworkRoute가 생기지 않게 기존 것만 허용하는 엄격 조회
     원칙은 동일하다(_resolve_service와 같은 이유) - 라우트 자체는 "네트워크" 탭에서 먼저
@@ -222,8 +222,8 @@ def _manual_route_entries(container):
 
 
 def _apply_manual_db_source_action(request, container):
-    """WAS 컨테이너 목록의 "DB 연결" 셀 - 설정 파일 파싱(JeusDataSource)으로 못 잡는 DB
-    커넥션을 JeusContainer.manual_db_sources(M2M → database.DbConfigSource)로 등록한다.
+    """WAS 컨테이너 목록의 "DB 연결" 셀 - 설정 파일 파싱(WasDataSource)으로 못 잡는 DB
+    커넥션을 WasContainer.manual_db_sources(M2M → database.DbConfigSource)로 등록한다.
     DbInstance는 DB push마다 통짜 교체돼 직접 못 걸므로(모델 docstring 참고) 안 지워지는
     상위 DbConfigSource 단위로 연결 - _apply_manual_route_action과 동일 원칙(기존 DB만
     허용, "DB" 목록에 먼저 있어야 함)."""
@@ -901,7 +901,7 @@ class JeusContainerListView(LoginRequiredMixin, ListView):
     """WebtobVhostListView와 같은 취지의 JEUS 전용 컨테이너 목록(kind=jeus/jeus6만 -
     get_jeus_container_queryset에서 필터). Tomcat은 설정에 들어가는 값 자체가 달라(WebToB
     연결 개념이 없음 등) TomcatContainerListView로 완전히 분리했다 - webconfig의 WebToB/
-    Apache/Nginx vhost 목록을 kind별로 나눈 것과 동일 원칙(JeusContainer 모델은 공유해도
+    Apache/Nginx vhost 목록을 kind별로 나눈 것과 동일 원칙(WasContainer 모델은 공유해도
     화면은 공유하지 않음). 종합적으로 kind 무관하게 보려면 `/dashboard/was/`(공통 목록)를
     이용한다.
 
@@ -948,32 +948,32 @@ class JeusContainerExportView(LoginRequiredMixin, View):
         return export_jeus_container_workbook()
 
 
-class JeusContainerManualRouteUpdateView(LoginRequiredMixin, View):
-    """WAS 컨테이너 목록(JEUS/JEUS6/Tomcat 공용 - JeusContainer 모델 자체에 다는 필드라
-    kind 무관)의 "호출 라우트" 셀에서 수기 연결(JeusContainer.manual_routes)을 추가/해제한다."""
+class WasContainerManualRouteUpdateView(LoginRequiredMixin, View):
+    """WAS 컨테이너 목록(JEUS/JEUS6/Tomcat 공용 - WasContainer 모델 자체에 다는 필드라
+    kind 무관)의 "호출 라우트" 셀에서 수기 연결(WasContainer.manual_routes)을 추가/해제한다."""
 
     def get(self, request, pk):
-        container = get_object_or_404(JeusContainer, pk=pk)
+        container = get_object_or_404(WasContainer, pk=pk)
         return JsonResponse({"entries": _manual_route_entries(container)})
 
     def post(self, request, pk):
-        container = get_object_or_404(JeusContainer, pk=pk)
+        container = get_object_or_404(WasContainer, pk=pk)
         error = _apply_manual_route_action(request, container)
         if error is not None:
             return error
         return JsonResponse({"entries": _manual_route_entries(container)})
 
 
-class JeusContainerManualDbSourceUpdateView(LoginRequiredMixin, View):
-    """WAS 컨테이너 목록의 "DB 연결" 셀에서 수기 연결(JeusContainer.manual_db_sources)을
-    추가/해제한다 - JeusContainerManualRouteUpdateView와 동일 패턴."""
+class WasContainerManualDbSourceUpdateView(LoginRequiredMixin, View):
+    """WAS 컨테이너 목록의 "DB 연결" 셀에서 수기 연결(WasContainer.manual_db_sources)을
+    추가/해제한다 - WasContainerManualRouteUpdateView와 동일 패턴."""
 
     def get(self, request, pk):
-        container = get_object_or_404(JeusContainer, pk=pk)
+        container = get_object_or_404(WasContainer, pk=pk)
         return JsonResponse({"entries": _manual_db_source_entries(container)})
 
     def post(self, request, pk):
-        container = get_object_or_404(JeusContainer, pk=pk)
+        container = get_object_or_404(WasContainer, pk=pk)
         error = _apply_manual_db_source_action(request, container)
         if error is not None:
             return error
@@ -1202,7 +1202,7 @@ class DbConfigDetailView(LoginRequiredMixin, DetailView):
         context["row"] = build_db_config_rows([self.object], dynamic_field_definitions)[0]
 
         # 인스턴스별 서비스 라벨 - source 전체 합산(위 row.service_labels)과 별개로, RAC라면
-        # 인스턴스마다 실제로 붙는 컨테이너/서비스가 다를 수 있어(JeusDataSource.db_instance가
+        # 인스턴스마다 실제로 붙는 컨테이너/서비스가 다를 수 있어(WasDataSource.db_instance가
         # 인스턴스 단위로 매칭) 인스턴스 카드마다 자기 것만 보여준다. 템플릿이 source.instances.all
         # 대신 이 목록을 순회하도록 attribute를 얹는다.
         instances = list(self.object.instances.all())
@@ -1540,7 +1540,7 @@ class ServiceDeleteView(LoginRequiredMixin, View):
 
 
 class WebServiceListView(LoginRequiredMixin, ListView):
-    """WEB(도메인 기준, WebServiceDomain)과 WAS(컨테이너 기준, JeusContainer)를 한 화면에
+    """WEB(도메인 기준, WebServiceDomain)과 WAS(컨테이너 기준, WasContainer)를 한 화면에
     나란히 보여준다 - 서비스 배정을 여기서만 편집하고(vhost/컨테이너 목록 화면은 읽기 전용)
     한곳에서 WEB/WAS 전체 서비스 현황을 확인할 수 있게. WAS 표는 검색만 WEB과 공유하고
     (같은 q) 별도 정렬/페이지네이션은 두지 않는다(get_service_container_queryset 참고)."""
@@ -1566,7 +1566,7 @@ class WebServiceDomainServiceUpdateView(LoginRequiredMixin, View):
     """서비스 조회 화면(WEB 표)에서의 서비스명 인라인 편집. 원본은 kind별 vhost 쪽
     (VHOST_MODELS로 kind->모델 매핑)이라 거기에 먼저 반영하고, 같은 vhost가 걸친 나머지
     도메인 행도 함께 맞춘다(도메인별로 서비스명이 갈리면 안 되므로 vhost 단위로 동기화).
-    WebToB는 JeusWebtobConnector로 실제 연결된 JeusContainer가 있으면 같은 서비스로 함께
+    WebToB는 JeusWebtobConnector로 실제 연결된 WasContainer가 있으면 같은 서비스로 함께
     맞춘다(was.linkage.apply_vhost_service) - 연결된 쪽에 이미 다른 서비스가 있으면 저장
     전에 충돌 정보만 돌려주고, force=1로 재요청하면 그대로 덮어쓴다. Apache/Nginx는 아직
     이런 구조적 연결이 없어 자기 자신만 반영한다."""
@@ -1617,7 +1617,7 @@ class ServiceContainerUpdateView(LoginRequiredMixin, View):
     서비스명을 갖고 있으면 저장 전에 충돌 정보만 돌려주고, force=1로 재요청하면 덮어쓴다."""
 
     def post(self, request, pk):
-        container = get_object_or_404(JeusContainer, pk=pk)
+        container = get_object_or_404(WasContainer, pk=pk)
         try:
             service = _resolve_service(request.POST.get("service_name", ""))
         except ServiceNotFound as exc:

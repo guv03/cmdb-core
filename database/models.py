@@ -51,7 +51,7 @@ class DbConfigSource(TimeStampedModel):
     # webconfig.WebConfigSource/was.WasConfigSource와 동일하게 "최근 변경일"은 저장 컬럼이
     # 아니라 대시보드 쿼리에서 revisions__detected_at의 Max로 계산한다(get_db_config_queryset).
     last_pushed_at = models.DateTimeField(auto_now=True)
-    # 서비스 라벨은 기본적으로 이 DB의 인스턴스를 참조하는 JeusDataSource의 컨테이너를
+    # 서비스 라벨은 기본적으로 이 DB의 인스턴스를 참조하는 WasDataSource의 컨테이너를
     # 역추적해서 계산한다(dashboard.queries.get_service_labels_for_db_config_sources) -
     # SID가 안 맞거나 WAS가 아직 이 DB를 push 전이면 계산값이 하나도 없는 구멍이 생길 수
     # 있어, 그 구멍을 메꾸는 수기 보정값 - core.Asset.manual_services와 동일 원칙(합집합,
@@ -85,11 +85,11 @@ class DbConfigSourceRevision(TimeStampedModel):
 
 
 class DbInstance(TimeStampedModel):
-    """인스턴스 하나(Oracle SID) = 행 하나(WAS의 JeusContainer에 대응). Standalone은
+    """인스턴스 하나(Oracle SID) = 행 하나(WAS의 WasContainer에 대응). Standalone은
     DbConfigSource당 항상 1개, RAC는 GV$INSTANCE로 조회된 노드 수만큼. push마다 통짜
     교체한다(WebtobVhost/SystemVm과 동일 - RAC는 대표 노드 한 곳에서 GV$ 조회만으로 클러스터
     전체가 매번 다시 나오므로 diff 없이 교체가 자연스럽다). asset은 자신의 host_name으로
-    별도 조회하므로 source.asset(수집 실행 노드)과 다를 수 있다(JeusContainer.asset과 동일
+    별도 조회하므로 source.asset(수집 실행 노드)과 다를 수 있다(WasContainer.asset과 동일
     이유) - 아직 미등록이면 asset=null로 두고 host_name 원본만 보존, 다음 push 때 재해석."""
 
     source = models.ForeignKey(DbConfigSource, on_delete=models.CASCADE, related_name="instances")

@@ -356,11 +356,11 @@ def parse_tomcat(files: dict[str, str], hostname: str) -> dict:
     JEUS의 domain.xml과 달리 server.xml엔 자기 자신을 가리키는 hostname 정보가 전혀 없다
     (Apache/Nginx의 ServerName 부재와 같은 이유) - 그래서 was/views.py가 apache/nginx와 동일
     패턴으로 AWX 페이로드의 hostname 필드를 받아 이 함수에 그대로 넘겨주고, 여기서 모든
-    컨테이너의 node_name에 그 값을 채운다(sync_jeus의 _resolve_asset이 node_name으로 asset을
-    찾으므로 - was/models.py의 kind 주석 참고). admin_server_name은 JEUS6과 동일하게 항상
-    빈 문자열(admin 서버 개념 자체가 없음).
+    컨테이너의 node_name에 그 값을 채운다(sync_was_containers의 _resolve_asset이 node_name으로
+    asset을 찾으므로 - was/models.py의 kind 주석 참고). admin_server_name은 JEUS6과 동일하게
+    항상 빈 문자열(admin 서버 개념 자체가 없음).
 
-    <Service> 하나 = 컨테이너(JeusContainer) 하나 - 인스턴스 하나(server.xml 하나)에 보통
+    <Service> 하나 = 컨테이너(WasContainer) 하나 - 인스턴스 하나(server.xml 하나)에 보통
     <Service>가 하나뿐이지만 이론상 여러 개도 지원한다. webtob_connectors는 항상 빈 리스트
     (Tomcat은 WebToB에 등록되는 개념이 없음 - Apache가 VIP로 바로 프록시하는 구성은
     network.NetworkRoute가 다룸, CLAUDE.md "구성도" 섹션 참고). 데이터소스는
