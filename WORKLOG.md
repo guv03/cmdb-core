@@ -2,6 +2,18 @@
 
 일 단위로 진행한 작업을 기록한다. 새 날짜는 위에 추가한다.
 
+## 2026-09-02
+
+- **로컬 환경 재기동**: `scripts/start.ps1`로 기동, 마이그레이션 전부 적용된 상태 확인, 로그인/admin 페이지 스모크 테스트.
+- **"구성도가 계산하는 서비스 라벨이 OS/DB만 봐도 보이냐"는 질문에 코드 확인 후 답변**: `get_service_labels_for_*`/`manual_services` 구조가 구성도 전용이 아니라 자산/시스템/DB 목록 화면에도 이미 노출되고 있음을 확인해 설명. 이어진 "OS 쪽 manual_services 편집이 admin에서만 되냐"는 질문에도 `AssetManualServiceUpdateView`(자산 목록 ✎ 아이콘)가 이미 있음을 확인해 답변 - 세 리소스(자산/시스템/DB) 전부 계산값+수기 보정 구조와 편집 UI를 동일하게 갖추고 있다는 점을 정리해서 설명.
+- **"설정 파일에 없는 관계(WAS→WEB/WAS 호출, WAS→DB 커넥션)를 수기로 입력하고 싶다"는 요청으로 설계 후 구현**:
+  - 설계: WAS→WEB/WAS 호출(도메인/VIP로 부름)은 기존 `network.NetworkRoute`(Apache/Nginx가 쓰던 "설정에 없는 라우팅을 사람이 등록"하는 표)를 그대로 재사용하기로 결정 - `JeusContainer.manual_routes`(M2M)로 사람이 직접 라우트를 골라 연결하면 구성도가 `add_route_chain()`을 그대로 타서 체인 추적/점선 표시/백엔드 자산 매칭이 자동으로 동작. DB 커넥션은 `JeusContainer.manual_db_sources`(M2M → `database.DbConfigSource`) 신설 - `DbInstance`는 DB push마다 통짜 교체돼 직접 못 걸므로(`SystemHost`가 예전에 겪은 것과 같은 클래스 문제) 안 지워지는 상위 `DbConfigSource`에 단다.
+  - 진행 전 **"push마다 데이터 안 날아가는지 확인해달라"는 요청에 `was/sync.py`의 `sync_jeus()`를 읽고 확인** - `JeusContainer`가 `(source, name)`으로 `update_or_create`(upsert)되고 `defaults`에 `service` 필드가 없어서(기존에도 안전하게 보존되던 필드) 새로 추가할 M2M 두 개도 같은 이유로 안전하다고 설명한 뒤 구현 진행.
+  - 구현: `was/models.py`에 M2M 2개 추가(마이그레이션 생성/적용) → `dashboard/views.py`에 add/remove 뷰 2개(`manual_services` 패턴 재사용, 기존 라우트/DB만 허용하는 엄격 조회) → `dashboard/queries.py`에 라벨 포맷터/행 빌더 확장(N+1 방지 위해 prefetch 캐시를 파이썬 sorted()로 정렬) → `dashboard/urls.py` 라우트 2개 → JEUS/Tomcat 컨테이너 목록 템플릿에 "호출 라우트"/"DB 연결" 컬럼 + ✎ 모달(범용 JS 하나로 두 종류 다 처리) → `dashboard/topology.py`의 `build_service_topology_graph`/`build_service_resource_table`에 WAS manual_routes 체인/manual_db_sources 노드 추가(둘 다 점선) → `service_topology.html`에 대응 리소스 표 섹션 2개 추가.
+  - 검증: `manage.py check` 통과, 로그인 후 세 화면(JEUS/Tomcat 컨테이너 목록, 구성도) 200 확인. 실제 컨테이너(Tomcat, `wasdemo01`)에 라우트/DB 수기 연결을 add → 목록/구성도 SVG(`stroke-dasharray`로 점선 확인)에 반영되는 것 확인 → **`samples/tomcat/`을 그대로 재push해서 실제 재동기화를 일으킨 뒤 두 수기 연결이 살아있는 것까지 실측** → 오타/미등록 값 add 시 400, 이미 해제된 항목 remove 시 404 정상 동작 확인 → 테스트 데이터 정리.
+  - CLAUDE.md의 "WAS 설정"/"구성도" 두 섹션에 이 기능 반영(신규 불릿 + 기존 Apache/Nginx→WAS 네트워크 라우트 설명에 WAS 컨테이너도 같은 경로를 탄다는 교차 참조 추가).
+- 1.0.49로 VERSION/CHANGELOG 갱신 → `docker build`/`save`/zip 압축까지 통상 절차대로 진행.
+
 ## 2026-08-25
 
 - **로컬 환경 재기동**: `docker compose up -d --build`로 기동, 마이그레이션 전부 적용된 상태 확인, 로그인/admin 페이지 스모크 테스트.

@@ -54,7 +54,11 @@ def collect_service_resources(service) -> dict:
     webtob_vhosts = list(WebtobVhost.objects.filter(service=service).select_related("source__asset"))
     apache_vhosts = list(ApacheVhost.objects.filter(service=service).select_related("source__asset"))
     nginx_vhosts = list(NginxVhost.objects.filter(service=service).select_related("source__asset"))
-    containers = list(JeusContainer.objects.filter(service=service).select_related("asset", "source"))
+    containers = list(
+        JeusContainer.objects.filter(service=service)
+        .select_related("asset", "source")
+        .prefetch_related("manual_db_sources__asset", "manual_routes")
+    )
     container_ids = {c.id for c in containers}
 
     connectors = []
@@ -91,9 +95,11 @@ def collect_service_resources(service) -> dict:
     # 테이블은 서비스와 무관한 독립 테이블이라(위 NetworkRoute 모델 참고) 서비스로 필터링하지
     # 않고 전체를 가져와 key로 dict를 만든다 - 각 Apache/Nginx vhost의 proxy_summary 텍스트
     # 안에서 이 key들을 검색해 자동으로 매칭하는 쪽(network.resolve.find_matching_route/
-    # resolve_chain)이 어떤 라우트가 이 서비스와 관련있는지 알아서 찾아낸다.
+    # resolve_chain)이 어떤 라우트가 이 서비스와 관련있는지 알아서 찾아낸다. WAS 컨테이너의
+    # manual_routes(설정 파일에 없는 WAS→WEB/WAS 호출을 사람이 직접 골라 연결한 M2M)도 같은
+    # 체인 추적(add_route_chain)을 타므로 컨테이너가 있을 때도 이 dict가 필요하다.
     network_routes_by_key = {}
-    if apache_vhosts or nginx_vhosts:
+    if apache_vhosts or nginx_vhosts or containers:
         network_routes_by_key = {
             route.key: route
             for route in NetworkRoute.objects.prefetch_related(
@@ -201,11 +207,53 @@ def build_service_resource_table(resources: dict) -> dict:
                 }
             )
 
+    # WAS 컨테이너의 manual_routes(설정 파일에 없는 WAS→WEB/WAS 호출) - route.key 자체가
+    # routes_by_key 안의 정확히 그 라우트를 가리키므로 resolve_chain(route.key, ...)를 그대로
+    # 재사용해 체인을 구할 수 있다(find_matching_route가 텍스트 안에서 key를 찾는데, 텍스트가
+    # key 그 자체면 항상 일치).
+    container_hop_rows = []
+    for container in resources["containers"]:
+        for route in container.manual_routes.all():
+            chain = resolve_chain(route.key, routes_by_key)
+            if not chain:
+                continue
+            container_hop_rows.append(
+                {
+                    "container_name": container.name,
+                    "hops": [
+                        {
+                            "label": r.label,
+                            "key": r.key,
+                            "backends": [b for b in r.backends.all() if b.ip_or_hostname not in routes_by_key],
+                        }
+                        for r in chain
+                    ],
+                }
+            )
+
+    # WAS 컨테이너의 manual_db_sources(설정 파일 파싱으로 못 잡는 DB 커넥션을 사람이 직접
+    # 등록) - db_rows(JeusDataSource 기반, 인스턴스 단위)와 구분되는 별도 표.
+    manual_db_rows = []
+    for container in resources["containers"]:
+        for source in container.manual_db_sources.all():
+            manual_db_rows.append(
+                {
+                    "container_name": container.name,
+                    "source_kind": source.get_kind_display(),
+                    "db_unique_name": source.db_unique_name,
+                    "asset": source.asset,
+                    "system": _system_host_for_asset(source.asset),
+                    "detail_url": reverse("dashboard-db-config-detail", args=[source.id]),
+                }
+            )
+
     return {
         "web_rows": web_rows,
         "was_rows": was_rows,
         "db_rows": db_rows,
         "network_hop_rows": network_hop_rows,
+        "container_hop_rows": container_hop_rows,
+        "manual_db_rows": manual_db_rows,
     }
 
 
@@ -319,7 +367,10 @@ def build_service_topology_graph(resources: dict) -> dict:
     # proxy_summary 텍스트로 어떤 라우트에 연결되는지 직접 찾는다(find_matching_route) - 사람이
     # 미리 서비스와 연결지어둘 필요가 없다. 체인(도메인/VIP -> VIP -> 실서버)은 라우트의
     # backends가 다시 다른 라우트의 key와 일치하면 재귀로 이어간다(add_route_chain).
-    if proxy_web_nodes:
+    container_manual_routes = {c.id: list(c.manual_routes.all()) for c in containers}
+    has_manual_routes = any(container_manual_routes.values())
+
+    if proxy_web_nodes or has_manual_routes:
         routes_by_key = resources["network_routes_by_key"]
         # 체인 끝(다른 라우트로도 안 이어지는) 실서버 중 WAS 컨테이너로 안 잡힌 asset(예:
         # Apache가 도메인을 받아 VIP로 Tomcat에 넘기는 흔한 구성 - Tomcat은 이 CMDB가 아직
@@ -393,6 +444,42 @@ def build_service_topology_graph(resources: dict) -> dict:
             route = find_matching_route(vhost.proxy_summary, routes_by_key)
             if route is not None:
                 add_route_chain(route, [node_id])
+
+        # WAS 컨테이너의 manual_routes(설정 파일에 없는 WAS→WEB/WAS 호출을 사람이 도메인/VIP로
+        # 직접 골라 연결한 M2M, was/models.py 참고)도 같은 체인 추적을 탄다 - Apache/Nginx와
+        # 달리 텍스트 매칭이 필요 없어(이미 라우트를 특정해서 골랐으므로) routes_by_key에서
+        # 같은 key의 객체(backends가 프리페치돼 있음)를 찾아 넘긴다.
+        for container in containers:
+            was_node_id = was_node_id_by_container.get(container.id)
+            if was_node_id is None:
+                continue
+            for route in container_manual_routes[container.id]:
+                canonical_route = routes_by_key.get(route.key, route)
+                add_route_chain(canonical_route, [was_node_id])
+
+    # WAS 컨테이너의 manual_db_sources(설정 파일 파싱(JeusDataSource)으로 못 잡는 DB 커넥션을
+    # 사람이 직접 등록, was/models.py 참고) - 위 JeusDataSource 기반 DB 노드(실선, 인스턴스
+    # 단위)와 구분되게 DbConfigSource 단위(점선)로 별도 노드를 그린다. 특정 인스턴스를 안
+    # 골라둔 값이라 db_instance 노드와 억지로 합치지 않는다.
+    db_source_node_id_by_source = {}
+    for container in containers:
+        was_node_id = was_node_id_by_container.get(container.id)
+        if was_node_id is None:
+            continue
+        for source in container.manual_db_sources.all():
+            node_id = db_source_node_id_by_source.get(source.id)
+            if node_id is None:
+                node_id = f"dbsrc_{source.id}"
+                db_source_node_id_by_source[source.id] = node_id
+                nodes.append(
+                    {
+                        "id": node_id,
+                        "label": f"{source.get_kind_display()}\n{source.db_unique_name}",
+                        "asset": source.asset,
+                        "detail_url": reverse("dashboard-db-config-detail", args=[source.id]),
+                    }
+                )
+            edges.append({"from": was_node_id, "to": node_id, "label": "", "style": "dashed"})
 
     return {"nodes": nodes, "edges": edges}
 

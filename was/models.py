@@ -94,6 +94,24 @@ class JeusContainer(TimeStampedModel):
     service = models.ForeignKey(
         Service, null=True, blank=True, on_delete=models.SET_NULL, related_name="jeus_containers"
     )
+    # 설정 파일 파싱으로는 못 얻는, 사람만 아는 연결(WAS가 다른 WEB/WAS를 도메인·VIP로
+    # 호출하는 경우) - network.NetworkRoute(도메인/VIP 뒤에 실서버가 뭔지 사람이 등록해둔
+    # 표)를 그대로 재사용한다. Apache/Nginx는 proxy_summary 텍스트 안에서 route.key를
+    # 문자열로 찾아 자동 매칭하지만(network/resolve.py의 find_matching_route), WAS 컨테이너엔
+    # 그런 텍스트가 없어 사람이 직접 라우트를 골라 연결한다 - 구성도(dashboard/topology.py)는
+    # 매칭 방식만 다를 뿐 그 뒤(체인 추적/점선 표시/백엔드 자산 매칭)는 add_route_chain()을
+    # 그대로 재사용해서 텍스트 매칭 없이도 동일하게 그려진다. 이 M2M은 sync_jeus()가 손대지
+    # 않는 필드라(update_or_create의 defaults에 없음) push마다 안전하게 보존된다(service
+    # 필드와 동일한 안전성 - was/sync.py 참고).
+    manual_routes = models.ManyToManyField(
+        "network.NetworkRoute", blank=True, related_name="jeus_containers"
+    )
+    # 설정 파일 파싱(JeusDataSource)으로 못 잡는 DB 커넥션을 사람이 직접 등록. DbInstance는
+    # DB push마다 통짜 교체돼 직접 못 걸므로(DbConfigSource.manual_services와 동일 이유)
+    # 안 지워지는 상위 DbConfigSource 단위로 연결한다.
+    manual_db_sources = models.ManyToManyField(
+        "database.DbConfigSource", blank=True, related_name="manual_jeus_containers"
+    )
 
     class Meta:
         constraints = [

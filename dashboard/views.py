@@ -50,6 +50,8 @@ from dashboard.queries import (
     build_tomcat_container_rows,
     build_webtob_vhost_rows,
     describe_overview_filter,
+    format_manual_db_source_label,
+    format_manual_route_label,
     get_apache_vhost_queryset,
     get_asset_queryset,
     get_change_history_queryset,
@@ -183,6 +185,74 @@ def _manual_service_entries(resource):
     service_labels(계산값+수기값)와 별개로, "지금 수기로 등록된 것만" 알아야 모달에서
     ×(해제) 버튼을 계산값이 아니라 수기값에만 달 수 있다(계산값은 여기서 지울 수 없음)."""
     return [{"id": s.id, "name": s.name} for s in resource.manual_services.order_by("name")]
+
+
+def _apply_manual_route_action(request, container):
+    """WAS 컨테이너 목록의 "호출 라우트" 셀 - 설정 파일에 없는 WAS→WEB/WAS 호출(도메인/VIP로
+    부르는 대상)을 JeusContainer.manual_routes(M2M → network.NetworkRoute)로 등록한다.
+    manual_services와 달리 자동 계산값과 합쳐지는 게 아니라 이 M2M 자체가 전부라 "보정"이
+    아니라 "등록"이지만, 오타로 새 NetworkRoute가 생기지 않게 기존 것만 허용하는 엄격 조회
+    원칙은 동일하다(_resolve_service와 같은 이유) - 라우트 자체는 "네트워크" 탭에서 먼저
+    등록해야 한다."""
+    action = request.POST.get("action")
+    if action == "add":
+        key = (request.POST.get("value") or "").strip()
+        if not key:
+            return JsonResponse({"error": "라우트를 입력하세요."}, status=400)
+        route = NetworkRoute.objects.filter(key=key).first()
+        if route is None:
+            return JsonResponse(
+                {"error": f'"{key}" 라우트를 찾을 수 없습니다. "네트워크" 탭에서 먼저 등록하세요.'}, status=400
+            )
+        container.manual_routes.add(route)
+        return None
+    if action == "remove":
+        route = container.manual_routes.filter(pk=request.POST.get("entry_id")).first()
+        if route is None:
+            return JsonResponse({"error": "이미 해제된 라우트입니다."}, status=404)
+        container.manual_routes.remove(route)
+        return None
+    return JsonResponse({"error": "잘못된 요청입니다."}, status=400)
+
+
+def _manual_route_entries(container):
+    return [
+        {"id": r.id, "label": format_manual_route_label(r)} for r in container.manual_routes.order_by("key")
+    ]
+
+
+def _apply_manual_db_source_action(request, container):
+    """WAS 컨테이너 목록의 "DB 연결" 셀 - 설정 파일 파싱(JeusDataSource)으로 못 잡는 DB
+    커넥션을 JeusContainer.manual_db_sources(M2M → database.DbConfigSource)로 등록한다.
+    DbInstance는 DB push마다 통짜 교체돼 직접 못 걸므로(모델 docstring 참고) 안 지워지는
+    상위 DbConfigSource 단위로 연결 - _apply_manual_route_action과 동일 원칙(기존 DB만
+    허용, "DB" 목록에 먼저 있어야 함)."""
+    action = request.POST.get("action")
+    if action == "add":
+        name = (request.POST.get("value") or "").strip()
+        if not name:
+            return JsonResponse({"error": "DB를 입력하세요."}, status=400)
+        source = DbConfigSource.objects.filter(db_unique_name=name).first()
+        if source is None:
+            return JsonResponse(
+                {"error": f'"{name}" DB를 찾을 수 없습니다. "DB" 목록에 먼저 등록되어 있어야 합니다.'}, status=400
+            )
+        container.manual_db_sources.add(source)
+        return None
+    if action == "remove":
+        source = container.manual_db_sources.filter(pk=request.POST.get("entry_id")).first()
+        if source is None:
+            return JsonResponse({"error": "이미 해제된 DB입니다."}, status=404)
+        container.manual_db_sources.remove(source)
+        return None
+    return JsonResponse({"error": "잘못된 요청입니다."}, status=400)
+
+
+def _manual_db_source_entries(container):
+    return [
+        {"id": s.id, "label": format_manual_db_source_label(s)}
+        for s in container.manual_db_sources.order_by("db_unique_name")
+    ]
 
 
 class DashboardLoginView(LoginView):
@@ -864,12 +934,50 @@ class JeusContainerListView(LoginRequiredMixin, ListView):
             default="hostname",
         )
         context["current_q"] = self.request.GET.get("q", "")
+        # "호출 라우트"/"DB 연결" 셀의 수기 연결 편집 모달 datalist용 - 기존 것만 고를 수
+        # 있게(오타 방지, _resolve_service와 동일 원칙).
+        context["all_route_keys"] = list(NetworkRoute.objects.order_by("key").values_list("key", flat=True))
+        context["all_db_unique_names"] = list(
+            DbConfigSource.objects.order_by("db_unique_name").values_list("db_unique_name", flat=True)
+        )
         return context
 
 
 class JeusContainerExportView(LoginRequiredMixin, View):
     def get(self, request):
         return export_jeus_container_workbook()
+
+
+class JeusContainerManualRouteUpdateView(LoginRequiredMixin, View):
+    """WAS 컨테이너 목록(JEUS/JEUS6/Tomcat 공용 - JeusContainer 모델 자체에 다는 필드라
+    kind 무관)의 "호출 라우트" 셀에서 수기 연결(JeusContainer.manual_routes)을 추가/해제한다."""
+
+    def get(self, request, pk):
+        container = get_object_or_404(JeusContainer, pk=pk)
+        return JsonResponse({"entries": _manual_route_entries(container)})
+
+    def post(self, request, pk):
+        container = get_object_or_404(JeusContainer, pk=pk)
+        error = _apply_manual_route_action(request, container)
+        if error is not None:
+            return error
+        return JsonResponse({"entries": _manual_route_entries(container)})
+
+
+class JeusContainerManualDbSourceUpdateView(LoginRequiredMixin, View):
+    """WAS 컨테이너 목록의 "DB 연결" 셀에서 수기 연결(JeusContainer.manual_db_sources)을
+    추가/해제한다 - JeusContainerManualRouteUpdateView와 동일 패턴."""
+
+    def get(self, request, pk):
+        container = get_object_or_404(JeusContainer, pk=pk)
+        return JsonResponse({"entries": _manual_db_source_entries(container)})
+
+    def post(self, request, pk):
+        container = get_object_or_404(JeusContainer, pk=pk)
+        error = _apply_manual_db_source_action(request, container)
+        if error is not None:
+            return error
+        return JsonResponse({"entries": _manual_db_source_entries(container)})
 
 
 class TomcatContainerListView(LoginRequiredMixin, ListView):
@@ -894,6 +1002,11 @@ class TomcatContainerListView(LoginRequiredMixin, ListView):
             default="hostname",
         )
         context["current_q"] = self.request.GET.get("q", "")
+        # JeusContainerListView와 동일 - "호출 라우트"/"DB 연결" 수기 연결 모달 datalist.
+        context["all_route_keys"] = list(NetworkRoute.objects.order_by("key").values_list("key", flat=True))
+        context["all_db_unique_names"] = list(
+            DbConfigSource.objects.order_by("db_unique_name").values_list("db_unique_name", flat=True)
+        )
         return context
 
 

@@ -13,7 +13,8 @@
     </div>
   </div>
 </div>
-<p class="subtitle is-6 has-text-grey">컨테이너(&lt;server&gt;) 하나가 한 행입니다 — 여러 도메인을 가로질러 컨테이너 단위로 검색·정렬합니다. Hostname은 이 컨테이너 자신의 node-name으로 연결된 자산입니다(설정을 push한 admin 호스트와 다를 수 있음) — 아직 자산으로 등록 안 된 노드는 "(미등록)"으로 표시됩니다. 서비스명은 여기서 수정할 수 없습니다 — <a href="{% url 'dashboard-webservice-list' %}">서비스 배정</a> 화면에서 편집하세요. Tomcat 컨테이너는 <a href="{% url 'dashboard-tomcat-container-list' %}">Tomcat 목록</a>에서 따로 확인하세요.</p>
+<p class="subtitle is-6 has-text-grey">컨테이너(&lt;server&gt;) 하나가 한 행입니다 — 여러 도메인을 가로질러 컨테이너 단위로 검색·정렬합니다. Hostname은 이 컨테이너 자신의 node-name으로 연결된 자산입니다(설정을 push한 admin 호스트와 다를 수 있음) — 아직 자산으로 등록 안 된 노드는 "(미등록)"으로 표시됩니다. 서비스명은 여기서 수정할 수 없습니다 — <a href="{% url 'dashboard-webservice-list' %}">서비스 배정</a> 화면에서 편집하세요. "호출 라우트"/"DB 연결"은 설정 파일 파싱으로 못 잡는 연결을 사람이 직접 등록하는 칸입니다(✎ 클릭) — 실제 파싱된 값(WebToB 연결 등)과 구분해서 구성도에 점선으로 표시됩니다. Tomcat 컨테이너는 <a href="{% url 'dashboard-tomcat-container-list' %}">Tomcat 목록</a>에서 따로 확인하세요.</p>
+{% csrf_token %}
 
 <form class="field has-addons" method="get">
   <div class="control is-expanded">
@@ -38,6 +39,8 @@
         <th>배포된 앱</th>
         <th>WebToB 연결</th>
         <th><a class="has-text-dark" href="{% querystring sort=columns.service_name.next_sort page=None %}">서비스명</a></th>
+        <th>호출 라우트</th>
+        <th>DB 연결</th>
       </tr>
     </thead>
     <tbody>
@@ -53,9 +56,11 @@
         <td>{{ row.container.deployed_apps_summary|default:"" }}</td>
         <td>{{ row.webtob_connector_summary }}</td>
         <td>{% if row.container.service %}<a class="tag is-light" href="{% url 'dashboard-service-topology' %}?name={{ row.container.service.name|urlencode }}">{{ row.container.service.name }}</a>{% endif %}</td>
+        <td>{% for entry in row.manual_route_entries %}<span class="tag is-light mr-1">{{ entry.label }}</span>{% endfor %}<span class="dash-manual-icon manual-link-edit" style="cursor: pointer;" data-link-kind="route" data-resource-id="{{ row.container.pk }}" data-resource-name="{{ row.container.name }}" aria-hidden="true">✎</span></td>
+        <td>{% for entry in row.manual_db_source_entries %}<span class="tag is-light mr-1">{{ entry.label }}</span>{% endfor %}<span class="dash-manual-icon manual-link-edit" style="cursor: pointer;" data-link-kind="dbsource" data-resource-id="{{ row.container.pk }}" data-resource-name="{{ row.container.name }}" aria-hidden="true">✎</span></td>
       </tr>
       {% empty %}
-      <tr><td colspan="10" class="has-text-grey">등록된 컨테이너가 없습니다.</td></tr>
+      <tr><td colspan="12" class="has-text-grey">등록된 컨테이너가 없습니다.</td></tr>
       {% endfor %}
     </tbody>
   </table>
@@ -76,4 +81,208 @@
     <span class="pagination-link is-current">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
   </span>
 </nav>
+
+<!-- "호출 라우트"/"DB 연결" 수기 연결 편집 모달 - 설정 파일 파싱으로 못 잡는 연결을 사람이
+     직접 추가/해제한다. 둘 다 기존 것만 고를 수 있어(datalist) 오타로 새 라우트/DB가 생기지
+     않는다(manual_services 편집 모달과 동일 원칙). -->
+<datalist id="allRouteKeys">
+  {% for key in all_route_keys %}<option value="{{ key }}">{% endfor %}
+</datalist>
+<datalist id="allDbUniqueNames">
+  {% for name in all_db_unique_names %}<option value="{{ name }}">{% endfor %}
+</datalist>
+<div class="modal" id="manualLinkModal">
+  <div class="modal-background"></div>
+  <div class="modal-card" style="width: 90%; max-width: 480px;">
+    <header class="modal-card-head">
+      <p class="modal-card-title" id="manualLinkModalTitle">수기 연결</p>
+      <button class="delete" aria-label="close" id="manualLinkModalClose"></button>
+    </header>
+    <section class="modal-card-body">
+      <p class="help" id="manualLinkModalHelp"></p>
+      <div class="tags" id="manualLinkTags"></div>
+      <div class="field has-addons">
+        <div class="control is-expanded">
+          <input class="input" type="text" id="manualLinkInput" placeholder="선택/입력">
+        </div>
+        <div class="control">
+          <button type="button" class="button is-link" id="manualLinkAdd">추가</button>
+        </div>
+      </div>
+      <p class="help is-danger" id="manualLinkError" style="display: none;"></p>
+    </section>
+    <footer class="modal-card-foot">
+      <button type="button" class="button" id="manualLinkClose">닫기</button>
+    </footer>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_body %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  function getCsrfToken() {
+    var input = document.querySelector('input[name=csrfmiddlewaretoken]');
+    return input ? input.value : '';
+  }
+
+  var linkModal = document.getElementById('manualLinkModal');
+  var linkModalTitle = document.getElementById('manualLinkModalTitle');
+  var linkModalHelp = document.getElementById('manualLinkModalHelp');
+  var linkTagsWrapper = document.getElementById('manualLinkTags');
+  var linkInput = document.getElementById('manualLinkInput');
+  var linkAddBtn = document.getElementById('manualLinkAdd');
+  var linkError = document.getElementById('manualLinkError');
+  var activeLinkKind = null;
+  var activeLinkResourceId = null;
+  var activeLinkCell = null;
+
+  var LINK_KIND_CONFIG = {
+    route: {
+      title: '호출 라우트',
+      help: '설정 파일에 없는 WAS→WEB/WAS 호출(도메인/VIP)을 직접 등록합니다. "네트워크" 탭에 이미 등록된 라우트만 연결할 수 있습니다.',
+      datalist: 'allRouteKeys',
+      placeholder: '라우트 key 선택/입력',
+      path: 'manual-routes',
+    },
+    dbsource: {
+      title: 'DB 연결',
+      help: '설정 파일 파싱으로 못 잡는 DB 커넥션을 직접 등록합니다. "DB" 목록에 이미 등록된 DB(db_unique_name)만 연결할 수 있습니다.',
+      datalist: 'allDbUniqueNames',
+      placeholder: 'db_unique_name 선택/입력',
+      path: 'manual-db-sources',
+    },
+  };
+
+  function linkEndpoint(kind, resourceId) {
+    return '/dashboard/was/containers/' + resourceId + '/' + LINK_KIND_CONFIG[kind].path + '/';
+  }
+
+  function renderLinkCell(cell, entries) {
+    var icon = cell.querySelector('.manual-link-edit');
+    cell.querySelectorAll('span.tag').forEach(function (el) { el.remove(); });
+    entries.forEach(function (entry) {
+      var tag = document.createElement('span');
+      tag.className = 'tag is-light mr-1';
+      tag.textContent = entry.label;
+      cell.insertBefore(tag, icon);
+    });
+  }
+
+  function renderLinkModalTags(entries) {
+    linkTagsWrapper.innerHTML = '';
+    entries.forEach(function (entry) {
+      var tag = document.createElement('span');
+      tag.className = 'tag is-light mr-1';
+      tag.textContent = entry.label + ' ';
+      var del = document.createElement('button');
+      del.className = 'delete is-small';
+      del.addEventListener('click', function () {
+        removeManualLink(entry.id);
+      });
+      tag.appendChild(del);
+      linkTagsWrapper.appendChild(tag);
+    });
+  }
+
+  function closeLinkModal() {
+    linkModal.classList.remove('is-active');
+    activeLinkKind = null;
+    activeLinkResourceId = null;
+    activeLinkCell = null;
+  }
+
+  function openLinkModal(kind, resourceId, resourceName, cell) {
+    activeLinkKind = kind;
+    activeLinkResourceId = resourceId;
+    activeLinkCell = cell;
+    var config = LINK_KIND_CONFIG[kind];
+    linkModalTitle.textContent = resourceName + ' · ' + config.title;
+    linkModalHelp.textContent = config.help;
+    linkInput.value = '';
+    linkInput.setAttribute('list', config.datalist);
+    linkInput.setAttribute('placeholder', config.placeholder);
+    linkError.style.display = 'none';
+    linkTagsWrapper.innerHTML = '불러오는 중...';
+    linkModal.classList.add('is-active');
+
+    fetch(linkEndpoint(kind, resourceId))
+      .then(function (res) { return res.json(); })
+      .then(function (data) {
+        renderLinkModalTags(data.entries);
+      })
+      .catch(function () {
+        linkTagsWrapper.innerHTML = '';
+        linkError.textContent = '불러오기 실패';
+        linkError.style.display = 'block';
+      });
+  }
+
+  function addManualLink() {
+    var value = linkInput.value.trim();
+    if (!value) return;
+    linkError.style.display = 'none';
+    fetch(linkEndpoint(activeLinkKind, activeLinkResourceId), {
+      method: 'POST',
+      headers: {
+        'X-CSRFToken': getCsrfToken(),
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({ action: 'add', value: value }),
+    })
+      .then(function (res) { return res.json().then(function (data) { return { ok: res.ok, data: data }; }); })
+      .then(function (result) {
+        if (!result.ok) {
+          linkError.textContent = result.data.error || '추가 실패';
+          linkError.style.display = 'block';
+          return;
+        }
+        linkInput.value = '';
+        renderLinkModalTags(result.data.entries);
+        if (activeLinkCell) renderLinkCell(activeLinkCell, result.data.entries);
+      })
+      .catch(function () {
+        linkError.textContent = '추가 실패';
+        linkError.style.display = 'block';
+      });
+  }
+
+  function removeManualLink(entryId) {
+    fetch(linkEndpoint(activeLinkKind, activeLinkResourceId), {
+      method: 'POST',
+      headers: {
+        'X-CSRFToken': getCsrfToken(),
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({ action: 'remove', entry_id: entryId }),
+    })
+      .then(function (res) { return res.json().then(function (data) { return { ok: res.ok, data: data }; }); })
+      .then(function (result) {
+        if (!result.ok) {
+          linkError.textContent = result.data.error || '해제 실패';
+          linkError.style.display = 'block';
+          return;
+        }
+        renderLinkModalTags(result.data.entries);
+        if (activeLinkCell) renderLinkCell(activeLinkCell, result.data.entries);
+      })
+      .catch(function () {
+        linkError.textContent = '해제 실패';
+        linkError.style.display = 'block';
+      });
+  }
+
+  document.querySelectorAll('.manual-link-edit').forEach(function (icon) {
+    icon.addEventListener('click', function (e) {
+      e.stopPropagation();
+      openLinkModal(icon.dataset.linkKind, icon.dataset.resourceId, icon.dataset.resourceName, icon.closest('td'));
+    });
+  });
+
+  linkAddBtn.addEventListener('click', addManualLink);
+  document.getElementById('manualLinkClose').addEventListener('click', closeLinkModal);
+  document.getElementById('manualLinkModalClose').addEventListener('click', closeLinkModal);
+  linkModal.querySelector('.modal-background').addEventListener('click', closeLinkModal);
+});
+</script>
 {% endblock %}

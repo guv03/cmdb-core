@@ -813,7 +813,11 @@ def get_jeus_container_queryset(request):
         )
         .select_related("source__asset", "asset", "service")
         .defer("source__raw_content")
-        .prefetch_related("webtob_connectors__webtob_server__source__asset")
+        .prefetch_related(
+            "webtob_connectors__webtob_server__source__asset",
+            "manual_routes",
+            "manual_db_sources",
+        )
     )
 
     q = _request_param(request, "q", "search")
@@ -835,6 +839,31 @@ def get_jeus_container_queryset(request):
     return queryset.order_by(f"{direction}{lookup}")
 
 
+def format_manual_route_label(route):
+    """JeusContainer.manual_routes 표시용 - network 탭의 label(구분용 이름)이 있으면 key와
+    같이, 없으면 key만. JeusContainerManualRouteUpdateView(dashboard/views.py)와 목록 행
+    렌더링(build_jeus_container_rows/build_tomcat_container_rows) 양쪽에서 같이 쓴다."""
+    return f"{route.label} ({route.key})" if route.label else route.key
+
+
+def format_manual_db_source_label(source):
+    """JeusContainer.manual_db_sources 표시용 - format_manual_route_label과 동일 취지."""
+    return f"{source.db_unique_name} ({source.db_name})" if source.db_name else source.db_unique_name
+
+
+def _manual_link_entries(container):
+    """WAS 컨테이너 목록의 "호출 라우트"/"DB 연결" 두 컬럼이 공유하는 형태 - 수기 연결
+    M2M을 모달/셀에 그대로 뿌리기 좋은 {id, label} 목록으로 바꾼다. prefetch_related로 이미
+    받아온 캐시를 쓰도록 .all()에 파이썬 sorted()만 적용(.order_by()는 캐시를 우회해 컨테이너
+    수만큼 추가 쿼리가 나가므로 피함)."""
+    routes = sorted(container.manual_routes.all(), key=lambda r: r.key)
+    db_sources = sorted(container.manual_db_sources.all(), key=lambda s: s.db_unique_name)
+    return (
+        [{"id": r.id, "label": format_manual_route_label(r)} for r in routes],
+        [{"id": s.id, "label": format_manual_db_source_label(s)} for s in db_sources],
+    )
+
+
 def build_jeus_container_rows(containers):
     """webtob-connector는 컨테이너 하나에 여러 개씩 걸릴 수 있어(관계형 구조) 표 한 칸에
     요약 문자열로 모아준다 - build_webtob_vhost_rows와 같은 패턴."""
@@ -849,7 +878,15 @@ def build_jeus_container_rows(containers):
                 label = f"{connector.registration_id}(WebToB 쪽 미확인)"
             connector_parts.append(f"{label} -> {target}")
 
-        rows.append({"container": container, "webtob_connector_summary": ", ".join(connector_parts)})
+        manual_route_entries, manual_db_source_entries = _manual_link_entries(container)
+        rows.append(
+            {
+                "container": container,
+                "webtob_connector_summary": ", ".join(connector_parts),
+                "manual_route_entries": manual_route_entries,
+                "manual_db_source_entries": manual_db_source_entries,
+            }
+        )
     return rows
 
 
@@ -875,7 +912,7 @@ def get_tomcat_container_queryset(request):
         JeusContainer.objects.filter(source__kind=WasConfigSource.Kind.TOMCAT)
         .select_related("source__asset", "asset", "service")
         .defer("source__raw_content")
-        .prefetch_related("data_sources")
+        .prefetch_related("data_sources", "manual_routes", "manual_db_sources")
     )
 
     q = _request_param(request, "q", "search")
@@ -903,7 +940,15 @@ def build_tomcat_container_rows(containers):
     rows = []
     for container in containers:
         data_source_summary = ", ".join(ds.data_source_id for ds in container.data_sources.all())
-        rows.append({"container": container, "data_source_summary": data_source_summary})
+        manual_route_entries, manual_db_source_entries = _manual_link_entries(container)
+        rows.append(
+            {
+                "container": container,
+                "data_source_summary": data_source_summary,
+                "manual_route_entries": manual_route_entries,
+                "manual_db_source_entries": manual_db_source_entries,
+            }
+        )
     return rows
 
 

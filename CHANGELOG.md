@@ -5,6 +5,10 @@
 
 1.0.6까지의 이력은 이 파일 도입 전이라 별도 기록 없음 — `WORKLOG.md`의 해당 날짜 항목 참고.
 
+## 1.0.49
+
+- **WAS 컨테이너 수기 연결 신규(`JeusContainer.manual_routes`/`manual_db_sources`)** — 설정 파일 파싱만으로는 못 잡는 연결 두 가지를 사람이 직접 등록할 수 있게 했다: (1) WAS가 다른 WEB/WAS를 도메인·VIP로 호출하지만 그 대상이 설정 어디에도 없는 경우, (2) WAS의 DB 커넥션이 설정 파싱(`JeusDataSource`)으로 못 잡히는 경우. 둘 다 `JeusContainer`(kind 무관 공용 모델)에 다는 M2M이라 JEUS/JEUS6/Tomcat 전부 자동 지원된다. `manual_routes`(→ `network.NetworkRoute`)는 Apache/Nginx가 쓰던 네트워크 라우트 체인 추적(`add_route_chain`)을 그대로 재사용해 WAS→WEB/WAS 체인을 구성도에 점선으로 그리고, `manual_db_sources`(→ `database.DbConfigSource`)는 `JeusDataSource.db_instance`(실선, 인스턴스 단위)와 구분되는 DB 전체 단위(점선) 노드로 표시한다. 둘 다 `sync_jeus()`가 손대지 않는 필드라 WAS push가 반복돼도 안전하게 보존된다(`service` 필드와 동일한 안전성 - 실제 샘플 재push로 검증). 편집은 WAS 컨테이너 목록의 "호출 라우트"/"DB 연결" 두 컬럼에서 ✎ 아이콘으로(`manual_services` 편집 모달과 동일한 add/remove 패턴, 오타로 새 라우트/DB가 안 생기는 엄격 조회).
+
 ## 1.0.48
 
 - **네트워크 탭 재설계 — 서비스 종속 매핑 → 독립 라우팅 테이블 + 자동 추적** — 1.0.46/1.0.47에서 만든 `ServiceNetworkMapping`(Service FK 필수, hop_order로 체인 관리)이 "서비스를 먼저 고르고 그 밑에 홉을 등록"하는 흐름이라, 실제 의도(도메인/VIP로 부르는 게 있으면 CMDB가 설정 내용을 보고 자동으로 추적해서 연결)와 맞지 않는다는 피드백을 받아 전면 재설계했다. `network` 앱을 `NetworkRoute`/`NetworkRouteBackend`로 교체 — 도메인 또는 VIP 하나 = 행(`key`) 하나인, `core.Service`와 완전히 무관한 독립 라우팅 테이블이 됐다. 구성도(`dashboard/topology.py`)가 Apache/Nginx vhost의 `proxy_summary`(ProxyPass 대상) 텍스트 안에서 등록된 `key` 값을 부분 문자열로 찾아 자동으로 연결하고(`network/resolve.py`의 `find_matching_route`, 단어 경계 매칭으로 오탐 방지), 백엔드 값이 다시 다른 라우트의 `key`와 일치하면 재귀적으로 다음 홉을 따라가 도메인→VIP→VIP→실서버 체인을 자동 구성한다(`resolve_chain`, 순환 참조는 자동 차단) — 더 이상 `hop_order`를 사람이 관리할 필요가 없다. 네트워크 탭 화면도 서비스 박스 그룹 없이 평범한 플랫 테이블(+"라우트 추가")로 바뀌었다. 기존 테이블은 배포 이력이 짧아(1.0.46~1.0.47) 보존 없이 새 스키마로 마이그레이션 재생성.
