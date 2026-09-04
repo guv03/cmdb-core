@@ -102,6 +102,7 @@ from database.excel_import import (
     parse_db_config_workbook,
 )
 from database.models import DbConfigSource, DbConfigSourceFieldDefinition, DbConfigSourceFieldValue
+from database.sync import resolve_asset as resolve_db_asset
 from facts.dynamic_fields import coerce_fact_value, is_valid_choice
 from facts.models import FactFieldDefinition, HostFactValue
 from network.models import NetworkRoute
@@ -1039,6 +1040,10 @@ class DbConfigListView(LoginRequiredMixin, ListView):
         )
         context["current_q"] = self.request.GET.get("q", "")
         context["all_service_names"] = list(Service.objects.order_by("name").values_list("name", flat=True))
+        # "수기 등록" 모달의 연결할 자산 datalist - system_list.html과 동일 패턴.
+        context["asset_hostnames"] = list(
+            Asset.objects.order_by("hostname").values_list("hostname", flat=True)
+        )
         # MANUAL 셀 편집 모달의 선택형(choice) 입력 구성용 - 시스템 목록과 동일 패턴.
         context["field_choices_json"] = [
             {
@@ -1052,6 +1057,59 @@ class DbConfigListView(LoginRequiredMixin, ListView):
             for fd in dynamic_field_definitions
         ]
         return context
+
+
+class DbConfigSourceManualCreateView(LoginRequiredMixin, View):
+    """"DB" 목록의 "수기 등록" 모달 - Oracle push 경로 없이 사람이 직접 DbConfigSource
+    (kind=manual)를 만든다. SystemHostManualCreateView와 동일 취지(설정 파일을 못 가져오는
+    DB - 외부 업체 DB, 접속 권한 미허용 등)이지만 물리 장비처럼 소스 그룹 개념은 없어
+    db_unique_name/비고/연결할 자산만 입력받는다. db_unique_name 중복 체크는 kind를 안
+    가리고 전역으로 걸어서(모델 docstring 참고) 나중에 ORACLE 행과 이름이 겹쳐
+    excel_import.py의 단일 컬럼 매칭이 애매해지는 상황을 막는다."""
+
+    def post(self, request):
+        db_unique_name = (request.POST.get("db_unique_name") or "").strip()
+        if not db_unique_name:
+            return JsonResponse({"error": "db_unique_name을 입력하세요."}, status=400)
+        if DbConfigSource.objects.filter(db_unique_name=db_unique_name).exists():
+            return JsonResponse({"error": "이미 존재하는 db_unique_name입니다."}, status=400)
+
+        source = DbConfigSource.objects.create(
+            kind=DbConfigSource.Kind.MANUAL,
+            db_unique_name=db_unique_name,
+            note=(request.POST.get("note") or "").strip(),
+            asset=resolve_db_asset(request.POST.get("hostname") or ""),
+        )
+        return JsonResponse({"id": source.pk})
+
+
+class DbConfigSourceManualUpdateView(LoginRequiredMixin, View):
+    """수기 등록 DB의 db_unique_name/비고/연결 자산 수정 - kind=manual인 행만 대상으로
+    잠근다(SystemHostManualUpdateView와 동일하게 push로 생긴 행은 이 경로로 못 건드리게)."""
+
+    def post(self, request, pk):
+        source = get_object_or_404(DbConfigSource, pk=pk, kind=DbConfigSource.Kind.MANUAL)
+        db_unique_name = (request.POST.get("db_unique_name") or "").strip()
+        if not db_unique_name:
+            return JsonResponse({"error": "db_unique_name을 입력하세요."}, status=400)
+        if DbConfigSource.objects.exclude(pk=pk).filter(db_unique_name=db_unique_name).exists():
+            return JsonResponse({"error": "이미 존재하는 db_unique_name입니다."}, status=400)
+
+        source.db_unique_name = db_unique_name
+        source.note = (request.POST.get("note") or "").strip()
+        source.asset = resolve_db_asset(request.POST.get("hostname") or "")
+        source.save(update_fields=["db_unique_name", "note", "asset"])
+        return JsonResponse({"id": source.pk})
+
+
+class DbConfigSourceManualDeleteView(LoginRequiredMixin, View):
+    """수기 등록 DB 삭제 - kind=manual만 대상(CASCADE로 딸린 revision/field_value도 함께
+    정리, instances는 애초에 없음). WasContainer.manual_db_sources M2M도 자동으로 정리됨."""
+
+    def post(self, request, pk):
+        source = get_object_or_404(DbConfigSource, pk=pk, kind=DbConfigSource.Kind.MANUAL)
+        source.delete()
+        return JsonResponse({"deleted": True})
 
 
 class DbConfigExportView(LoginRequiredMixin, View):
@@ -1115,8 +1173,9 @@ class DbConfigImportConfirmView(LoginRequiredMixin, View):
 
 class DbConfigManualFieldUpdateView(LoginRequiredMixin, View):
     """"DB" 목록의 인라인 편집(셀 하나 클릭 → 그 필드 값만 저장)용 엔드포인트 -
-    SystemHostManualFieldUpdateView와 동일 패턴(kind=physical 같은 예외는 없음 - DB는
-    항상 push로만 생성됨)."""
+    SystemHostManualFieldUpdateView와 동일 패턴. kind=manual(수기 등록) 행도 AUTO/MANUAL
+    동적 필드 정의를 그대로 공유하므로 kind로 갈라 잠글 필요는 없음(어차피 push가 없어
+    AUTO 필드 값이 안 채워질 뿐, MANUAL 필드는 physical과 동일하게 자유롭게 입력 가능)."""
 
     def post(self, request, pk):
         source = get_object_or_404(DbConfigSource, pk=pk)

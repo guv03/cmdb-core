@@ -5,6 +5,10 @@
 
 1.0.6까지의 이력은 이 파일 도입 전이라 별도 기록 없음 — `WORKLOG.md`의 해당 날짜 항목 참고.
 
+## 1.0.51
+
+- **DB 소스 수기 등록 신규(`DbConfigSource.Kind.MANUAL`)** — `WasContainer.manual_db_sources`(WAS 컨테이너 목록의 "DB 연결" 수기 연결)가 지금까지 "DB" 목록에 이미 push된 `DbConfigSource`만 선택할 수 있었는데, AWX가 sqlplus로 아예 못 가져오는 DB(외부 업체가 관리하는 DB, 접속 권한 미허용 등 설정 파일 수집 자체가 불가능한 경우)는 후보 자체가 없어 연결이 불가능한 빈틈이 있었다. `systems.SystemHost`의 "물리 장비 등록"(`kind=physical`)과 완전히 같은 패턴으로, "DB" 목록에 "수기 등록" 버튼을 추가해 `db_unique_name`/비고/연결할 자산만 입력해 `DbConfigSource`(`kind=manual`)를 직접 만들 수 있게 했다. 편집·삭제는 `kind=manual`인 행만 대상으로 잠가 push로 생긴 행은 이 경로로 못 건드린다. 물리 장비가 나중에 실제로 vCenter에 잡혀도 자동 병합되지 않는 것과 동일하게, 수기 등록 행도 나중에 실제 Oracle push가 들어와도(`kind`가 달라 upsert 매칭 대상이 아님) 자동으로 안 합쳐진다 — 실제 수집이 가능해지면 사람이 지우면 됨. `db_unique_name` 중복 체크는 kind와 무관하게 전역으로 걸어서, `database/excel_import.py`가 `db_unique_name` 단일 컬럼으로 매칭하는 로직이 나중에 `kind=oracle` 행과 이름이 겹쳐 애매해지는 상황을 원천 차단했다. "종류" 컬럼이 이미 있어 별도 배지 없이 그 값 자체가 "수기 등록"임을 보여준다. (참고: 이 검토 과정에서 `WasContainer.manual_routes`(→`network.NetworkRoute`)는 백엔드가 애초에 자유 텍스트 입력이라 외부 자산도 이미 등록 가능한 상태임을 확인 — 코드 변경 불필요.)
+
 ## 1.0.50
 
 - **WAS 앱의 kind 무관 공용 모델 이름 정리(`JeusContainer`/`JeusDataSource` → `WasContainer`/`WasDataSource`)** — 두 모델 모두 kind=jeus/jeus6뿐 아니라 tomcat도 그대로 담는데 이름이 JEUS 전용인 것처럼 보여, WAS 컨테이너 목록에 Tomcat 데이터가 섞여 들어가는 걸 보고 헷갈린다는 지적으로 개명했다. 모델/테이블/related_name(`jeus_containers`→`was_containers` 등)/unique 제약조건명까지 전부 정리하고, kind 무관 동기화 로직 `sync_jeus()`도 `sync_was_containers()`로 개명. 수기 연결 편집 뷰도 `JeusContainerManualRouteUpdateView`/`...DbSourceUpdateView` → `WasContainerManual...`로 이름을 맞췄다. 실제로 kind=jeus/jeus6만 걸러서 보여주는 화면 쪽 이름(`JeusContainerListView`, `get_jeus_container_queryset`, `/dashboard/was/jeus/containers/` 등)은 그대로 뒀다 — 이건 이름이 원래도 맞는 상태였음.

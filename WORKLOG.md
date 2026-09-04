@@ -2,6 +2,18 @@
 
 일 단위로 진행한 작업을 기록한다. 새 날짜는 위에 추가한다.
 
+## 2026-09-04
+
+- **"내 서비스 기동해줘" 요청**: `run` 스킬로 `docker compose up -d --build` 실행, db/web 컨테이너 healthy 확인, `/dashboard/`(302 로그인 리다이렉트)·`/admin/login/`(200)로 정상 기동 확인.
+- **"WAS 수기 연결(호출 라우트/DB 연결)이 외부 자산과 연결된 경우를 처리 못 하는 것 같다"는 지적으로 코딩 전 설계 검토부터 진행**:
+  - 조사 결과 두 기능이 성격이 다름을 확인: `manual_routes`(→`network.NetworkRoute`)는 백엔드가 애초에 자유 텍스트 입력(`NetworkRouteBackend.ip_or_hostname`)이고 매칭 실패해도 `asset=null`로 원본을 보존하는 관대한 원칙이 이미 있어서, 외부 자산도 "네트워크" 탭에서 라우트만 먼저 만들면 이미 연결 가능 - 코드 변경 불필요.
+  - `manual_db_sources`(→`database.DbConfigSource`)는 진짜 구멍이었음 - `DbConfigSource`가 Oracle AWX push 경로 하나로만 생성돼, AWX가 아예 못 가져오는 DB(외부 업체 관리, 접속 권한 미허용 등)는 후보 자체가 없어 선택 불가능했음.
+  - 사용자가 "시스템의 물리 장비 수기 등록처럼 해달라"고 명확한 방향 제시 - `systems.SystemHost`의 `kind=physical`("물리(수기 등록)") 패턴을 코드까지 직접 읽고(`SystemHostManualCreateView`/`UpdateView`/`DeleteView`, `system_list.html`의 버튼/모달/관리 컬럼) DB 쪽에 그대로 이식하기로 확정. "종류" 컬럼이 이미 있어 `get_kind_display()`로 배지가 공짜로 나온다는 점, `db_unique_name` 전역 유일 체크로 `excel_import.py`의 단일 컬럼 매칭이 나중에 kind가 겹쳐 애매해지는 걸 미리 막는다는 점까지 검토 후 사용자 승인 받고 구현.
+- **구현**: `database/models.py`에 `DbConfigSource.Kind.MANUAL` + `note` 필드 추가(마이그레이션 `0003_...`) → `dashboard/views.py`에 `DbConfigSourceManualCreateView`/`UpdateView`/`DeleteView`(kind=manual만 잠금) + 헌 주석("DB는 항상 push로만 생성됨") 수정 + `DbConfigListView`에 `asset_hostnames` 컨텍스트 추가 → `dashboard/urls.py` 라우트 3개 → `db_config_list.html`에 "+ 수기 등록" 버튼/모달/관리 컬럼(물리 장비 등록 JS 그대로 미러링) → `db_config_detail.html`에 수기 등록 안내문구 + 비고 표시.
+- **검증**: `manage.py check` 통과, `Client`로 실제 HTTP 왕복 - 생성→목록("종류"="수기 등록" 노출)→상세(비고 표시)→중복 db_unique_name 거부(400)→수정→다른 kind 행 잠금(404)→삭제까지 통과. WAS 컨테이너의 "DB 연결" 셀에서 수기 등록한 DB를 실제로 add/remove하는 것까지 end-to-end 확인. 테스트 데이터는 전부 정리.
+- CLAUDE.md "데이터베이스" 섹션에 `kind=manual` 설계 기록.
+- 1.0.51로 VERSION/CHANGELOG 갱신 → `docker build`/`save`/zip 압축까지 통상 절차대로 진행.
+
 ## 2026-09-02
 
 - **로컬 환경 재기동**: `scripts/start.ps1`로 기동, 마이그레이션 전부 적용된 상태 확인, 로그인/admin 페이지 스모크 테스트.

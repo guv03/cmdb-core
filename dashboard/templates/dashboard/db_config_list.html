@@ -10,12 +10,13 @@
   </div>
   <div class="level-right">
     <div class="buttons">
+      <button class="button is-link" type="button" id="dbManualCreateOpen">+ 수기 등록</button>
       <a class="button is-light" href="{% url 'dashboard-db-config-export' %}">엑셀 다운로드</a>
       <a class="button is-light" href="{% url 'dashboard-db-config-import' %}">엑셀 업로드</a>
     </div>
   </div>
 </div>
-<p class="subtitle is-6 has-text-grey">DB(Standalone/RAC) 하나가 한 행입니다. RAC는 여러 노드를 대표 노드 1대가 push하지만 db_unique_name 기준으로 항상 같은 행으로 합쳐집니다 - 인스턴스별(노드별) 목록은 "인스턴스" 화면에서 확인하세요. db_unique_name/종류/DB명/Role/OpenMode/인스턴스 수 외 나머지 컬럼은 admin의 Db config source field definitions에 등록한 만큼만 나타나고, 연필 아이콘(✎)이 붙은 값은 클릭해서 직접 수정할 수 있습니다.</p>
+<p class="subtitle is-6 has-text-grey">DB(Standalone/RAC) 하나가 한 행입니다. RAC는 여러 노드를 대표 노드 1대가 push하지만 db_unique_name 기준으로 항상 같은 행으로 합쳐집니다 - 인스턴스별(노드별) 목록은 "인스턴스" 화면에서 확인하세요. db_unique_name/종류/DB명/Role/OpenMode/인스턴스 수 외 나머지 컬럼은 admin의 Db config source field definitions에 등록한 만큼만 나타나고, 연필 아이콘(✎)이 붙은 값은 클릭해서 직접 수정할 수 있습니다. AWX가 설정을 못 가져오는 DB(외부 업체 DB, 접속 권한 미허용 등)는 "수기 등록"으로 직접 추가할 수 있습니다(관리 컬럼에서 편집/삭제).</p>
 
 <form class="field has-addons" method="get">
   <div class="control is-expanded">
@@ -41,6 +42,7 @@
         <th><a class="has-text-dark" href="{% querystring sort=columns.last_changed_at.next_sort page=None %}">최근 변경일</a></th>
         <th><a class="has-text-dark" href="{% querystring sort=columns.last_pushed_at.next_sort page=None %}">최근 반영일</a></th>
         <th>서비스</th>
+        <th>관리</th>
       </tr>
     </thead>
     <tbody>
@@ -68,6 +70,12 @@
         <td>
           {% for name in row.service_labels %}<a class="tag is-light mr-1" href="{% url 'dashboard-service-topology' %}?name={{ name|urlencode }}">{{ name }}</a>{% endfor %}<span class="dash-manual-icon manual-service-edit" style="cursor: pointer;" data-resource-id="{{ row.source.pk }}" data-resource-name="{{ row.source.db_unique_name }}" aria-hidden="true">✎</span>
         </td>
+        <td>
+          {% if row.source.kind == "manual" %}
+          <a href="#" class="db-manual-edit" data-source-id="{{ row.source.pk }}" data-db-unique-name="{{ row.source.db_unique_name }}" data-note="{{ row.source.note }}" data-hostname="{{ row.source.asset.hostname|default:'' }}">편집</a>
+          · <a href="#" class="db-manual-delete has-text-danger" data-source-id="{{ row.source.pk }}" data-db-unique-name="{{ row.source.db_unique_name }}">삭제</a>
+          {% endif %}
+        </td>
       </tr>
       {% empty %}
       <tr><td colspan="100" class="has-text-grey">등록된 DB가 없습니다.</td></tr>
@@ -84,6 +92,46 @@
       <button class="delete" aria-label="close" id="dbConfigModalClose"></button>
     </header>
     <section class="modal-card-body" id="dbConfigModalBody">불러오는 중...</section>
+  </div>
+</div>
+
+<!-- "수기 등록" 모달 - systems 앱의 "물리 장비 등록"과 동일 패턴(kind=manual DbConfigSource
+     생성/편집). -->
+<datalist id="assetHostnameOptions">
+  {% for hostname in asset_hostnames %}<option value="{{ hostname }}">{% endfor %}
+</datalist>
+<div class="modal" id="dbManualModal">
+  <div class="modal-background"></div>
+  <div class="modal-card" style="width: 90%; max-width: 480px;">
+    <header class="modal-card-head">
+      <p class="modal-card-title" id="dbManualModalTitle">수기 등록</p>
+      <button class="delete" aria-label="close" id="dbManualModalClose"></button>
+    </header>
+    <section class="modal-card-body">
+      <div class="field">
+        <label class="label">db_unique_name</label>
+        <div class="control">
+          <input class="input" type="text" id="dbManualUniqueName" placeholder="예: EXTPARTNERDB">
+        </div>
+      </div>
+      <div class="field">
+        <label class="label">비고</label>
+        <div class="control">
+          <input class="input" type="text" id="dbManualNote" placeholder="예: 협력사 관리 DB, 접속 권한 미허용">
+        </div>
+      </div>
+      <div class="field">
+        <label class="label">연결할 자산 (Hostname, 선택)</label>
+        <div class="control">
+          <input class="input" type="text" id="dbManualHostname" list="assetHostnameOptions" placeholder="이 DB가 도는 서버 - 모르면 비워두세요">
+        </div>
+      </div>
+      <p class="help is-danger" id="dbManualError" style="display: none;"></p>
+    </section>
+    <footer class="modal-card-foot">
+      <button type="button" class="button is-link" id="dbManualSave">저장</button>
+      <button type="button" class="button" id="dbManualCancel">취소</button>
+    </footer>
   </div>
 </div>
 
@@ -188,6 +236,105 @@ document.addEventListener('DOMContentLoaded', function () {
     var input = document.querySelector('input[name=csrfmiddlewaretoken]');
     return input ? input.value : '';
   }
+
+  // "수기 등록" 생성/편집/삭제 - systems/system_list.html의 물리 장비 등록 JS와 동일 패턴.
+  // dbManualId가 비어있으면 등록, 있으면 편집.
+  var dbManualModal = document.getElementById('dbManualModal');
+  var dbManualTitle = document.getElementById('dbManualModalTitle');
+  var dbManualUniqueNameInput = document.getElementById('dbManualUniqueName');
+  var dbManualNoteInput = document.getElementById('dbManualNote');
+  var dbManualHostnameInput = document.getElementById('dbManualHostname');
+  var dbManualError = document.getElementById('dbManualError');
+  var dbManualSaveBtn = document.getElementById('dbManualSave');
+  var dbManualId = null;
+
+  function closeDbManualModal() {
+    dbManualModal.classList.remove('is-active');
+    dbManualId = null;
+  }
+
+  function openDbManualModal(title, sourceId, dbUniqueName, note, hostname) {
+    dbManualTitle.textContent = title;
+    dbManualId = sourceId;
+    dbManualUniqueNameInput.value = dbUniqueName || '';
+    dbManualNoteInput.value = note || '';
+    dbManualHostnameInput.value = hostname || '';
+    dbManualError.style.display = 'none';
+    dbManualModal.classList.add('is-active');
+    dbManualUniqueNameInput.focus();
+  }
+
+  document.getElementById('dbManualCreateOpen').addEventListener('click', function () {
+    openDbManualModal('수기 등록', null, '', '', '');
+  });
+
+  document.querySelectorAll('.db-manual-edit').forEach(function (link) {
+    link.addEventListener('click', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      openDbManualModal('수기 등록 편집', link.dataset.sourceId, link.dataset.dbUniqueName, link.dataset.note, link.dataset.hostname);
+    });
+  });
+
+  document.querySelectorAll('.db-manual-delete').forEach(function (link) {
+    link.addEventListener('click', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!confirm(link.dataset.dbUniqueName + '을(를) 삭제할까요?')) return;
+      fetch('/dashboard/database/' + link.dataset.sourceId + '/manual/delete/', {
+        method: 'POST',
+        headers: { 'X-CSRFToken': getCsrfToken() },
+      }).then(function (res) {
+        if (res.ok) { window.location.reload(); } else { alert('삭제 실패'); }
+      });
+    });
+  });
+
+  dbManualSaveBtn.addEventListener('click', function () {
+    var dbUniqueName = dbManualUniqueNameInput.value.trim();
+    if (!dbUniqueName) {
+      dbManualError.textContent = 'db_unique_name을 입력하세요.';
+      dbManualError.style.display = 'block';
+      return;
+    }
+
+    var url = dbManualId
+      ? '/dashboard/database/' + dbManualId + '/manual/update/'
+      : '/dashboard/database/manual/create/';
+
+    dbManualSaveBtn.classList.add('is-loading');
+    fetch(url, {
+      method: 'POST',
+      headers: {
+        'X-CSRFToken': getCsrfToken(),
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({
+        db_unique_name: dbUniqueName,
+        note: dbManualNoteInput.value.trim(),
+        hostname: dbManualHostnameInput.value.trim(),
+      }),
+    })
+      .then(function (res) { return res.json().then(function (data) { return { ok: res.ok, data: data }; }); })
+      .then(function (result) {
+        dbManualSaveBtn.classList.remove('is-loading');
+        if (!result.ok) {
+          dbManualError.textContent = result.data.error || '저장 실패';
+          dbManualError.style.display = 'block';
+          return;
+        }
+        window.location.reload();
+      })
+      .catch(function () {
+        dbManualSaveBtn.classList.remove('is-loading');
+        dbManualError.textContent = '저장 실패';
+        dbManualError.style.display = 'block';
+      });
+  });
+
+  document.getElementById('dbManualModalClose').addEventListener('click', closeDbManualModal);
+  document.getElementById('dbManualCancel').addEventListener('click', closeDbManualModal);
+  dbManualModal.querySelector('.modal-background').addEventListener('click', closeDbManualModal);
 
   var cellModal = document.getElementById('manualCellModal');
   var cellModalTitle = document.getElementById('manualCellModalTitle');

@@ -16,10 +16,21 @@ class DbConfigSource(TimeStampedModel):
     push마다 raw_content(JSON 원문)를 통째로 교체하고(diff는 DbConfigSourceRevision으로
     감사), DB 전체 속성(open_mode/database_role 등)은 고정 컬럼으로 승격했지만 그 외
     나머지는 전부 extra에 원본 그대로 보관해 SystemHost와 동일한 패턴으로 동적 필드
-    (DbConfigSourceFieldDefinition)가 코드 수정 없이 그 안에서 값을 뽑아 쓸 수 있게 한다."""
+    (DbConfigSourceFieldDefinition)가 코드 수정 없이 그 안에서 값을 뽑아 쓸 수 있게 한다.
+
+    kind=MANUAL은 systems.SystemSource.Kind.PHYSICAL과 동일 취지 - AWX가 sqlplus로 못
+    긁는 DB(외부 서비스, 접속 권한 미허용 등 설정 파일 수집 자체가 불가능한 경우)를 "DB"
+    목록의 "수기 등록" 버튼으로 사람이 직접 등록해두면 WasContainer.manual_db_sources에서
+    선택 가능해진다(dashboard.views.DbConfigSourceManualCreateView). 물리 장비가 나중에
+    가상화돼도 vCenter kind로 자동 병합되지 않는 것과 동일하게, MANUAL 행도 나중에 실제
+    Oracle push가 들어와도 kind가 달라 upsert 대상이 아니라 자동으로 안 합쳐진다 - 실제
+    수집이 가능해지면 사람이 이 행을 지우면 됨. db_unique_name 중복 체크(생성 시점)는
+    kind와 무관하게 전역으로 걸어 나중에 ORACLE 행과 이름이 겹쳐 excel_import.py의
+    db_unique_name 단일 매칭이 애매해지는 상황을 아예 막는다."""
 
     class Kind(models.TextChoices):
         ORACLE = "oracle", "Oracle"
+        MANUAL = "manual", "수기 등록"
 
     kind = models.CharField(max_length=20, choices=Kind.choices)
     # Oracle: v$database.db_unique_name. 같은 kind 안에서 유일 - RAC/Standalone/Standby
@@ -41,7 +52,12 @@ class DbConfigSource(TimeStampedModel):
     characterset = models.CharField(max_length=60, blank=True)
     platform_name = models.CharField(max_length=100, blank=True)
     db_created_at = models.DateTimeField(null=True, blank=True)
-    # AWX가 보낸 JSON 원문 그대로(감사/재현용, DbConfigSourceRevision의 diff 대상).
+    # kind=MANUAL 전용 비고 - "왜 수기 등록했는지"(외부 업체 DB, 접속 권한 미허용 등) 참고용
+    # 메모. network.NetworkRoute.note와 동일 취지, ORACLE 행에선 그냥 빈 문자열.
+    note = models.CharField(max_length=255, blank=True)
+    # AWX가 보낸 JSON 원문 그대로(감사/재현용, DbConfigSourceRevision의 diff 대상). kind=MANUAL
+    # 행은 실제 push가 없어 계속 빈 문자열 - "종류" 컬럼이 이미 수기 등록 여부를 보여주므로
+    # 별도 상태 필드 없이 이 값 자체가 "아직 실제 수집 안 됨"의 부가 신호로도 쓰인다.
     raw_content = models.TextField(blank=True)
     # raw_content를 파싱한 "database 레벨" 원본 dict 전체(instances 배열 제외) - 고정
     # 컬럼으로 승격 안 한 나머지 값(force_logging/flashback_on/cdb 등)을

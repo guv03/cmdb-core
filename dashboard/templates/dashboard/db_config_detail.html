@@ -7,7 +7,12 @@
 <h1 class="title is-4">{{ source.db_unique_name }} - {{ source.get_kind_display }}</h1>
 <p class="subtitle is-6">
   {% if source.asset %}수집 노드: <span class="dash-hostname">{{ source.asset.hostname }}</span><br>{% endif %}
+  {% if source.kind == "manual" %}
+  사람이 직접 등록한 DB입니다(AWX push 없음) - "최근 반영일"은 실제 수집 시각이 아니라 등록/수정 시각입니다.
+  {% if source.note %}<br>비고: {{ source.note }}{% endif %}
+  {% else %}
   최근 반영: {{ source.last_pushed_at }}
+  {% endif %}
 </p>
 <table class="table is-narrow is-fullwidth">
   <tbody>
