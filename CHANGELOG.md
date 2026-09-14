@@ -5,6 +5,13 @@
 
 1.0.6까지의 이력은 이 파일 도입 전이라 별도 기록 없음 — `WORKLOG.md`의 해당 날짜 항목 참고.
 
+## 1.0.52
+
+- **fix: 서비스 구성도의 WAS 수기 라우트(`manual_routes`)가 다른 서비스 소속 자원을 순수 OS 박스로만 보여주던 문제** — `dashboard/topology.py`의 `add_route_chain`이 라우트 백엔드 asset을 만났을 때 "지금 보고 있는 서비스의 WAS 컨테이너"만 확인해서, 상대가 WEB vhost거나(WAS가 아니라서) 다른 서비스 소속이면(범위 밖이라서) 실제 노드 없이 asset hostname만 적힌 밋밋한 OS 박스로 떨어졌다. WAS→WAS 호출 구성도를 실제로 만들어보다가 발견.
+  - 같은 서비스 안에서는 WAS 컨테이너뿐 아니라 WEB vhost도 함께 인덱싱(`local_node_id_by_asset`)해서 asset이 같으면 먼저 매칭하고, 못 찾으면 서비스 무관 전역으로 그 asset의 실제 WAS 컨테이너/WEB vhost를 찾아 그래프에 편입한다(`_resolve_cross_service_node`, `WasDataSource.db_instance`를 서비스 배정과 무관하게 편입하는 것과 같은 원칙) - 지금 보는 서비스와 다르면 라벨에 `(다른 서비스: X)`를 붙이고, 클릭하면 asset 상세가 아니라 실제 WAS/WEB 상세로 이동한다.
+  - 검증 중 한 asset에 앱이 여러 개 걸린 실제 케이스(WebToB vhost와 Nginx vhost가 같은 서버에 공존)를 발견 - asset만으로는 어느 쪽을 가리키는지 구분이 안 돼 엉뚱한 vhost가 잡힐 뻔해서, 후보 중 hostname이 라우트 key(호출 도메인)와 정확히 일치하는 vhost를 최우선으로 고르도록 보정했다. 그래도 못 찾으면(순수 DB/배치 서버 등) 기존처럼 OS 박스로 폴백.
+  - 실제 서비스 데이터(WAS 컨테이너가 다른 서비스의 WEB vhost를 호출하는 시나리오)로 재현·수정 확인, 기존 서비스 전체(10개) 구성도 렌더링 회귀 없음 확인.
+
 ## 1.0.51
 
 - **DB 소스 수기 등록 신규(`DbConfigSource.Kind.MANUAL`)** — `WasContainer.manual_db_sources`(WAS 컨테이너 목록의 "DB 연결" 수기 연결)가 지금까지 "DB" 목록에 이미 push된 `DbConfigSource`만 선택할 수 있었는데, AWX가 sqlplus로 아예 못 가져오는 DB(외부 업체가 관리하는 DB, 접속 권한 미허용 등 설정 파일 수집 자체가 불가능한 경우)는 후보 자체가 없어 연결이 불가능한 빈틈이 있었다. `systems.SystemHost`의 "물리 장비 등록"(`kind=physical`)과 완전히 같은 패턴으로, "DB" 목록에 "수기 등록" 버튼을 추가해 `db_unique_name`/비고/연결할 자산만 입력해 `DbConfigSource`(`kind=manual`)를 직접 만들 수 있게 했다. 편집·삭제는 `kind=manual`인 행만 대상으로 잠가 push로 생긴 행은 이 경로로 못 건드린다. 물리 장비가 나중에 실제로 vCenter에 잡혀도 자동 병합되지 않는 것과 동일하게, 수기 등록 행도 나중에 실제 Oracle push가 들어와도(`kind`가 달라 upsert 매칭 대상이 아님) 자동으로 안 합쳐진다 — 실제 수집이 가능해지면 사람이 지우면 됨. `db_unique_name` 중복 체크는 kind와 무관하게 전역으로 걸어서, `database/excel_import.py`가 `db_unique_name` 단일 컬럼으로 매칭하는 로직이 나중에 `kind=oracle` 행과 이름이 겹쳐 애매해지는 상황을 원천 차단했다. "종류" 컬럼이 이미 있어 별도 배지 없이 그 값 자체가 "수기 등록"임을 보여준다. (참고: 이 검토 과정에서 `WasContainer.manual_routes`(→`network.NetworkRoute`)는 백엔드가 애초에 자유 텍스트 입력이라 외부 자산도 이미 등록 가능한 상태임을 확인 — 코드 변경 불필요.)

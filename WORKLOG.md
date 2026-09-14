@@ -2,6 +2,16 @@
 
 일 단위로 진행한 작업을 기록한다. 새 날짜는 위에 추가한다.
 
+## 2026-09-14
+
+- **새 세션 시작, "내 프로젝트 기동해줘" 요청**: `run` 스킬로 프로젝트 스코프의 `scripts/start.ps1` 실행(빌드+마이그레이션, 적용할 마이그레이션 없음 확인), 로그인 폼 제출까지 실제로 수행해 `/dashboard/assets/` 200 확인.
+- **"WAS 수기 라우트로 다른 WAS를 호출하면 구성도가 어떻게 그려지는지 궁금하다"는 질문에 실제로 샘플 데이터를 넣어 테스트**: `manage.py shell`로 자산 2개+서비스+Tomcat WAS 컨테이너 2개를 만들고 `NetworkRoute`+`manual_routes`로 연결, `build_service_topology_graph`를 직접 호출해 그래프 구조 확인 후 `dot -Tpng`로 렌더링해 눈으로 확인, 실제 HTTP 페이지(로그인 세션)로도 동일 SVG가 내려오는 것까지 검증.
+- **이어서 "실제 데이터에서 데모WEB-WAS가 GITLAB을 호출하면?"으로 질문이 구체화**: 기존 서비스(`데모WEB-WAS`/`GITLAB`) 데이터로 재현 - WAS 컨테이너가 다른 서비스(GITLAB)의 asset을 향한 라우트를 타면, 그 서비스의 실제 리소스(Nginx vhost)는 전혀 안 보이고 순수 OS 박스(asset hostname만)로만 그려지는 걸 확인. "GitLab vhost의 service를 데모WEB-WAS로 바꾸면?"이라는 후속 질문도 같은 방식으로 재현 - asset이 같아 같은 OS 박스 안에 들어가긴 하지만, 라우트 엣지는 여전히 플레이스홀더 OS 박스로만 이어지고 실제 vhost 노드와는 연결선이 없다는 걸 확인(테스트를 위해 바꿨던 서비스 배정은 확인 후 즉시 원복).
+- **"할당 방식을 바꿔야 할 것 같다"는 피드백으로 `dashboard/topology.py` 개선**: `add_route_chain`의 백엔드 asset 매칭이 "지금 서비스의 WAS 컨테이너"로만 좁혀져 있어 WEB vhost·다른 서비스 소속을 다 놓치던 게 원인이라고 진단 후, (1) 같은 서비스 안에서는 WAS+WEB 통합 인덱스(`local_node_id_by_asset`)로 먼저 찾고 (2) 못 찾으면 서비스 무관 전역 검색(`_resolve_cross_service_node`, `WasDataSource.db_instance`와 같은 "서비스 경계 무관하게 실제 연결 편입" 원칙)으로 실제 WAS/WEB 노드를 그래프에 끌어와 `(다른 서비스: X)` 라벨을 붙이는 방식으로 설계 - AskUserQuestion으로 이 방식과 "라벨만 개선하는 가벼운 대안" 중 확인받고 추천안으로 진행.
+  - 구현 중 실제 데이터에서 한 asset(`pngsap01`)에 WebToB vhost와 Nginx vhost가 동시에 있는 걸 발견 - asset만으로 매칭하면 엉뚱한 vhost(다른 서비스인 "방카"의 WebToB)가 잡히는 걸 확인하고, 후보 중 hostname이 라우트 key와 정확히 일치하는 vhost를 최우선으로 고르도록 추가 보정.
+  - 검증: `manage.py check` 통과, 실제 데이터(데모WEB-WAS→GITLAB Nginx vhost)로 수정 전/후 그래프·PNG 렌더링 비교, 기존 서비스 10개 전부 예외 없이 렌더링, 같은 서비스 내 WAS→WAS 케이스 회귀 없음, 실제 HTTP 페이지로도 라벨 반영 확인. 테스트 중 만든 자산/서비스/라우트와 프로젝트 루트에 잘못 떨어진 SVG/PNG 산출물(`docker-compose.yml`의 `.:/app` 바인드 마운트 때문에 컨테이너 `/app`에 쓴 파일이 그대로 호스트에 남았음)을 전부 정리.
+- 1.0.52로 VERSION/CHANGELOG 갱신 → `docker build`/`save`/zip 압축까지 통상 절차대로 진행.
+
 ## 2026-09-04
 
 - **"내 서비스 기동해줘" 요청**: `run` 스킬로 `docker compose up -d --build` 실행, db/web 컨테이너 healthy 확인, `/dashboard/`(302 로그인 리다이렉트)·`/admin/login/`(200)로 정상 기동 확인.

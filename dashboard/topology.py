@@ -45,6 +45,31 @@ def _vhost_endpoint_label(vhost) -> str | None:
     return f"{protocol}://{vhost.hostname}"
 
 
+def _web_vhost_kind(vhost) -> str:
+    """vhost 인스턴스의 실제 클래스로 webtob/apache/nginx를 구분 - 메인 노드 생성 루프와
+    _resolve_cross_service_node가 같은 라벨 규칙을 쓰도록 공용화."""
+    if isinstance(vhost, WebtobVhost):
+        return "webtob"
+    if isinstance(vhost, ApacheVhost):
+        return "apache"
+    return "nginx"
+
+
+def _web_vhost_label(vhost) -> str:
+    """WEB vhost 노드 라벨(종류 + WebToB 내부 이름 + 엔드포인트) - 메인 노드 생성 루프와
+    _resolve_cross_service_node(다른 서비스 소속 vhost를 그래프에 편입할 때) 둘 다 재사용."""
+    kind = _web_vhost_kind(vhost)
+    endpoint = _vhost_endpoint_label(vhost)
+    label_lines = [vhost.source.get_kind_display()]
+    if kind == "webtob":
+        # WebToB는 SvrGroup/커넥터가 참조하는 내부 식별자(vhost.name)가 도메인과 별개로
+        # 의미 있어 항상 같이 보여준다(apache/nginx의 name은 "hostname:port" 합성값이라
+        # endpoint와 중복이라 굳이 안 보여줌).
+        label_lines.append(vhost.name)
+    label_lines.append(endpoint or (vhost.name if kind != "webtob" else None))
+    return "\n".join(line for line in label_lines if line)
+
+
 def collect_service_resources(service) -> dict:
     """서비스 하나에 걸린 실제 리소스(WEB vhost/WAS 컨테이너/DB 인스턴스/네트워크 매핑)를
     한 번만 모아서 돌려준다 - build_service_topology_graph(그래프)와
@@ -108,6 +133,7 @@ def collect_service_resources(service) -> dict:
         }
 
     return {
+        "service": service,
         "webtob_vhosts": webtob_vhosts,
         "apache_vhosts": apache_vhosts,
         "nginx_vhosts": nginx_vhosts,
@@ -268,6 +294,7 @@ def build_service_topology_graph(resources: dict) -> dict:
     간접적으로만 편입된다 - "이 서비스가 쓰는 DB"가 아니라 "이 서비스의 WAS 컨테이너가
     실제로 붙는 DB"라는 뜻이라 WebToB<->JEUS 엣지와 성격이 같다(둘 다 실제 연결을 따라가는
     것이지 서비스 배정을 따라가는 게 아님)."""
+    service = resources["service"]
     webtob_vhosts = resources["webtob_vhosts"]
     apache_vhosts = resources["apache_vhosts"]
     nginx_vhosts = resources["nginx_vhosts"]
@@ -277,6 +304,10 @@ def build_service_topology_graph(resources: dict) -> dict:
     nodes = []
     web_node_id_by_vhost = {}
     proxy_web_nodes = []  # apache/nginx는 webtob-connector가 없어 네트워크 라우트 매칭 대상 - (vhost, node_id) 튜플
+    # 라우트 백엔드 asset이 "지금 이 서비스 그래프 안"의 무언가를 가리키는지 확인할 때 쓰는
+    # 통합 인덱스(WAS 컨테이너 + WEB vhost 공통) - _resolve_cross_service_node가 여기서
+    # 못 찾은 경우에만 서비스 무관 전역 검색으로 넘어간다.
+    local_node_id_by_asset = {}
     for kind, vhosts in (
         ("webtob", webtob_vhosts),
         ("apache", apache_vhosts),
@@ -284,19 +315,10 @@ def build_service_topology_graph(resources: dict) -> dict:
     ):
         for vhost in vhosts:
             node_id = f"web_{kind}_{vhost.id}"
-            endpoint = _vhost_endpoint_label(vhost)
-            label_lines = [vhost.source.get_kind_display()]
-            if kind == "webtob":
-                # WebToB는 SvrGroup/커넥터가 참조하는 내부 식별자(vhost.name)가 도메인과
-                # 별개로 의미 있어 항상 같이 보여준다(apache/nginx의 name은 "hostname:port"
-                # 합성값이라 endpoint와 중복이라 굳이 안 보여줌).
-                label_lines.append(vhost.name)
-            label_lines.append(endpoint or (vhost.name if kind != "webtob" else None))
-            label = "\n".join(line for line in label_lines if line)
             nodes.append(
                 {
                     "id": node_id,
-                    "label": label,
+                    "label": _web_vhost_label(vhost),
                     "asset": vhost.source.asset,
                     "detail_url": reverse("dashboard-webconfig-detail", args=[vhost.source_id]),
                 }
@@ -305,6 +327,8 @@ def build_service_topology_graph(resources: dict) -> dict:
                 web_node_id_by_vhost[vhost.id] = node_id
             else:
                 proxy_web_nodes.append((vhost, node_id))
+            if vhost.source.asset_id is not None:
+                local_node_id_by_asset.setdefault(vhost.source.asset_id, node_id)
 
     was_node_id_by_container = {}
     was_node_id_by_asset = {}
@@ -324,6 +348,7 @@ def build_service_topology_graph(resources: dict) -> dict:
             # 보여주는 용도라 완전한 목록보다 간단한 매칭 하나로 충분(_system_host_for_asset와
             # 같은 원칙).
             was_node_id_by_asset.setdefault(container.asset_id, node_id)
+            local_node_id_by_asset.setdefault(container.asset_id, node_id)
 
     edges = []
     if webtob_vhosts:
@@ -392,6 +417,68 @@ def build_service_topology_graph(resources: dict) -> dict:
             seen_edges.add(key)
             edges.append({"from": from_id, "to": to_id, "label": "", "style": "dashed"})
 
+        def _service_suffix(resource_service_id, resource_service) -> str | None:
+            """지금 보고 있는 서비스와 다른 소속이면 그 사실을 라벨에 덧붙인다 - 전역 검색으로
+            끌어온 노드가 "이 서비스 것"으로 오인되지 않게(예: WAS→WAS 호출인데 실제로는
+            상대가 WEB 뒤에 있고 그 WEB이 다른 서비스 소속인 경우)."""
+            if resource_service_id is None:
+                return "(서비스 미배정)"
+            if resource_service_id != service.id:
+                return f"(다른 서비스: {resource_service.name})"
+            return None
+
+        def _resolve_cross_service_node(asset_id, route_key):
+            """local_node_id_by_asset(지금 서비스 그래프)에서 못 찾은 라우트 백엔드 asset을
+            서비스 무관 전역으로 다시 찾는다 - WasDataSource.db_instance를 서비스 배정과
+            무관하게 그래프에 편입하는 것과 같은 원칙(실제 연결을 따라가되 서비스 경계에
+            막히지 않음). WAS 컨테이너를 먼저 보고(라우트가 WAS를 직접 가리키는 경우), 없으면
+            WEB vhost(webtob/apache/nginx 통합)를 본다 - 못 찾으면 None(호출부가 순수 OS
+            박스로 폴백).
+
+            한 asset에 여러 앱이 떠있을 수 있다(예: 같은 서버가 WebToB vhost 하나와 Nginx
+            vhost 하나를 동시에 서비스하는 경우) - asset만으로는 어느 쪽이 이 라우트가 실제로
+            가리키는 앱인지 구분이 안 되므로, 후보 중 hostname이 route_key(호출한 도메인)와
+            정확히 일치하는 vhost를 최우선으로 고른다. 일치하는 게 없으면(라우트가 VIP/IP라
+            hostname과 안 겹치는 경우 등) 이름순 첫 번째로 폴백 - 그래도 asset 기준 "대표
+            하나만" 보여주는 것보단 실제 도메인으로 특정된 쪽이 훨씬 정확하다."""
+            container = (
+                WasContainer.objects.filter(asset_id=asset_id)
+                .select_related("source", "service")
+                .order_by("name")
+                .first()
+            )
+            if container is not None:
+                label_lines = [container.source.get_kind_display(), container.name]
+                suffix = _service_suffix(container.service_id, container.service)
+                if suffix:
+                    label_lines.append(suffix)
+                return {
+                    "id": f"was_other_{container.id}",
+                    "label": "\n".join(label_lines),
+                    "detail_url": reverse("dashboard-was-detail", args=[container.source_id]),
+                }
+
+            vhost_candidates = []
+            for model in (WebtobVhost, ApacheVhost, NginxVhost):
+                vhost_candidates.extend(
+                    model.objects.filter(source__asset_id=asset_id).select_related("source", "service")
+                )
+            if not vhost_candidates:
+                return None
+            vhost = next((v for v in vhost_candidates if v.hostname == route_key), None)
+            if vhost is None:
+                vhost = min(vhost_candidates, key=lambda v: v.name)
+
+            label_lines = [_web_vhost_label(vhost)]
+            suffix = _service_suffix(vhost.service_id, vhost.service)
+            if suffix:
+                label_lines.append(suffix)
+            return {
+                "id": f"web_other_{_web_vhost_kind(vhost)}_{vhost.id}",
+                "label": "\n".join(label_lines),
+                "detail_url": reverse("dashboard-webconfig-detail", args=[vhost.source_id]),
+            }
+
         def add_route_chain(route, from_node_ids):
             route_node_id = f"route_{route.pk}"
             first_time = route.id not in visited_route_ids
@@ -421,20 +508,41 @@ def build_service_topology_graph(resources: dict) -> dict:
                     continue
                 if backend.asset_id is None:
                     continue
-                target_id = was_node_id_by_asset.get(backend.asset_id)
+                # 1) 지금 이 서비스 그래프에 이미 있는 노드(WAS 컨테이너/WEB vhost 공통)와
+                #    asset이 같으면 그대로 연결 - 위 컨테이너A/컨테이너B 테스트처럼 같은
+                #    서비스 안의 WAS->WAS 호출이 여기서 바로 잡힌다.
+                target_id = local_node_id_by_asset.get(backend.asset_id)
                 if target_id is None:
                     target_id = backend_asset_node_id_by_asset.get(backend.asset_id)
-                    if target_id is None:
-                        target_id = f"netbackend_{backend.asset_id}"
+                if target_id is None:
+                    # 2) 못 찾으면 서비스 무관 전역 검색 - 상대가 다른 서비스 소속(예: WAS가
+                    #    호출하는 도메인이 실제로는 다른 서비스의 WEB vhost)이거나 아직 서비스
+                    #    미배정이어도 실제 WAS/WEB 노드로 보여준다(라벨에 소속 표시).
+                    resolved = _resolve_cross_service_node(backend.asset_id, route.key)
+                    if resolved is not None:
+                        target_id = resolved["id"]
                         backend_asset_node_id_by_asset[backend.asset_id] = target_id
                         nodes.append(
                             {
                                 "id": target_id,
-                                "label": backend.asset.hostname,
+                                "label": resolved["label"],
                                 "asset": backend.asset,
-                                "detail_url": reverse("dashboard-asset-detail", args=[backend.asset_id]),
+                                "detail_url": resolved["detail_url"],
                             }
                         )
+                if target_id is None:
+                    # 3) 그마저도 없으면(순수 DB/배치 서버 등 WEB/WAS 자체가 없는 asset)
+                    #    지금까지처럼 OS 박스만.
+                    target_id = f"netbackend_{backend.asset_id}"
+                    backend_asset_node_id_by_asset[backend.asset_id] = target_id
+                    nodes.append(
+                        {
+                            "id": target_id,
+                            "label": backend.asset.hostname,
+                            "asset": backend.asset,
+                            "detail_url": reverse("dashboard-asset-detail", args=[backend.asset_id]),
+                        }
+                    )
                 if target_id not in leaf_target_ids:
                     leaf_target_ids.append(target_id)
             for to_id in leaf_target_ids:
