@@ -27,6 +27,7 @@ from dashboard.views import (
     DbConfigSourceManualUpdateView,
     DbInstanceExportView,
     DbInstanceListView,
+    HelpView,
     JeusContainerExportView,
     JeusContainerListView,
     ManualFieldImportConfirmView,
@@ -291,6 +292,7 @@ urlpatterns = [
         name="dashboard-system-import-confirm",
     ),
     path("network/", NetworkRouteListView.as_view(), name="dashboard-network-list"),
+    path("help/", HelpView.as_view(), name="dashboard-help"),
 ]
 
 api_urlpatterns = [

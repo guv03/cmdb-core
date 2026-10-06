@@ -185,6 +185,8 @@
       </div>
       {% if user.is_authenticated %}
       <div class="navbar-end">
+        <a class="navbar-item {% if request.resolver_match.url_name == 'dashboard-help' %}is-active{% endif %}"
+           href="{% url 'dashboard-help' %}">도움말</a>
         <div class="navbar-item">
           <span class="mr-3">{{ user.username }}님</span>
           <form method="post" action="{% url 'dashboard-logout' %}">

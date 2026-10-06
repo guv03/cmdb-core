@@ -277,6 +277,10 @@ class OverviewView(LoginRequiredMixin, TemplateView):
         return context
 
 
+class HelpView(LoginRequiredMixin, TemplateView):
+    template_name = "dashboard/help.html"
+
+
 class OverviewDrilldownView(LoginRequiredMixin, View):
     """통합대시보드의 카테고리 타일 클릭 시 그 아래 도넛으로 펼쳐 보여줄 하위 분포(AJAX).
     section으로 어느 축(OS/WEB/WAS)인지 고르고 key로 그 축 안의 카테고리를 지정한다."""

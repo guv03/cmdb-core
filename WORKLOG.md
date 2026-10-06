@@ -2,6 +2,17 @@
 
 일 단위로 진행한 작업을 기록한다. 새 날짜는 위에 추가한다.
 
+## 2026-10-06
+
+- **"서비스/구성도 말고 복잡한 부분이 더 있나" 질문에 대한 구조 설명**: 완전 수기 전용 모델(`NetworkRoute`, `SystemHost` 물리 등록, `DbConfigSource` kind=manual), `WasContainer.service`의 AUTO-if-resolvable 하이브리드 필드, 모델별 push 처리 방식 차이(통짜 교체 vs upsert), 지연 허용되는 관대한 자산 매칭 등 "AWX 자동 push + 수기값 터치"만으로는 설명 안 되는 지점들을 코드로 확인하며 정리.
+- **"일반적인 자산관리 프로그램은 어떻게 구성하나" 질문**: ServiceNow/Device42식 범용 CI-Relationship 테이블 패턴과 이 프로젝트의 관계 타입별 전용 모델(`JeusWebtobConnector`/`manual_routes`/`manual_db_sources`/`WasDataSource.db_instance`/`NetworkRoute`)을 비교 설명. NCLOB 제약이 범용 테이블을 막는 블로커가 아니라 이미 정형화된 체크리스트 항목(관련 모델 TextField/JSONField 여부 + `.distinct()`/집계 확인)일 뿐이라는 피드백을 받고 평가를 바로잡음(`feedback_oracle_testing_awareness` 메모리 참고).
+- **수집/연결 구조를 시각화한 Artifact 제작**: AWX→Asset 매칭 공통 파이프라인, 구성도가 기대는 6가지 연결 방식(이름 매칭/IP 폴백/SID 매칭/텍스트 부분일치/재귀 체인/수기 M2M), 범용 관계 테이블 대안 비교를 SVG 다이어그램 3개로 정리.
+- **"사용설명서를 앱에 버튼으로 넣고 싶다" 요청**: 처음엔 Claude Docs 문서(`CMDB 대시보드 사용 설명서`)로 작성했으나, 운영이 폐쇄망이라 그 외부 링크를 버튼에 걸어도 안 열린다는 점을 짚고 앱 내 정적 페이지로 전환 결정.
+  - `dashboard/help.html` 신규(메뉴 구성/목록 화면 공통 조작법/자동·수기 값 구분/최근 변경일·반영일 의미/서비스 관리·배정과 구성도/FAQ), `HelpView`(`dashboard/views.py`)와 `/dashboard/help/`(`dashboard/urls.py`) 추가, 상단 네비게이션 우측에 "도움말" 버튼(`base.html`).
+  - `manage.py check` + 로그인 세션으로 실제 페이지 렌더링 확인.
+- **CLAUDE.md에 "사용 설명서" 섹션 신규** — 대시보드 화면/동작이 실제로 바뀌는 변경을 할 때마다 `dashboard/help.html`도 영향 여부를 확인하고 별도 요청 없이 같이 갱신하도록 규칙화(리팩터링처럼 화면 결과가 그대로인 변경은 대상 제외).
+- 1.0.53으로 VERSION/CHANGELOG 갱신 → `docker build`/`save`/zip 압축까지 통상 절차대로 진행.
+
 ## 2026-09-14
 
 - **새 세션 시작, "내 프로젝트 기동해줘" 요청**: `run` 스킬로 프로젝트 스코프의 `scripts/start.ps1` 실행(빌드+마이그레이션, 적용할 마이그레이션 없음 확인), 로그인 폼 제출까지 실제로 수행해 `/dashboard/assets/` 200 확인.
