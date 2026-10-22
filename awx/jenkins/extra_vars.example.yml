@@ -8,8 +8,9 @@ cmdb_base_url: http://cmdb.internal:8000
 cmdb_validate_certs: true
 cmdb_api_key: "CHANGE_ME"
 
-# inventories/hosts의 windows 그룹이 참조
-vault_windows_password: "CHANGE_ME"
+# vCenter/Nutanix API 호출을 콜렉터 서버에서 실행(inventories/hosts의 [collector] 그룹).
+# K8s의 Jenkins Pod에서 vCenter/Nutanix로 직접 나가는 방화벽이 없으므로 필수.
+systems_collector_host: collector
 
 # vCenter/Nutanix 시스템 수집(Jenkins의 INCLUDE_SYSTEMS 또는 PLAYBOOK=vcenter/nutanix일 때만 사용)
 vcenter_instances:

@@ -1,7 +1,5 @@
 # ansible-core 2.21: 컨트롤 노드 python 3.12+, 관리 대상 python 3.9+ (3.8 이하 서버는 OS_SPECS.md 참고),
-# Windows는 PowerShell 5.1+
+# Windows는 PowerShell 5.1+ (SSH 접속이라 pywinrm 불필요)
 ansible-core==2.21.5
-# Windows 호스트 WinRM 연결
-pywinrm==0.5.0
 # vCenter dynamic inventory(community.vmware.vmware_vm_inventory)를 쓸 때만 주석 해제
 # pyvmomi
