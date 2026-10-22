@@ -1,0 +1,48 @@
+# 내부 GitLab(dt/ansible)의 inventories/hosts에 "추가"할 그룹 예시 - 실제 파일은 외부망 리포에 커밋하지 않음.
+# 기존처럼 맨 위 그룹 없는 호스트 목록은 그대로 두고, 아래 그룹 절만 붙이면 된다
+# (이미 위에 있는 호스트를 그룹 밑에 이름만 다시 적으면 됨 - IP 등 변수는 한 곳에만).
+#
+# facts/processes는 그룹과 무관하게 전체 호스트 대상이다. 아래 그룹이 없으면 해당 설정 수집 단계는
+# Jenkins에서 자동으로 건너뛴다 - 그룹 이름은 Jenkinsfile의 PLAYBOOKS `limit`과 맞물려 있음.
+# 비밀번호는 여기 직접 쓰지 말고 vault_* 변수로만 참조(실제 값은 Jenkins cmdb-ansible-extra-vars 시크릿 파일).
+
+# --- 기존 그룹 없는 호스트 목록 (변경 없음) ---
+drnrap01 ansible_host=10.0.0.11
+drnrap02 ansible_host=10.0.0.12
+draixdb01 ansible_host=10.0.0.21 ansible_python_interpreter=/opt/freeware/bin/python3.9
+drwinap01 ansible_host=10.0.0.31
+
+# --- 아래부터 추가 ---
+
+# Windows: processes 수집 제외 대상 + WinRM 연결 변수
+[windows]
+drwinap01
+
+[windows:vars]
+ansible_connection=winrm
+ansible_winrm_transport=ntlm
+ansible_winrm_server_cert_validation=ignore
+ansible_user=svc-ansible
+ansible_password="{{ vault_windows_password }}"
+
+[webtob]
+drnrap01
+
+[apache]
+
+[nginx]
+
+[tomcat]
+
+# RAC는 대표 노드 1대만
+[oracle]
+draixdb01 oracle_home=/u01/app/oracle/product/19.0.0/dbhome_1 oracle_sid=ORCL
+
+# JEUS 7~9: admin 서버가 떠있는 호스트만
+[jeus_admin]
+drnrap01
+
+# JEUS 6: 같은 호스트에 계정별로 여러 개면 별칭 host로 나눔(별칭은 facts 대상에서 자동 제외)
+[jeus6]
+ddorap01_jeuscm ansible_host=10.0.0.41 jeus6_instance_name=jeuscm
+ddorap01_jeuslt ansible_host=10.0.0.41 jeus6_instance_name=jeuslt

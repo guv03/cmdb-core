@@ -1,5 +1,9 @@
 # AWX → CMDB push 플레이북
 
+> **내부망은 AWX 대신 Jenkins + Ansible로 실행한다** — 실행 환경/Jenkins 설정은 [JENKINS.md](JENKINS.md) 참고.
+> 아래 "AWX 설정"의 Job Template별 Extra Variables·인벤토리 변수 설명은 Jenkins에서도 그대로 유효하다
+> (Extra Variables → Jenkins `cmdb-ansible-extra-vars` 시크릿 파일, 인벤토리 → `inventories/hosts`).
+
 ## 파일
 
 - `push_facts_to_cmdb.yml` — ansible facts + 하이퍼바이저 메타데이터를 CMDB(`POST /api/facts/`)로
@@ -44,6 +48,8 @@
   나온다(WAS의 domain.xml이 admin 서버 한 곳에서 도메인 전체를 기술하는 것과 같은 이유).
   Standalone은 노드가 하나뿐이라 이 구분이 필요 없음 - 플레이북 자체는 kind 분기 없이 항상
   `gv$` 뷰만 조회한다.
+- `Jenkinsfile` / `ansible.cfg` / `inventories/hosts.example` / `jenkins/` — Jenkins + Ansible 실행
+  구성(AWX 대체). 자세한 내용은 `JENKINS.md`.
 - `inventory_source_vars.example.yml` — vCenter/Nutanix 인벤토리 소스의 hostvar를
   플레이북이 기대하는 정규화된 변수명으로 매핑하는 예시(참고용, 실제 환경에 맞게 조정 필요).
 - `push_vcenter_systems_to_cmdb.yml` / `push_vcenter_systems_instance_tasks.yml` /

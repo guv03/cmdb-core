@@ -1,0 +1,9 @@
+workflow-aggregator
+git
+credentials-binding
+ssh-credentials
+plain-credentials
+timestamper
+ansicolor
+ws-cleanup
+gitlab-plugin

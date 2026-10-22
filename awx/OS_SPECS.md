@@ -14,7 +14,9 @@ is not defined`로 실패한다(현재 AWX의 ansible-core 버전이 `module_uti
 둘 다 Ansible이 SSH+Python으로 접속하는 동일한 방식이라 요구사항도 동일하게 취급.
 
 - **3.6.x / 3.7.x: 실패 확인됨**
-- **최소 3.8 이상 필요, 3.9 권장**
+- **최소 3.8 이상 필요, 3.9 권장** (AWX 기준)
+- **Jenkins + Ansible 전환 후(ansible-core 2.21, `jenkins/requirements.txt`)는 최소 3.9 필요** — 3.8 서버는
+  더 이상 지원 대상이 아님. 아래 표의 해결책(3.9 별도 설치 + `ansible_python_interpreter`)은 그대로 유효.
 
 기본 Python이 낮은 호스트는 (1) 이미 다른 경로에 신버전 Python이 설치돼 있으면 인벤토리
 `ansible_python_interpreter`로 그 경로를 지정하거나, (2) 없으면 Python 3.9를 별도 설치해야

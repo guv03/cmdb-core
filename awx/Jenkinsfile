@@ -1,0 +1,120 @@
+// 내부망 GitLab의 플레이북 리포(이 디렉토리가 리포 루트) 최상단에 두는 Jenkins Pipeline.
+// AWX의 Job Template/Schedule/Credential 역할을 이 파일 하나가 대신한다 - 자세한 구성은 JENKINS.md 참고.
+//
+// - 실행 위치: 전용 VM에서 뜬 Jenkins 컨테이너(ansible 내장 이미지, jenkins/Dockerfile)의 built-in 노드.
+//   방화벽에는 이 VM의 IP 하나만 등록하면 된다.
+// - 플레이북은 전부 `hosts: all`이라 AWX에서는 Job Template마다 인벤토리/Limit으로 대상을 갈랐다.
+//   여기선 아래 PLAYBOOKS의 `limit`(인벤토리 그룹 패턴)이 그 역할을 한다.
+// - 순서가 의미 있다: facts가 먼저 자산을 등록해야 나머지 push가 hostname으로 자산을 찾을 수 있고,
+//   WebToB/DB가 WAS보다 먼저 들어가야 JEUS push 시점에 WebToB 커넥터/DB 인스턴스 매칭이 된다.
+// - 경로/파일명은 내부 GitLab 리포(dt/ansible) 레이아웃 기준: 플레이북은 playbooks/, 인벤토리는
+//   inventories/hosts(ansible.cfg), facts 플레이북 이름은 push_fact_to_cmdb.yml(외부망 리포의
+//   push_facts_to_cmdb.yml과 이름이 다름).
+
+def PLAYBOOK_DIR = 'playbooks'
+
+def PLAYBOOKS = [
+    // facts/processes는 인벤토리 전체 대상(기존 inventories/hosts가 그룹 없는 평면 목록이라).
+    // jeus6 그룹의 별칭 host(같은 서버에 계정별 JEUS6)는 자산 hostname이 아니므로 제외.
+    [name: 'facts',     file: 'push_fact_to_cmdb.yml',           limit: 'all:!jeus6'],
+    [name: 'processes', file: 'push_processes_to_cmdb.yml',      limit: 'all:!windows:!jeus6'],
+    // 아래 설정 수집은 해당 그룹이 inventories/hosts에 있어야 실행된다 - 그룹이 없거나 비어있으면 건너뜀.
+    [name: 'webtob',    file: 'push_webtob_config_to_cmdb.yml',  limit: 'webtob'],
+    [name: 'apache',    file: 'push_apache_config_to_cmdb.yml',  limit: 'apache'],
+    [name: 'nginx',     file: 'push_nginx_config_to_cmdb.yml',   limit: 'nginx'],
+    [name: 'oracle',    file: 'push_oracle_config_to_cmdb.yml',  limit: 'oracle'],
+    [name: 'jeus',      file: 'push_jeus_config_to_cmdb.yml',    limit: 'jeus_admin'],
+    [name: 'jeus6',     file: 'push_jeus6_config_to_cmdb.yml',   limit: 'jeus6'],
+    [name: 'tomcat',    file: 'push_tomcat_config_to_cmdb.yml',  limit: 'tomcat'],
+    // vCenter/Nutanix는 관리 대상 서버가 아니라 localhost(또는 systems_collector_host)에서 API를 호출한다.
+    [name: 'vcenter',   file: 'push_vcenter_systems_to_cmdb.yml', limit: null, systems: true],
+    [name: 'nutanix',   file: 'push_nutanix_systems_to_cmdb.yml', limit: null, systems: true],
+]
+
+def runPlaybook(Map pb) {
+    def pattern = pb.limit ?: ''
+    def extraLimit = params.LIMIT?.trim()
+    if (pattern && extraLimit) {
+        pattern = "${pattern}:&${extraLimit}"
+    }
+    withEnv(["PB_FILE=${PLAYBOOK_DIR}/${pb.file}", "PB_LIMIT=${pattern}"]) {
+        // 시크릿이 Groovy 문자열 보간에 섞이지 않게 작은따옴표 블록 + 셸 변수로만 참조한다.
+        sh '''
+            set -eu
+            if [ -n "$PB_LIMIT" ]; then
+                if ansible "$PB_LIMIT" --list-hosts 2>/dev/null | grep -q 'hosts (0)'; then
+                    echo "대상 호스트 없음($PB_LIMIT) - 건너뜀"
+                    exit 0
+                fi
+                set -- --limit "$PB_LIMIT"
+            fi
+            ansible-playbook "$PB_FILE" \
+                --private-key "$SSH_KEY" -u "$SSH_USER" \
+                -e "@$EXTRA_VARS" \
+                $VERBOSITY "$@"
+        '''
+    }
+}
+
+pipeline {
+    agent any
+
+    options {
+        timestamps()
+        ansiColor('xterm')
+        disableConcurrentBuilds()
+        buildDiscarder(logRotator(numToKeepStr: '90'))
+    }
+
+    // 매일 새벽 전체 수집(PLAYBOOK=ALL 기본값). 개별 재실행은 "Build with Parameters"로.
+    // 테스트 기간엔 꺼둠 - 플레이북별 수동 실행으로 하나씩 확인한 뒤 주석 해제할 것.
+    // triggers {
+    //     cron('H 2 * * *')
+    // }
+
+    parameters {
+        // 기본값 NONE: Job 최초 등록 빌드나 실수로 누른 "Build"가 전체 실행이 되지 않게.
+        // 정기 실행(cron)은 이 값과 무관하게 항상 ALL로 돈다(아래 script 참고).
+        choice(name: 'PLAYBOOK', choices: ['NONE', 'ALL'] + PLAYBOOKS.collect { it.name },
+               description: 'NONE=실행 안 함, ALL=위에서부터 순서대로 전부 실행(한 단계가 실패해도 다음 단계는 계속), 그 외=해당 플레이북만')
+        string(name: 'LIMIT', defaultValue: '',
+               description: '특정 호스트/그룹만 실행할 때(예: drnrap01). 각 플레이북의 대상 그룹과 교집합으로 적용, vcenter/nutanix엔 무시')
+        choice(name: 'VERBOSITY', choices: ['', '-v', '-vv', '-vvv'], description: 'ansible-playbook 상세 로그 수준')
+        booleanParam(name: 'INCLUDE_SYSTEMS', defaultValue: false,
+                     description: 'ALL 실행 시 vCenter/Nutanix 시스템 수집도 포함할지(연동 준비 전엔 끔)')
+    }
+
+    environment {
+        ANSIBLE_FORCE_COLOR = 'true'
+    }
+
+    stages {
+        stage('Collect') {
+            steps {
+                withCredentials([
+                    sshUserPrivateKey(credentialsId: 'cmdb-ansible-ssh', keyFileVariable: 'SSH_KEY', usernameVariable: 'SSH_USER'),
+                    file(credentialsId: 'cmdb-ansible-extra-vars', variable: 'EXTRA_VARS'),
+                ]) {
+                    script {
+                        def byTimer = !currentBuild.getBuildCauses('hudson.triggers.TimerTrigger$TimerTriggerCause').isEmpty()
+                        def selected = byTimer ? 'ALL' : (params.PLAYBOOK ?: 'NONE')
+                        if (selected == 'NONE') {
+                            echo 'PLAYBOOK=NONE - 실행할 플레이북을 골라 "Build with Parameters"로 다시 실행하세요.'
+                            return
+                        }
+                        def targets = selected == 'ALL'
+                            ? PLAYBOOKS.findAll { !it.systems || params.INCLUDE_SYSTEMS }
+                            : PLAYBOOKS.findAll { it.name == selected }
+                        for (pb in targets) {
+                            stage(pb.name) {
+                                catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
+                                    runPlaybook(pb)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

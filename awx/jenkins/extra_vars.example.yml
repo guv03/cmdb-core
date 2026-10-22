@@ -1,0 +1,23 @@
+# Jenkins Credentials의 "Secret file"(ID: cmdb-ansible-extra-vars)로 등록할 파일의 레이아웃.
+# AWX의 Extra Variables + Credential을 합친 역할 - 모든 플레이북에 `-e @파일`로 전달된다.
+# 실제 값은 폐쇄망 안에서 직접 작성해 Jenkins에만 올리고, GitLab/외부망 리포 어디에도 커밋하지 않는다.
+#
+# 주의: -e 변수는 인벤토리 host_vars보다도 우선한다. 서버마다 다를 수 있는 값
+# (webtob_config_path, jeus6_instance_name 등)은 여기 넣지 말고 inventories/hosts에.
+cmdb_base_url: http://cmdb.internal:8000
+cmdb_validate_certs: true
+cmdb_api_key: "CHANGE_ME"
+
+# inventories/hosts의 windows 그룹이 참조
+vault_windows_password: "CHANGE_ME"
+
+# vCenter/Nutanix 시스템 수집(Jenkins의 INCLUDE_SYSTEMS 또는 PLAYBOOK=vcenter/nutanix일 때만 사용)
+vcenter_instances:
+  - name: vcenter01.corp.local
+    base_url: https://vcenter01.corp.local
+    username: svc-cmdb@vsphere.local
+    password: "CHANGE_ME"
+nutanix_instances:
+  - name: pc01.corp.local
+    base_url: https://pc01.corp.local:9440
+    api_key: "CHANGE_ME"
