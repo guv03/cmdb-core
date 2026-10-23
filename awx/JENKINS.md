@@ -34,12 +34,14 @@ Jenkins Pod ← git checkout ← 내부 GitLab(플레이북 리포)
 
 ```bash
 cd awx/jenkins
-docker build -t cmdb-ansible-jenkins:2.580.1-ac2.21.5 \
+docker build -t cmdb-ansible-jenkins:2.580.1-ac2.21.5-r2 \
   --build-arg JENKINS_IMAGE=jenkins/jenkins:2.580.1-lts-jdk21 .
-docker save cmdb-ansible-jenkins:2.580.1-ac2.21.5 -o cmdb-ansible-jenkins-2.580.1-ac2.21.5.tar
+docker save cmdb-ansible-jenkins:2.580.1-ac2.21.5-r2 -o cmdb-ansible-jenkins-2.580.1-ac2.21.5-r2.tar
 ```
 
-- 태그는 `<Jenkins LTS>-ac<ansible-core>` 형식. CMDB 이미지(`VERSION`)와 별개로 관리한다.
+- 태그는 `<Jenkins LTS>-ac<ansible-core>-r<리비전>` 형식. 같은 버전 조합에서 플러그인 등만 바뀌면 리비전만 올린다
+  (같은 태그로 덮어쓰면 K8s 노드가 캐시된 예전 이미지를 계속 쓴다). CMDB 이미지(`VERSION`)와 별개로 관리한다.
+  - r1: 최초 / r2: `matrix-auth`, `openmfa` 추가
 - Jenkins 플러그인(`plugins.txt`)은 빌드 시점 최신 호환 버전이 이미지 안에 고정된다 — 폐쇄망
   Jenkins에서 플러그인 업데이트/설치는 안 되므로, 필요한 플러그인은 반드시 여기 추가해 다시 빌드.
 - Python 패키지/collection을 추가하면 `requirements.txt`/`requirements.yml` 수정 후 다시 빌드.
@@ -49,9 +51,9 @@ docker save cmdb-ansible-jenkins:2.580.1-ac2.21.5 -o cmdb-ansible-jenkins-2.580.
 
 1. 이미지를 Harbor에 push(CMDB 이미지와 같은 절차):
    ```bash
-   docker load -i cmdb-ansible-jenkins-2.580.1-ac2.21.5.tar
-   docker tag cmdb-ansible-jenkins:2.580.1-ac2.21.5 <harbor>/<project>/cmdb-ansible-jenkins:2.580.1-ac2.21.5
-   docker push <harbor>/<project>/cmdb-ansible-jenkins:2.580.1-ac2.21.5
+   docker load -i cmdb-ansible-jenkins-2.580.1-ac2.21.5-r2.tar
+   docker tag cmdb-ansible-jenkins:2.580.1-ac2.21.5-r2 <harbor>/<project>/cmdb-ansible-jenkins:2.580.1-ac2.21.5-r2
+   docker push <harbor>/<project>/cmdb-ansible-jenkins:2.580.1-ac2.21.5-r2
    ```
 2. `jenkins/k8s/jenkins.yaml`의 `CHANGE_ME`(Harbor 이미지 경로)를 채우고 적용 — StorageClass는 내부망 기존 `nfs-csi`(AWX/Harbor와 동일)로 지정돼 있음:
    ```bash
@@ -128,6 +130,34 @@ dt/ansible
    - 콜렉터 경유를 쓰면 `from=` 값이 달라진다 — 위 "3. 콜렉터 서버 경유(선택)" 참고.
    - 권한은 `.ssh` 700, `authorized_keys` 600. sshd의 `PermitRootLogin`이 `no`면 키 접속도 막히므로
      `prohibit-password`(구버전은 `without-password`)여야 한다.
+
+### 권한 관리 + MFA
+
+이 Jenkins는 전 서버 root 키를 갖고 있어 **Jenkins 관리자 = 사실상 전 서버 root**다. 역할은 둘로 나눈다:
+관리자(플레이북·인벤토리·Credential 관리)와 운영자(정해진 플레이북을 골라 실행하고 결과만 확인).
+
+| 권한 (Matrix) | 관리자 | 운영자 |
+|---|---|---|
+| Overall/Administer | O | |
+| Overall/Read | O | O |
+| Job/Read, Job/Build, Job/Cancel | O | O |
+| Job/Configure, **Run/Replay** | O | **X — 절대 주지 말 것** (실행 스크립트를 바꿔 Credential을 꺼낼 수 있음) |
+| Credentials/* | O | X |
+| Anonymous | 전부 비움 | |
+
+적용 순서(잠김 방지 — 순서대로):
+1. 사용자 계정 생성(Manage Jenkins → Users). 관리자 계정이 이미 있으면 그대로.
+2. **관리자 본인 OTP 먼저 등록**(OpenMFA, 사용자 메뉴에서 QR로 인증 앱 등록) → 로그아웃 후 OTP로 로그인되는지 확인.
+3. Manage Jenkins → Security → Authorization: **Matrix-based security** 선택 → 관리자 계정을 먼저 추가해
+   Administer 체크 → 운영자 계정 추가해 위 표대로 체크 → 저장.
+4. 다른 사용자도 OTP 등록 후, OpenMFA 설정에서 전체 사용자 MFA 강제.
+
+- **GitLab `dt/ansible` 권한도 같은 수준으로**: Jenkins는 매번 그 리포의 Jenkinsfile/플레이북을 그대로 실행하므로
+  push 권한 = 관리자 권한이다. `main`은 Protected branch로 두고 push는 관리자만, 나머지는 Merge Request로.
+- Jenkins NodePort는 방화벽에서 관리자 PC 대역만 허용 권장.
+- **잠겼을 때 복구**: PVC의 `jenkins_home/config.xml`에서 `<useSecurity>true</useSecurity>`를 `false`로 바꾸고
+  Pod 재시작(`kubectl -n cmdb-jenkins rollout restart deploy/cmdb-jenkins`) → 들어가서 권한 재설정 후 다시 켠다.
+  (Pod 안에서 수정: `kubectl -n cmdb-jenkins exec -it deploy/cmdb-jenkins -- sed -i 's#<useSecurity>true#<useSecurity>false#' /var/jenkins_home/config.xml`)
 
 ### Pipeline Job
 

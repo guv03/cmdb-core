@@ -7,3 +7,5 @@ timestamper
 ansicolor
 ws-cleanup
 gitlab-plugin
+matrix-auth
+openmfa

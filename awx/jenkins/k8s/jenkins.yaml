@@ -49,7 +49,7 @@ spec:
       #   - name: harbor-pull-secret
       containers:
         - name: jenkins
-          image: CHANGE_ME/cmdb-ansible-jenkins:2.580.1-ac2.21.5   # Harbor 경로
+          image: CHANGE_ME/cmdb-ansible-jenkins:2.580.1-ac2.21.5-r2   # Harbor 경로
           ports:
             - name: http
               containerPort: 8080
