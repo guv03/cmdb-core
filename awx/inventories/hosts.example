@@ -11,14 +11,13 @@ drnrap01 ansible_host=10.0.0.11
 drnrap02 ansible_host=10.0.0.12
 draixdb01 ansible_host=10.0.0.21 ansible_python_interpreter=/opt/freeware/bin/python3.9
 drwinap01 ansible_host=10.0.0.31
-cmdbcol01 ansible_host=10.0.0.5
 
 # --- 아래부터 추가 ---
 
-# 콜렉터 서버: 전체 서버에 접근 가능한 서버. Jenkins의 모든 SSH 접속이 여기를 경유하고(Jenkinsfile의
-# CMDB_COLLECTOR와 같은 서버), vCenter/Nutanix API 호출도 여기서 실행된다(extra vars의 systems_collector_host).
-[collector]
-cmdbcol01
+# (선택) 경유 서버를 쓸 때만: vCenter/Nutanix API 호출을 이 서버에서 실행(extra vars의
+# systems_collector_host: collector). 기본 구성(Pod에서 직접 접속)에선 필요 없음.
+# [collector]
+# cmdbcol01
 
 # Windows: SSH(OpenSSH) + PowerShell로 접속. processes(ps -ef) 수집 제외 대상이기도 함.
 # 공개키는 Administrator 계정이면 C:\ProgramData\ssh\administrators_authorized_keys에 등록.

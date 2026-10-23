@@ -2,8 +2,8 @@
 // AWX의 Job Template/Schedule/Credential 역할을 이 파일 하나가 대신한다 - 자세한 구성은 JENKINS.md 참고.
 //
 // - 실행 위치: K8s에 뜬 Jenkins(ansible 내장 이미지, jenkins/Dockerfile)의 built-in 노드.
-//   대상 서버 SSH 접속은 전부 콜렉터 서버(CMDB_COLLECTOR)를 거쳐 나가므로, 대상 서버 방화벽에는
-//   콜렉터 IP 하나만 등록하면 된다. vCenter/Nutanix API 호출도 systems_collector_host로 콜렉터에서 실행.
+//   기본은 Pod에서 대상 서버로 직접 SSH 접속하고, vCenter/Nutanix API도 Pod에서 직접 호출한다.
+//   필요하면 CMDB_COLLECTOR로 특정 서버를 경유하게 바꿀 수 있다(아래 environment 참고).
 // - 플레이북은 전부 `hosts: all`이라 AWX에서는 Job Template마다 인벤토리/Limit으로 대상을 갈랐다.
 //   여기선 아래 PLAYBOOKS의 `limit`(인벤토리 그룹 패턴)이 그 역할을 한다.
 // - 순서가 의미 있다: facts가 먼저 자산을 등록해야 나머지 push가 hostname으로 자산을 찾을 수 있고,
@@ -12,7 +12,8 @@
 //   inventories/hosts(ansible.cfg), facts 플레이북 이름은 push_fact_to_cmdb.yml(외부망 리포의
 //   push_facts_to_cmdb.yml과 이름이 다름).
 
-def PLAYBOOK_DIR = 'playbooks'
+// def 없이 선언해야 아래 runPlaybook() 함수 안에서도 보인다(def로 선언하면 스크립트 본문 지역변수라 함수에서 접근 불가).
+PLAYBOOK_DIR = 'playbooks'
 
 def PLAYBOOKS = [
     // facts/processes는 인벤토리 전체 대상(기존 inventories/hosts가 그룹 없는 평면 목록이라).
@@ -42,8 +43,12 @@ def runPlaybook(Map pb) {
         // 시크릿이 Groovy 문자열 보간에 섞이지 않게 작은따옴표 블록 + 셸 변수로만 참조한다.
         sh '''
             set -eu
-            # 모든 SSH 접속을 콜렉터 서버를 거쳐서 연다(대상 서버 방화벽엔 콜렉터 IP만 등록).
-            # 개인키는 Jenkins에만 있고 콜렉터는 TCP만 중계하므로 콜렉터에 키를 둘 필요가 없다.
+            # withEnv에 빈 값을 넘기면 Jenkins가 변수 자체를 안 만들어서(set -u에 걸림) 기본값으로 채워둔다.
+            # vcenter/nutanix처럼 대상 그룹(limit)이 없는 플레이북이 이 경우.
+            PB_LIMIT="${PB_LIMIT:-}"
+            VERBOSITY="${VERBOSITY:-}"
+            # CMDB_COLLECTOR가 있으면 모든 SSH 접속을 그 서버를 거쳐서 연다(대상 서버 방화벽엔 그 서버 IP만 등록).
+            # 개인키는 Jenkins에만 있고 경유 서버는 TCP만 중계하므로 거기에 키를 둘 필요가 없다.
             if [ -n "${CMDB_COLLECTOR:-}" ]; then
                 export ANSIBLE_SSH_COMMON_ARGS="-o ProxyCommand=\\"ssh -i $SSH_KEY -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -q -W %h:%p $CMDB_COLLECTOR\\""
             fi
@@ -92,9 +97,10 @@ pipeline {
 
     environment {
         ANSIBLE_FORCE_COLOR = 'true'
-        // 전체 서버에 접근 가능한 콜렉터 서버(계정@주소). Jenkins(K8s)는 이 서버에만 SSH로 붙고,
-        // 대상 서버 접속은 전부 여기를 경유한다. 비우면 Jenkins에서 대상 서버로 직접 접속.
-        CMDB_COLLECTOR = 'root@COLLECTOR_HOST'
+        // 비워두면(기본) Jenkins Pod에서 대상 서버로 직접 SSH 접속한다(대상 서버 방화벽/from=엔 K8s 워커 노드 IP).
+        // 방화벽 때문에 특정 서버를 거쳐야 하면 '계정@주소'를 넣으면 모든 SSH 접속이 그 서버를 경유한다
+        // (그 서버 sshd에 AllowTcpForwarding local 이상 필요 - JENKINS.md "콜렉터 서버 경유(선택)" 참고).
+        CMDB_COLLECTOR = ''
     }
 
     stages {

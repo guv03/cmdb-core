@@ -17,23 +17,18 @@
 
 ```
 [K8s] Jenkins Pod (ansible 내장 이미지, built-in 노드에서 ansible-playbook 실행)
-   │  SSH 22 — 방화벽: K8s 워커 노드들 → 콜렉터 서버만 허용
-   ▼
-[콜렉터 서버]  전체 서버에 접근 가능한 서버 1대
-   ├─ SSH 중계(ProxyCommand) → 관리 대상 서버들(Linux/AIX/Windows 전부 SSH)
-   │                            대상 서버 방화벽·from= 에는 콜렉터 IP만 등록
-   └─ vCenter/Nutanix API 호출(systems_collector_host, 콜렉터에서 직접 실행)
+   ├─ SSH 22 → 관리 대상 서버들(Linux/AIX/Windows 전부 SSH)   방화벽·from= 에는 K8s 워커 노드 IP들 등록
+   └─ HTTPS → vCenter(443) / Nutanix Prism Central(9440) API → CMDB API로 push
 
-관리 대상 서버들 → CMDB API (push는 AWX 때와 동일하게 각 서버에서 CMDB로 직접)
+관리 대상 서버들 → CMDB API (facts/설정 push는 AWX 때와 동일하게 각 서버에서 CMDB로 직접)
 Jenkins Pod ← git checkout ← 내부 GitLab(플레이북 리포)
 ```
 
-- **서버 내부 수집(facts/webtob/jeus 등)**: Ansible은 Jenkins Pod에서 돌고, SSH 접속만 콜렉터를 거쳐
-  나간다(`Jenkinsfile`의 `CMDB_COLLECTOR` → `ANSIBLE_SSH_COMMON_ARGS`의 ProxyCommand). 콜렉터는 TCP만
-  중계하므로 개인키가 콜렉터에 남지 않고, 콜렉터에 ansible을 설치할 필요도 없다.
-- **vCenter/Nutanix 수집**: 서버 내부 정보가 아니라 API 호출이라, 플레이북 자체를 콜렉터에서 실행한다
-  (`systems_collector_host: collector`, extra vars). 이 경우만 콜렉터에 Python 3이 필요하다.
-- Jenkins Pod는 어느 노드에 떠도 상관없다 — 출발지 IP 고정은 콜렉터가 담당.
+- **서버 내부 수집(facts/webtob/jeus 등)**: Jenkins Pod에서 각 서버로 직접 SSH 접속한다. Pod는 재시작 시 다른
+  노드에 뜰 수 있으므로 대상 서버의 방화벽과 `authorized_keys`의 `from=`에는 **K8s 워커 노드 IP 전부**를 등록한다.
+- **vCenter/Nutanix 수집**: 서버에 SSH로 붙지 않고 Pod 안(localhost)에서 API를 호출해 결과를 Pod가 CMDB로 보낸다 —
+  Pod → vCenter/Nutanix, Pod → CMDB 경로가 열려 있어야 한다.
+- 방화벽 때문에 직접 접속이 어려우면 특정 서버를 경유하게 바꿀 수 있다 — 아래 "3. 콜렉터 서버 경유(선택)".
 
 ## 1. 이미지 빌드 (외부망)
 
@@ -72,14 +67,18 @@ docker save cmdb-ansible-jenkins:2.580.1-ac2.21.5 -o cmdb-ansible-jenkins-2.580.
 - PVC 권한 오류(`Permission denied: /var/jenkins_home`)가 나면 NFS 등에서 `fsGroup`이 안 먹는 경우 —
   스토리지 쪽 디렉토리 소유자를 uid 1000으로 맞춘다.
 
-## 3. 콜렉터 서버
+## 3. 콜렉터 서버 경유 (선택)
 
-- **방화벽**: K8s 워커 노드들 → 콜렉터 22번 허용. 콜렉터 → 전체 대상 서버 22번(Windows 포함),
-  vCenter/Nutanix API(443/9440)는 이미 열려 있다는 전제.
-- **SSH 허용 설정**: 콜렉터 sshd가 TCP 포워딩을 막고 있으면(`AllowTcpForwarding no`) ProxyCommand(`ssh -W`)가
-  실패한다 — `AllowTcpForwarding yes`(최소 local) 필요.
-- **Python 3**: vCenter/Nutanix 수집을 쓸 때만 필요(`systems_collector_host`로 그 플레이북이 콜렉터에서 실행됨).
-- 인벤토리 `[collector]` 그룹에 이 서버를 넣고, `Jenkinsfile`의 `CMDB_COLLECTOR`(`계정@주소`)도 같은 서버로 맞춘다.
+기본 구성(Pod에서 직접 접속)으로 방화벽을 열기 어려울 때만 쓴다. 전체 서버에 접근 가능한 서버 하나를 두고
+모든 SSH 접속을 그 서버를 거쳐 보낸다(SSH ProxyCommand - 그 서버는 TCP만 중계하므로 개인키·ansible 설치 불필요).
+
+- `Jenkinsfile`의 `CMDB_COLLECTOR = 'root@<콜렉터 주소>'`로 켠다(비우면 직접 접속).
+- 콜렉터 sshd에 `AllowTcpForwarding local`(또는 `yes`) 필요 — `no`면 콜렉터 `/var/log/secure`에
+  `refused local port forward`가 찍히며 실패한다.
+- `authorized_keys`의 `from=`: 대상 서버는 `<콜렉터 IP>`, 콜렉터 자신은 `<K8s 워커 노드 IP들>,<콜렉터 IP>`
+  (콜렉터 자신도 수집 대상이면 콜렉터→콜렉터 접속이 생겨 자기 IP가 필요).
+- vCenter/Nutanix API 호출도 콜렉터에서 하려면 인벤토리 `[collector]` 그룹 + extra vars의
+  `systems_collector_host: collector`(콜렉터에 Python 3 필요).
 
 ## 4. 플레이북 리포 (내부 GitLab `dt/ansible`)
 
@@ -110,8 +109,8 @@ dt/ansible
 
 | ID | 종류 | 내용 |
 |---|---|---|
-| `cmdb-ansible-ssh` | SSH Username with private key | 콜렉터·관리 대상 서버 공용 접속 키 (Username: `root`) |
-| `cmdb-ansible-extra-vars` | Secret file | `jenkins/extra_vars.example.yml` 형식의 YAML — `cmdb_base_url`, `cmdb_api_key`, `systems_collector_host`, vCenter/Nutanix 계정 |
+| `cmdb-ansible-ssh` | SSH Username with private key | 관리 대상 서버 공용 접속 키 (Username: `root`) |
+| `cmdb-ansible-extra-vars` | Secret file | `jenkins/extra_vars.example.yml` 형식의 YAML — `cmdb_base_url`, `cmdb_api_key`, vCenter/Nutanix 접속 정보(`vcenter_instances`/`nutanix_instances`) |
 | (GitLab 접근용) | Username with password(토큰) | 플레이북 리포 checkout용 |
 
 - 시크릿은 Jenkins Credentials에만 둔다 — GitLab과 외부망 리포 어디에도 실제 값을 커밋하지 않는다.
@@ -123,10 +122,10 @@ dt/ansible
    (ed25519 미지원 구버전 OpenSSH 서버가 섞여 있으면 `-t rsa -b 4096`)
 2. 개인키(`cmdb-ansible`)를 `cmdb-ansible-ssh` Credential(Username: `root`)에 붙여넣고, 생성한 개인키 파일은 삭제.
 3. 공개키는 서버마다 root 비밀번호가 달라 일괄 배포하지 않고 직접(또는 서버 담당자가) 등록한다.
-   ProxyCommand는 TCP만 중계하므로 대상 서버 입장에서 접속 출발지는 콜렉터다:
-   - **대상 서버** `/root/.ssh/authorized_keys`: `from="<콜렉터 IP>" ssh-ed25519 AAAA... cmdb-ansible`
-   - **콜렉터 서버** `/root/.ssh/authorized_keys`: `from="<K8s 워커 노드 IP들(콤마 구분)>" ssh-ed25519 AAAA... cmdb-ansible`
-   - **Windows**(Administrator): `C:\ProgramData\ssh\administrators_authorized_keys`에 같은 줄(`from="<콜렉터 IP>"` 포함)
+   Pod에서 직접 접속하므로 출발지는 K8s 워커 노드 IP다(`kubectl get nodes -o wide`의 INTERNAL-IP 전부):
+   - **Linux/AIX** `/root/.ssh/authorized_keys`: `from="<워커 노드 IP들, 콤마 구분>" ssh-ed25519 AAAA... cmdb-ansible`
+   - **Windows**(Administrator): `C:\ProgramData\ssh\administrators_authorized_keys`에 같은 줄
+   - 콜렉터 경유를 쓰면 `from=` 값이 달라진다 — 위 "3. 콜렉터 서버 경유(선택)" 참고.
    - 권한은 `.ssh` 700, `authorized_keys` 600. sshd의 `PermitRootLogin`이 `no`면 키 접속도 막히므로
      `prohibit-password`(구버전은 `without-password`)여야 한다.
 
@@ -148,8 +147,8 @@ Job 최초 등록 빌드나 실수로 누른 "Build"가 전체 실행이 되지 
 4. 다음 플레이북(webtob, jeus ...)도 1~3 반복 — 단, 인벤토리에 해당 그룹을 먼저 추가해야 대상이 생긴다
 5. 전부 확인되면 `triggers` 주석을 풀어 GitLab에 push → 다음 날부터 정기 실행
 
-접속이 안 되면 `VERBOSITY=-vvv`로 다시 실행해 SSH 단계를 본다 — `ProxyCommand`/콜렉터 접속 실패인지,
-콜렉터→대상 서버 구간 실패(방화벽/`from=`/`PermitRootLogin`)인지 로그에서 구분된다.
+접속이 안 되면 `VERBOSITY=-vvv`로 다시 실행해 SSH 단계를 보고, 대상 서버 `/var/log/secure`에서 실제 출발지 IP와
+거부 사유(`from=` 불일치/`PermitRootLogin`/키 불일치)를 확인한다.
 
 ### 실행 방식
 
