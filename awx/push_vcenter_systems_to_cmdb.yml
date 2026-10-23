@@ -62,3 +62,6 @@
       loop: "{{ vcenter_instances }}"
       loop_control:
         loop_var: vcenter
+        # 기본 출력은 loop 항목 전체(접속 계정/비밀번호/API 키 포함)를 "included: ... (item=...)"로
+        # 로그에 찍는다 - Jenkins 빌드 로그에 실제로 비밀번호가 노출돼서 이름만 찍도록 고정.
+        label: "{{ vcenter.name }}"
